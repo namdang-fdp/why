@@ -36,4 +36,4 @@ SQLite is embedded, ideal for local app state and indexed relational queries. On
 Provenance/decisions must not assume local-only. Use stable IDs and content hashes (not absolute paths or SQLite rowids) so records can be serialized to a self-contained, versioned format: git notes, commit trailers, or a checkpoint file attachable to a PR. A reviewer who didn't run the agent and lacks the transcript could then see the evidence. Export/sync is later; the schema supports it now.
 
 ## Integration
-Passive observer (outside any agent's harness). Claude Code and Codex first; adapters for OpenCode/others later. Hooks enqueue events quickly; background collector reconciles Git/filesystem. No need to launch agents inside WHY. No credentials collection or implicit network upload.
+Passive observer (outside any agent's harness). Claude Code and Codex first (v0.2); Antigravity feasibility in v0.5; OpenCode/others later. Hooks enqueue events quickly; background collector reconciles Git/filesystem. No need to launch agents inside WHY. No credentials collection or implicit network upload.
