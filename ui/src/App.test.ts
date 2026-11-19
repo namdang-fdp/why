@@ -6,6 +6,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { IpcError } from "@/contracts";
 import { FixtureDataSource } from "@/data/fixture-data-source";
+import { ipcErrors } from "@/fixtures";
 import { createWorkspaceStore } from "@/stores/workspace";
 import { App } from "./App";
 
@@ -141,20 +142,23 @@ describe("review shell", () => {
     });
   });
 
-  it("renders an IPC error kind and its message", async () => {
-    class FailingSource extends FixtureDataSource {
-      override async listRepositories(): ReturnType<FixtureDataSource["listRepositories"]> {
-        throw {
-          kind: "gitFailed",
-          message: "fatal: bad revision 'origin/nope'",
-        } satisfies IpcError;
-      }
-    }
+  const humanMessages = {
+    notARepo: "This location is no longer a Git repository.",
+    gitMissing: "Git is unavailable. Check that Git is installed and on your PATH.",
+    gitFailed: "Git could not complete the request.",
+    timeout: "The request took too long.",
+    notFound: "The requested repository, worktree, or file could not be found.",
+    invalidInput: "This request is unavailable for the current selection.",
+    internal: "WHY could not complete the request because of an internal error.",
+  } satisfies Record<IpcError["kind"], string>;
 
-    render(createElement(App, { store: createWorkspaceStore(new FailingSource()) }));
+  it.each(ipcErrors)("renders the $kind IPC error", async (error) => {
+    const source = new FixtureDataSource();
+    vi.spyOn(source, "listRepositories").mockRejectedValue(error);
+    render(createElement(App, { store: createWorkspaceStore(source) }));
     const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toContain("gitFailed");
-    expect(alert.textContent).toContain("Git could not complete the request.");
-    expect(alert.textContent).toContain("fatal: bad revision 'origin/nope'");
+    expect(alert.textContent).toContain(error.kind);
+    expect(alert.textContent).toContain(humanMessages[error.kind]);
+    if ("message" in error) expect(alert.textContent).toContain(error.message);
   });
 });
