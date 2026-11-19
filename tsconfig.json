@@ -1,0 +1,4 @@
+{
+  "files": [],
+  "compilerOptions": { "paths": { "@/*": ["./ui/src/*"] } }
+}
