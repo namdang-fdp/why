@@ -5,6 +5,9 @@
 //! right now, so every function here only reads, never takes a lock an agent
 //! could trip over, and bounds its own cost (see [`runner`]).
 //!
+//! Requires **git >= 2.36** (`worktree list --porcelain -z`); see [`version`]
+//! for the per-feature table.
+//!
 //! Layering: this module returns types that model *what git reports*
 //! ([`StatusSnapshot`], [`WorktreeEntry`], ...). Mapping them to the UI-facing
 //! IPC contracts happens in a later layer, so a change in the UI contract does
@@ -20,6 +23,7 @@ pub mod oid;
 pub mod repo;
 pub mod runner;
 pub mod status;
+pub mod version;
 pub mod worktree;
 
 pub use base::{BaseInfo, detect_base};
@@ -31,4 +35,5 @@ pub use status::{
     AheadBehind, BranchHead, BranchStatus, ConflictKind, FileState, RenameOp, StatusEntry,
     StatusKind, StatusSnapshot, parse_status, read_status,
 };
+pub use version::{GitVersion, MIN_GIT_VERSION, git_version};
 pub use worktree::{WorktreeEntry, list_worktrees, parse_worktree_list, worktree_id};

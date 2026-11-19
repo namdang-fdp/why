@@ -10,7 +10,7 @@ Design notes live in [`why-brain/`](why-brain/) (Obsidian vault; start at `00 - 
 
 ## Development
 
-**Prerequisites:** Node 24+, pnpm 10, Rust 1.90+, and the [Tauri system dependencies](https://v2.tauri.app/start/prerequisites/) (on Linux: `webkit2gtk-4.1`, `gtk3`, etc.).
+**Prerequisites:** Node 24+, pnpm 10, Rust 1.90+, `git` 2.36+ (WHY shells out to it; `git worktree list -z` needs 2.36), and the [Tauri system dependencies](https://v2.tauri.app/start/prerequisites/) (on Linux: `webkit2gtk-4.1`, `gtk3`, etc.).
 
 ```bash
 pnpm i
