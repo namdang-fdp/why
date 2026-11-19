@@ -226,3 +226,57 @@ pub fn write_in(dir: &Path, rel: &str, contents: &[u8]) {
 pub fn test_runner() -> why_lib::git::GitRunner {
     why_lib::git::GitRunner::new().with_isolated_config()
 }
+
+/// Write an executable `/bin/sh` script that is safe to run right away.
+///
+/// # The race this avoids (ETXTBSY, "Text file busy")
+///
+/// Cargo runs tests on parallel threads, and many of them spawn child processes.
+/// `fork` copies every open file descriptor into the child, and the child keeps
+/// them until it calls `exec`. If another test's `fork` lands while this
+/// function's write descriptor is still open, that child holds a *writable*
+/// reference to the script's inode for a few microseconds, and the kernel refuses
+/// to `exec` a file somebody still has open for writing: `ETXTBSY`. The test then
+/// fails with `Io(Os { code: 26, kind: ExecutableFileBusy })` although nothing is
+/// wrong (see rust-lang/rust#114554).
+///
+/// Writing to a temporary name and renaming does NOT help: the inherited
+/// descriptor refers to the inode, which is the same after the rename. So this
+/// helper makes the file *provably* runnable before returning: it executes the
+/// script once in "probe" mode and retries, bounded (50 x 10 ms), for as long as
+/// the error is `ExecutableFileBusy`. A successful `exec` means no writer is left
+/// (and none can appear again, nobody writes to the file any more), so the real
+/// exec later, by the test or by a git hook, cannot hit the race.
+///
+/// The probe must not have side effects, so a guard line is inserted right after
+/// the shebang: the script exits at once when `WHY_TEST_PROBE` is set. `body` is
+/// the script WITHOUT the `#!/bin/sh` line.
+#[cfg(unix)]
+pub fn write_executable_script(path: &Path, body: &str) {
+    use std::io::ErrorKind;
+    use std::os::unix::fs::PermissionsExt;
+
+    std::fs::write(
+        path,
+        format!("#!/bin/sh\n[ -z \"$WHY_TEST_PROBE\" ] || exit 0\n{body}"),
+    )
+    .unwrap();
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+    for attempt in 0..50 {
+        match Command::new(path).env("WHY_TEST_PROBE", "1").status() {
+            Ok(status) => {
+                assert!(
+                    status.success(),
+                    "probe of {} failed: {status}",
+                    path.display()
+                );
+                return;
+            }
+            Err(e) if e.kind() == ErrorKind::ExecutableFileBusy && attempt < 49 => {
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            Err(e) => panic!("cannot run {}: {e}", path.display()),
+        }
+    }
+}
