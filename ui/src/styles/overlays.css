@@ -1,0 +1,468 @@
+/*
+ * Floating surfaces (popover, menu, tooltip, dialogs, toasts) and form controls.
+ *
+ * Motion spec for everything in this file (also in the task report):
+ *   enter  120-160ms  ease-out   opacity + scale(0.98 -> 1)  [+ translateY for toasts]
+ *   exit   100-120ms  ease-in    opacity (+ scale back)      (leaving is quicker than arriving)
+ * Only `opacity`, `scale` and `translate` are animated (compositor-only). Radix
+ * keeps a closing element mounted until its exit animation ends, which is why
+ * every `[data-state="closed"]` rule below names an animation.
+ * `prefers-reduced-motion` removes all of it (see the end of index.css).
+ */
+
+:root {
+  --dur-fast: 120ms;
+  --dur: 160ms;
+  --dur-slow: 200ms;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --surface-overlay: oklch(0.21 0 0);
+  --shadow-float:
+    0 1px 0 oklch(1 0 0 / 4%) inset, 0 12px 32px -8px oklch(0 0 0 / 60%),
+    0 2px 6px oklch(0 0 0 / 30%);
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    scale: 0.98;
+  }
+}
+@keyframes pop-out {
+  to {
+    opacity: 0;
+    scale: 0.98;
+  }
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes fade-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes spin {
+  to {
+    rotate: 360deg;
+  }
+}
+
+.spin {
+  animation: spin 800ms linear infinite;
+}
+
+/* ---- surfaces ------------------------------------------------------------ */
+
+.overlay-surface {
+  z-index: 60;
+  border: 1px solid oklch(1 0 0 / 11%);
+  border-radius: 10px;
+  background: var(--surface-overlay);
+  color: var(--foreground);
+  box-shadow: var(--shadow-float);
+  font-size: 13px;
+  transform-origin: var(--radix-popper-transform-origin, 50% 0);
+}
+
+.overlay-surface[data-state="open"] {
+  animation: pop-in var(--dur) var(--ease-out);
+}
+.overlay-surface[data-state="closed"] {
+  animation: pop-out var(--dur-fast) var(--ease-in) forwards;
+}
+
+.popover {
+  width: 300px;
+  max-width: calc(100vw - 24px);
+  padding: 16px;
+}
+
+.menu {
+  min-width: 190px;
+  padding: 4px;
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 8px;
+  border-radius: 6px;
+  color: var(--foreground);
+  cursor: default;
+  outline: none;
+  user-select: none;
+}
+.menu-item svg {
+  flex: none;
+  color: var(--muted-foreground);
+}
+.menu-item[data-highlighted] {
+  background: oklch(1 0 0 / 8%);
+}
+.menu-item[data-danger] {
+  color: var(--destructive);
+}
+.menu-item[data-danger] svg {
+  color: inherit;
+}
+.menu-item[data-danger][data-highlighted] {
+  background: color-mix(in oklch, var(--destructive) 16%, transparent);
+}
+
+/* ---- tooltip ------------------------------------------------------------- */
+
+.tooltip {
+  z-index: 70;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 280px;
+  padding: 5px 8px;
+  border: 1px solid oklch(1 0 0 / 11%);
+  border-radius: 6px;
+  background: var(--surface-overlay);
+  color: var(--foreground);
+  box-shadow: var(--shadow-float);
+  font-size: 12px;
+  line-height: 16px;
+  transform-origin: var(--radix-tooltip-content-transform-origin);
+}
+.tooltip kbd {
+  min-width: 17px;
+  height: 17px;
+  font-size: 10px;
+}
+.tooltip[data-state="delayed-open"],
+.tooltip[data-state="instant-open"] {
+  animation: pop-in var(--dur-fast) var(--ease-out);
+}
+.tooltip[data-state="closed"] {
+  animation: fade-out 80ms var(--ease-in) forwards;
+}
+
+/* ---- dialogs (Radix dialog + alert dialog) -------------------------------- */
+
+[data-slot="dialog-overlay"],
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: oklch(0 0 0 / 55%);
+}
+[data-slot="dialog-overlay"][data-state="open"],
+.modal-overlay[data-state="open"] {
+  animation: fade-in var(--dur) var(--ease-out);
+}
+[data-slot="dialog-overlay"][data-state="closed"],
+.modal-overlay[data-state="closed"] {
+  animation: fade-out var(--dur-fast) var(--ease-in) forwards;
+}
+
+/* Override the generic shadcn zoom (0.95, 200ms) with the app's own spec. */
+[data-slot="dialog-content"][data-state="open"] {
+  animation: pop-in var(--dur) var(--ease-out);
+}
+[data-slot="dialog-content"][data-state="closed"] {
+  animation: pop-out var(--dur-fast) var(--ease-in) forwards;
+}
+
+[data-slot="dialog-content"] {
+  border-radius: 12px;
+  border-color: oklch(1 0 0 / 11%);
+}
+
+.modal {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  translate: -50% -50%;
+  width: min(420px, calc(100vw - 32px));
+  padding: 20px;
+  display: grid;
+  gap: 8px;
+  transform-origin: 50% 50%;
+}
+.modal h2,
+.add-form h2,
+[data-slot="dialog-title"] {
+  font-size: 15px;
+  line-height: 20px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+}
+.modal p,
+[data-slot="dialog-description"] {
+  color: var(--muted-foreground);
+  font-size: 13px;
+  line-height: 1.55;
+}
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.add-dialog {
+  max-width: min(480px, calc(100vw - 32px));
+  padding: 20px;
+  background: var(--surface-overlay);
+  gap: 0;
+}
+.add-form {
+  display: grid;
+  gap: 8px;
+}
+
+/* ---- forms --------------------------------------------------------------- */
+
+.field {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+}
+.field label,
+.base-form label {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 500;
+}
+.field-row {
+  display: flex;
+  gap: 6px;
+}
+
+.input {
+  width: 100%;
+  min-width: 0;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--input);
+  border-radius: 6px;
+  background: var(--background);
+  color: var(--foreground);
+  font-size: 13px;
+  outline: none;
+  transition:
+    border-color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out);
+}
+.input.mono {
+  font: 12px/16px var(--font-mono);
+}
+.input::placeholder {
+  color: oklch(0.55 0 0);
+}
+.input:hover {
+  border-color: oklch(1 0 0 / 24%);
+}
+.input:focus-visible {
+  border-color: oklch(0.78 0 0);
+  box-shadow: 0 0 0 3px oklch(1 0 0 / 10%);
+}
+.input[aria-invalid="true"] {
+  border-color: var(--destructive);
+}
+
+.field-error,
+.field-hint {
+  font-size: 12px;
+  line-height: 1.5;
+}
+.field-error {
+  color: var(--destructive);
+}
+.field-hint {
+  color: var(--muted-foreground);
+}
+
+.notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in oklch, var(--git-modified) 28%, transparent);
+  border-radius: 8px;
+  background: color-mix(in oklch, var(--git-modified) 8%, transparent);
+  color: var(--foreground);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.notice svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--git-modified);
+}
+
+.base-form {
+  display: grid;
+  gap: 6px;
+}
+.suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 2px;
+}
+.chip {
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted-foreground);
+  font: 11px/16px var(--font-mono);
+  transition:
+    background-color var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out);
+}
+.chip:hover {
+  background: oklch(1 0 0 / 6%);
+  color: var(--foreground);
+}
+.chip:active {
+  background: oklch(1 0 0 / 10%);
+}
+.chip[aria-pressed="true"] {
+  border-color: oklch(1 0 0 / 24%);
+  color: var(--foreground);
+}
+
+/* ---- toasts -------------------------------------------------------------- */
+
+.toaster {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 80;
+  display: grid;
+  gap: 8px;
+  width: min(360px, calc(100vw - 32px));
+  pointer-events: none;
+}
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid oklch(1 0 0 / 11%);
+  border-radius: 10px;
+  background: var(--surface-overlay);
+  box-shadow: var(--shadow-float);
+  pointer-events: auto;
+  /* Arrives from below with a fade; the stack is bottom-anchored. */
+  animation: toast-in var(--dur-slow) var(--ease-out);
+}
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    translate: 0 8px;
+    scale: 0.98;
+  }
+}
+.toast-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  color: var(--git-added);
+}
+.toast[data-tone="error"] .toast-icon {
+  color: var(--destructive);
+}
+.toast-text {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  gap: 2px;
+}
+.toast-title {
+  font-size: 13px;
+  font-weight: 550;
+  line-height: 18px;
+}
+.toast-detail {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.toast-close {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  color: var(--muted-foreground);
+  transition:
+    background-color var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out);
+}
+.toast-close:hover {
+  background: oklch(1 0 0 / 8%);
+  color: var(--foreground);
+}
+
+/* ---- editor settings popover ------------------------------------------------ */
+
+.settings-popover {
+  width: 320px;
+}
+.settings-form {
+  display: grid;
+  gap: 12px;
+}
+.settings-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+.setting {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.setting label {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 500;
+}
+.setting-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.setting-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.setting-check input {
+  width: 14px;
+  height: 14px;
+  accent-color: oklch(0.82 0 0);
+}
+select.input {
+  appearance: none;
+  padding-right: 24px;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--muted-foreground) 50%),
+    linear-gradient(135deg, var(--muted-foreground) 50%, transparent 50%);
+  background-position:
+    calc(100% - 14px) 14px,
+    calc(100% - 10px) 14px;
+  background-size:
+    4px 4px,
+    4px 4px;
+  background-repeat: no-repeat;
+}
