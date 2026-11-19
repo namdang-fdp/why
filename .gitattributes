@@ -1,0 +1,2 @@
+# Generated bindings: always LF, so the drift test (and diffs) behave the same on every OS.
+ui/src/contracts/** text eol=lf
