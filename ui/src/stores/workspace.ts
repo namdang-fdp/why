@@ -1,4 +1,6 @@
 import { createStore } from "zustand/vanilla";
+import { hasContentDiff } from "@/components/diff/diff-preview";
+import type { HunkDirection, HunkResult } from "@/components/diff/hunk-navigation";
 import type {
   DiffMode,
   FileChange,
@@ -15,6 +17,9 @@ import type { DataSource } from "@/data/data-source";
 
 type Queries<T> = ReadonlyMap<string, AsyncState<T>>;
 
+export type DiffLayout = "split" | "unified";
+type NavigateHunk = (direction: HunkDirection) => HunkResult;
+
 type WorkspaceStore = {
   repositories: AsyncState<Repository[]>;
   worktrees: Queries<Worktree[]>;
@@ -24,6 +29,8 @@ type WorkspaceStore = {
   worktreeId: WorktreeId | null;
   filePath: string | null;
   preferredMode: DiffMode;
+  diffLayout: DiffLayout;
+  revealFirstChange: boolean;
   inspectorOpen: boolean;
   paletteOpen: boolean;
   loadRepositories: () => Promise<void>;
@@ -34,6 +41,10 @@ type WorkspaceStore = {
   selectFile: (path: string) => Promise<void>;
   moveWorktree: (step: 1 | -1) => Promise<void>;
   moveFile: (step: 1 | -1) => Promise<void>;
+  moveChange: (direction: HunkDirection) => Promise<void>;
+  registerDiffNavigation: (diff: FileDiff, move: NavigateHunk) => () => void;
+  setDiffLayout: (layout: DiffLayout) => void;
+  toggleDiffLayout: () => void;
   setDiffMode: (mode: DiffMode) => Promise<void>;
   retryChanges: () => Promise<void>;
   toggleInspector: () => void;
@@ -41,6 +52,16 @@ type WorkspaceStore = {
   loadPaletteFiles: (worktree: Worktree, mode: DiffMode) => Promise<AsyncState<FileChange[]>>;
   watchWorktrees: () => () => void;
 };
+
+const diffLayoutKey = "why:diff-layout:v1";
+
+function readDiffLayout(): DiffLayout {
+  try {
+    return window.localStorage.getItem(diffLayoutKey) === "unified" ? "unified" : "split";
+  } catch {
+    return "split";
+  }
+}
 
 export const selectWorktrees = (state: WorkspaceStore) =>
   (state.repoId !== null ? state.worktrees.get(state.repoId) : undefined) ?? idle;
@@ -136,6 +157,25 @@ export function createWorkspaceStore(source: DataSource) {
       changeQueries.load(changesKey(id, mode), () => source.getChanges(id, mode));
 
     let navigationVersion = 0;
+    let diffNavigation: { diff: FileDiff; move: NavigateHunk } | undefined;
+
+    async function loadFileDiff(path: string, revealFirstChange = false) {
+      const state = get();
+      const changes = selectChanges(state);
+      if (
+        state.worktreeId === null ||
+        changes.status !== "ok" ||
+        !changes.data.some((file) => file.path === path)
+      )
+        return;
+
+      const { worktreeId } = state;
+      const mode = selectDiffMode(state);
+      const version = ++navigationVersion;
+      set({ filePath: path, fileDiff: { status: "loading" }, revealFirstChange });
+      const fileDiff = await resolveState(() => source.getFileDiff(worktreeId, path, mode));
+      if (version === navigationVersion) set({ fileDiff });
+    }
 
     async function syncChanges(worktree: Worktree) {
       const version = ++navigationVersion;
@@ -211,6 +251,8 @@ export function createWorkspaceStore(source: DataSource) {
       worktreeId: null,
       filePath: null,
       preferredMode: "vsBase",
+      diffLayout: readDiffLayout(),
+      revealFirstChange: false,
       inspectorOpen: true,
       paletteOpen: false,
 
@@ -264,23 +306,7 @@ export function createWorkspaceStore(source: DataSource) {
         if (preferredMode) await navigateTo(worktree, path, preferredMode);
       },
 
-      selectFile: async (path) => {
-        const state = get();
-        const changes = selectChanges(state);
-        if (
-          state.worktreeId === null ||
-          changes.status !== "ok" ||
-          !changes.data.some((file) => file.path === path)
-        )
-          return;
-
-        const { worktreeId } = state;
-        const mode = selectDiffMode(state);
-        const version = ++navigationVersion;
-        set({ filePath: path, fileDiff: { status: "loading" } });
-        const fileDiff = await resolveState(() => source.getFileDiff(worktreeId, path, mode));
-        if (version === navigationVersion) set({ fileDiff });
-      },
+      selectFile: (path) => loadFileDiff(path),
 
       moveWorktree: async (step) => {
         const list = selectWorktrees(get());
@@ -297,6 +323,43 @@ export function createWorkspaceStore(source: DataSource) {
         const next = list.data[moveIndex(list.data.length, current, step)];
         if (next) await get().selectFile(next.path);
       },
+
+      registerDiffNavigation: (diff, move) => {
+        const navigation = { diff, move };
+        diffNavigation = navigation;
+        return () => {
+          if (diffNavigation === navigation) diffNavigation = undefined;
+        };
+      },
+
+      moveChange: async (direction) => {
+        const state = get();
+        const diff = state.fileDiff;
+        if (diff.status === "loading" || (diff.status === "idle" && state.filePath !== null))
+          return;
+        if (diff.status === "ok" && hasContentDiff(diff.data)) {
+          // The old editor can still be registered while React commits the new selection.
+          if (diffNavigation?.diff !== diff.data || diffNavigation.move(direction) !== "boundary")
+            return;
+        }
+        if (direction !== "next") return;
+        const changes = selectChanges(state);
+        if (changes.status !== "ok") return;
+        const current = changes.data.findIndex((file) => file.path === state.filePath);
+        const next = changes.data[current + 1];
+        if (next) await loadFileDiff(next.path, true);
+      },
+
+      setDiffLayout: (diffLayout) => {
+        set({ diffLayout });
+        try {
+          window.localStorage.setItem(diffLayoutKey, diffLayout);
+        } catch {
+          // Keep the selection for this session when storage is unavailable.
+        }
+      },
+      toggleDiffLayout: () =>
+        get().setDiffLayout(get().diffLayout === "split" ? "unified" : "split"),
 
       setDiffMode: async (preferredMode) => {
         const state = get();

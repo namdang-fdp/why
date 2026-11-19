@@ -1,5 +1,13 @@
 import { useEffect } from "react";
-import { FileDiff, FolderGit2, GitBranch, PanelRight } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronUp,
+  Columns2,
+  FileDiff,
+  FolderGit2,
+  GitBranch,
+  PanelRight,
+} from "lucide-react";
 import type { DiffMode, FileChange, Repository, Worktree } from "@/contracts";
 import {
   CommandDialog,
@@ -11,7 +19,13 @@ import {
   CommandShortcut,
 } from "@/components/ui/command";
 import { useDialogFocus } from "@/hooks/use-dialog-focus";
-import { changesKey, diffModes, selectWorktree } from "@/stores/workspace";
+import {
+  changesKey,
+  diffModes,
+  selectActiveFile,
+  selectChanges,
+  selectWorktree,
+} from "@/stores/workspace";
 import { useWorkspace } from "@/stores/workspace-context";
 import { ErrorMessage, LoadingMessage } from "./async-message";
 import { branchLabel, displayPath, worktreeName } from "./change-labels";
@@ -45,6 +59,8 @@ function PaletteContents({ close }: { close: () => void }) {
   const worktrees = useWorkspace((state) => state.worktrees);
   const changes = useWorkspace((state) => state.changes);
   const activeWorktree = useWorkspace(selectWorktree);
+  const activeFile = useWorkspace(selectActiveFile);
+  const activeChanges = useWorkspace(selectChanges);
   const inspectorOpen = useWorkspace((state) => state.inspectorOpen);
   const selectRepo = useWorkspace((state) => state.selectRepository);
   const selectWorktreeAction = useWorkspace((state) => state.selectWorktree);
@@ -52,6 +68,8 @@ function PaletteContents({ close }: { close: () => void }) {
   const loadFiles = useWorkspace((state) => state.loadPaletteFiles);
   const setMode = useWorkspace((state) => state.setDiffMode);
   const toggleInspector = useWorkspace((state) => state.toggleInspector);
+  const toggleLayout = useWorkspace((state) => state.toggleDiffLayout);
+  const moveChange = useWorkspace((state) => state.moveChange);
 
   useEffect(() => {
     for (const list of worktrees.values()) {
@@ -136,6 +154,41 @@ function PaletteContents({ close }: { close: () => void }) {
               </CommandShortcut>
             </CommandItem>
           ))}
+          <CommandItem
+            value="action-diff-layout"
+            keywords={["Toggle unified/split", "diff layout", "u"]}
+            onSelect={run(toggleLayout)}
+          >
+            <Columns2 aria-hidden />
+            Toggle unified/split
+            <CommandShortcut>
+              <kbd>u</kbd>
+            </CommandShortcut>
+          </CommandItem>
+          <CommandItem
+            value="action-next-change"
+            keywords={["Next change", "hunk", "n"]}
+            disabled={activeChanges.status !== "ok" || activeChanges.data.length === 0}
+            onSelect={run(() => void moveChange("next"))}
+          >
+            <ChevronDown aria-hidden />
+            Next change
+            <CommandShortcut>
+              <kbd>n</kbd>
+            </CommandShortcut>
+          </CommandItem>
+          <CommandItem
+            value="action-previous-change"
+            keywords={["Previous change", "hunk", "p"]}
+            disabled={!activeFile}
+            onSelect={run(() => void moveChange("previous"))}
+          >
+            <ChevronUp aria-hidden />
+            Previous change
+            <CommandShortcut>
+              <kbd>p</kbd>
+            </CommandShortcut>
+          </CommandItem>
           <CommandItem
             value="action-inspector"
             keywords={["toggle inspector", "why", inspectorOpen ? "hide" : "show"]}

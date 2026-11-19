@@ -259,7 +259,7 @@ function ChangedFiles() {
           (changes.data.length === 0 ? (
             <p className="rail-note">No changes in this mode.</p>
           ) : (
-            <ul className="file-list" aria-label="Changed files" ref={rows}>
+            <ul id="changed-file-list" className="file-list" aria-label="Changed files" ref={rows}>
               {changes.data.map((file) => (
                 <li key={file.path}>
                   <FileRow file={file} selected={file.path === selectedPath} />

@@ -583,6 +583,35 @@ kbd {
   font: 12px var(--font-mono);
 }
 
+.diff-layout {
+  display: flex;
+  flex: none;
+  gap: 2px;
+  margin-left: auto;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--shell-chrome);
+}
+
+.diff-layout button {
+  min-height: 24px;
+  padding-inline: 7px;
+  border-radius: 3px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.diff-layout button:hover {
+  background: var(--shell-hover);
+}
+
+.diff-layout button[aria-pressed="true"] {
+  background: var(--shell-selected);
+  color: var(--foreground);
+}
+
 .diff-metadata {
   display: flex;
   flex-wrap: wrap;
@@ -603,13 +632,59 @@ kbd {
   font-size: 11px;
 }
 
-.diff-content {
-  display: grid;
+.diff-path-notice {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+
+.diff-path-notice svg {
+  flex: none;
+  color: var(--git-modified);
+}
+
+.diff-body {
+  position: relative;
   flex: 1;
   min-height: 0;
+  overflow: hidden;
+  background: var(--background);
+}
+
+.diff-editor-host,
+.diff-content,
+.diff-body > .diff-skeleton {
+  position: absolute;
+  inset: 0;
+}
+
+.diff-editor-host[inert] {
+  visibility: hidden;
+}
+
+.diff-content {
+  display: grid;
   overflow: auto;
   place-items: center;
   padding: 20px;
+}
+
+.diff-skeleton {
+  display: grid;
+  width: 100%;
+  align-content: start;
+  gap: 11px;
+  padding: 22px 24px;
+}
+
+.diff-skeleton > [aria-hidden="true"] {
+  height: 8px;
+  border-radius: 3px;
+  background: var(--shell-selected);
 }
 
 .diff-empty {
