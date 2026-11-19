@@ -27,11 +27,15 @@
 //! * [`repos`]: registering repositories (`list_repositories`, `add_repository`,
 //!   `remove_repository`, `set_base`).
 //! * [`changes`]: reading a repository's worktrees and diffs.
+//! * [`storage`]: `get_storage_status` (are repositories saved?).
+//! * [`dialog`]: `pick_repository_folder` (native folder picker, opened by the core).
 //! * [`error`]: the one place errors become `IpcError`.
 
 pub mod changes;
+pub mod dialog;
 mod error;
 pub mod repos;
+pub mod storage;
 
 // Commands are not re-exported here. `#[tauri::command]` also generates helper
 // macros (`__cmd__<name>`) that `generate_handler!` looks up next to the function,
