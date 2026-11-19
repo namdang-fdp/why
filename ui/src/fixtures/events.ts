@@ -21,4 +21,5 @@ export const ipcErrors = [
   { kind: "timeout" },
   { kind: "notFound" },
   { kind: "invalidInput", message: "base ref must not be empty" },
+  { kind: "internal", message: "internal storage error" },
 ] satisfies IpcError[];

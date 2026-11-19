@@ -7,4 +7,4 @@
  * extra fields for the variants that carry data. `thiserror` supplies `Display`
  * (and `std::error::Error`) for logs; the UI shows its own copy per `kind`.
  */
-export type IpcError = { "kind": "notARepo" } | { "kind": "gitMissing" } | { "kind": "gitFailed", message: string, } | { "kind": "timeout" } | { "kind": "notFound" } | { "kind": "invalidInput", message: string, };
+export type IpcError = { "kind": "notARepo" } | { "kind": "gitMissing" } | { "kind": "gitFailed", message: string, } | { "kind": "timeout" } | { "kind": "notFound" } | { "kind": "invalidInput", message: string, } | { "kind": "internal", message: string, };

@@ -228,6 +228,12 @@ fn ipc_error_is_internally_tagged_with_kind() {
         },
         json!({ "kind": "invalidInput", "message": "empty ref" }),
     );
+    assert_wire(
+        &IpcError::Internal {
+            message: "internal storage error".into(),
+        },
+        json!({ "kind": "internal", "message": "internal storage error" }),
+    );
 }
 
 #[test]
@@ -239,5 +245,12 @@ fn ipc_error_has_readable_display() {
         }
         .to_string(),
         "git failed: boom"
+    );
+    assert_eq!(
+        IpcError::Internal {
+            message: "boom".into()
+        }
+        .to_string(),
+        "internal error: boom"
     );
 }
