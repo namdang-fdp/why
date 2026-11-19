@@ -212,3 +212,28 @@ async fn reports_the_installed_git_version() {
         why_lib::git::MIN_GIT_VERSION
     );
 }
+
+#[tokio::test]
+async fn with_env_points_git_at_a_chosen_global_config() {
+    let repo = TestRepo::with_initial_commit();
+    let dir = tempfile::tempdir().unwrap();
+    let cfg = dir.path().join("gitconfig");
+    std::fs::write(&cfg, "[why]\n\tprobe = from-test-config\n").unwrap();
+
+    // The setting is visible only through the runner given that variable.
+    let with = GitRunner::new().with_env("GIT_CONFIG_GLOBAL", &cfg);
+    let out = with
+        .run(&repo.path, ["config", "--get", "why.probe"])
+        .await
+        .unwrap();
+    assert_eq!(out, b"from-test-config\n");
+
+    // `with_isolated_config` ignores user/system config entirely: the key is unset
+    // (`git config --get` exits 1 for a missing key).
+    let isolated = GitRunner::new().with_isolated_config();
+    let err = isolated
+        .run(&repo.path, ["config", "--get", "why.probe"])
+        .await
+        .unwrap_err();
+    assert!(err.is_exit_code(1), "got {err:?}");
+}

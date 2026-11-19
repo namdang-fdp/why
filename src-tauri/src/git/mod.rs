@@ -36,4 +36,4 @@ pub use status::{
     StatusKind, StatusSnapshot, parse_status, read_status,
 };
 pub use version::{GitVersion, MIN_GIT_VERSION, git_version};
-pub use worktree::{WorktreeEntry, list_worktrees, parse_worktree_list, worktree_id};
+pub use worktree::{WorktreeEntry, list_worktrees, parse_worktree_list, repo_id, worktree_id};

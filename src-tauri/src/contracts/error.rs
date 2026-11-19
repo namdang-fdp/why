@@ -30,4 +30,9 @@ pub enum IpcError {
     /// The caller passed a value the core rejects, for example an empty ref name.
     #[error("invalid input: {message}")]
     InvalidInput { message: String },
+    /// A failure inside WHY itself (for example the storage backend), not caused
+    /// by git or by the caller. `message` is short and generic; the details are in
+    /// the core's log.
+    #[error("internal error: {message}")]
+    Internal { message: String },
 }

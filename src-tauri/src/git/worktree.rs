@@ -209,6 +209,24 @@ pub fn worktree_id(common_dir: &Path, worktree_path: &Path) -> String {
     digest[..8].iter().map(|b| format!("{b:02x}")).collect()
 }
 
+/// A stable identifier for a repository: 16 lowercase hex characters.
+///
+/// Derived from the *canonical git common dir* only. The common dir is shared by
+/// the main checkout and every linked worktree, so adding the same repository
+/// through any of its worktrees yields the same id. Same scheme as
+/// [`worktree_id`] (SHA-256, first 8 bytes) with its own domain separator, so a
+/// repo id can never equal a worktree id by accident.
+///
+/// Trade-off: the id follows the common dir's path, so moving or re-cloning the
+/// repository gives it a new id (and a new registration).
+pub fn repo_id(common_dir: &Path) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(b"why:repo-id:v1\0");
+    hasher.update(path_bytes(common_dir));
+    let digest = hasher.finalize();
+    digest[..8].iter().map(|b| format!("{b:02x}")).collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -357,6 +375,24 @@ mod tests {
         assert_eq!(a, "8f8f708e0e1bd4f6");
         assert_ne!(a, worktree_id(Path::new("/r/.git"), Path::new("/r2")));
         assert_ne!(a, worktree_id(Path::new("/other/.git"), Path::new("/r")));
+    }
+
+    #[test]
+    fn repo_id_is_stable_and_depends_only_on_the_common_dir() {
+        let a = repo_id(Path::new("/r/.git"));
+        assert_eq!(a.len(), 16);
+        assert_eq!(a, repo_id(Path::new("/r/.git")));
+        // Known answer: pins the algorithm (and domain separator).
+        assert_eq!(a, "c86f971790e37dab");
+        assert_ne!(a, repo_id(Path::new("/other/.git")));
+    }
+
+    #[test]
+    fn repo_id_and_worktree_id_never_collide_for_the_same_input() {
+        // Different domain separators: even a repo whose common dir equals a
+        // worktree path gets a different id.
+        let dir = Path::new("/r/.git");
+        assert_ne!(repo_id(dir), worktree_id(dir, dir));
     }
 
     #[test]

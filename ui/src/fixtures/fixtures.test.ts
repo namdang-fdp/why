@@ -75,6 +75,7 @@ describe("fixtures", () => {
       timeout: true,
       notFound: true,
       invalidInput: true,
+      internal: true,
     };
     expect(new Set(ipcErrors.map((e) => e.kind))).toEqual(new Set(Object.keys(kinds)));
   });
