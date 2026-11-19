@@ -1,5 +1,7 @@
 //! Tauri commands and events: the only door between the webview and the Rust core.
 
+mod error;
+
 /// Proves the UI <-> Rust bridge works by returning the app version.
 #[tauri::command]
 pub fn ping() -> String {

@@ -4,6 +4,7 @@
 pub mod contracts;
 pub mod git;
 pub mod ipc;
+pub mod state;
 pub mod store;
 pub mod watch;
 
