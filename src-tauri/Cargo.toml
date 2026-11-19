@@ -1,0 +1,35 @@
+[package]
+name = "why"
+version = "0.1.0"
+description = "WHY: review agent-written code with the reasons attached"
+edition = "2024"
+rust-version = "1.90"
+
+# Named `why_lib` (not `why`) so the library and the binary don't clash on Windows.
+[lib]
+name = "why_lib"
+
+[build-dependencies]
+tauri-build = { version = "2.7", features = [] }
+
+[dependencies]
+tauri = { version = "2.12", features = [] }
+# Async runtime for the later git/watch/store work. Only the features we use.
+tokio = { version = "1.54", features = ["rt-multi-thread", "macros", "sync", "time", "process", "fs"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2.0"
+anyhow = "1.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Dev builds: keep our code fast to compile, but optimise dependencies so the
+# app stays responsive while developing.
+[profile.dev.package."*"]
+opt-level = 2
+
+# Release builds: smaller, faster binary at the cost of longer compile times.
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true
