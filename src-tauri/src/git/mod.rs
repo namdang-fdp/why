@@ -18,6 +18,7 @@
 //! the parser.
 
 pub mod base;
+pub mod diff;
 pub mod error;
 pub mod oid;
 pub mod repo;
@@ -27,6 +28,10 @@ pub mod version;
 pub mod worktree;
 
 pub use base::{BaseInfo, detect_base};
+pub use diff::{
+    Change, ChangeKind, ChangeSet, DiffEntry, OldSide, Side, Target, count_untracked_lines,
+    parse_diff, read_changes,
+};
 pub use error::{GitError, ParseError};
 pub use oid::Oid;
 pub use repo::{RepoInfo, open_repo};

@@ -11,6 +11,7 @@ use tauri::State;
 
 use crate::contracts::{IpcError, RepoId, Repository, Worktree, WorktreeId};
 use crate::git;
+use crate::ipc::changes;
 use crate::state::AppState;
 use crate::store::RepoRecord;
 
@@ -141,8 +142,16 @@ pub async fn remove_repository_impl(state: &AppState, id: &RepoId) -> Result<(),
 
 /// Choose the base ref that `DiffMode::VsBase` compares against.
 ///
-/// Stub: WHY-6 implements it (validate the ref, `set_base_override`, return the
-/// refreshed `Worktree`).
+/// An empty string clears the override (back to auto-detection). Anything else
+/// must be a ref (or commit id) that
+///
+/// 1. resolves to a commit, and
+/// 2. is *usable* as a base: not the worktree's own branch or `HEAD`, and
+///    sharing history with `HEAD`. `detect_base` silently ignores an override
+///    that fails this, which would make `set_base` look successful while the UI
+///    kept showing the old base; so it is refused here with `InvalidInput`.
+///
+/// Returns the refreshed [`Worktree`] (new base, ahead/behind, change count).
 #[tauri::command]
 pub async fn set_base(
     state: State<'_, AppState>,
@@ -153,11 +162,73 @@ pub async fn set_base(
 }
 
 pub async fn set_base_impl(
-    _state: &AppState,
-    _worktree_id: &WorktreeId,
-    _base_ref: &str,
+    state: &AppState,
+    worktree_id: &WorktreeId,
+    base_ref: &str,
 ) -> Result<Worktree, IpcError> {
-    Err(invalid("not implemented yet (WHY-6)"))
+    let wt = changes::resolve_worktree(state, worktree_id).await?;
+    let wanted = base_ref.trim();
+
+    // Validate, then build the refreshed `Worktree` *with the candidate* (not
+    // stored yet), and persist only after that worked: a failure anywhere leaves
+    // the stored override exactly as it was.
+    let candidate = if wanted.is_empty() {
+        None
+    } else {
+        if wanted.contains('\0') {
+            return Err(invalid("base ref contains a NUL byte"));
+        }
+        if !tokio::fs::try_exists(&wt.entry.path).await.unwrap_or(false) {
+            // The directory is gone (prunable worktree): nothing to compare.
+            return Err(IpcError::NotFound);
+        }
+
+        // 1. Does it name a commit? `^{commit}` peels tags to the commit they
+        //    point at and rejects trees and blobs. `--quiet --verify` makes
+        //    "no" a silent exit code 1 instead of a fatal error. The ref is
+        //    user input, so `--end-of-options` stops it being read as a flag.
+        let spec = format!("{wanted}^{{commit}}");
+        match state
+            .git
+            .run(
+                &wt.entry.path,
+                [
+                    "rev-parse",
+                    "--verify",
+                    "--quiet",
+                    "--end-of-options",
+                    spec.as_str(),
+                ],
+            )
+            .await
+        {
+            Ok(_) => {}
+            Err(e) if e.is_exit_code(1) => {
+                return Err(invalid(format!("`{wanted}` is not a commit")));
+            }
+            Err(e) => return Err(e.into()),
+        }
+
+        // 2. Would `detect_base` really use it? When it does, it reports the
+        //    override under exactly the name we passed.
+        let usable = git::detect_base(&state.git, &wt.entry.path, Some(wanted)).await?;
+        if usable.is_none_or(|b| b.base_ref != wanted) {
+            return Err(invalid(format!(
+                "`{wanted}` cannot be the base: it is this worktree's own branch, \
+                 shares no history with HEAD, or HEAD has no commits yet"
+            )));
+        }
+        Some(wanted.to_string())
+    };
+
+    let view = changes::build_worktree(
+        state,
+        &wt,
+        changes::BaseChoice::Candidate(candidate.clone()),
+    )
+    .await?;
+    state.repos.set_base_override(&wt.id, candidate)?;
+    Ok(view)
 }
 
 fn invalid(message: impl Into<String>) -> IpcError {

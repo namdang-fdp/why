@@ -227,6 +227,16 @@ impl GitRunner {
         cmd.env("GIT_TERMINAL_PROMPT", "0");
         // C locale: English, stable messages for the few places we match on stderr.
         cmd.env("LC_ALL", "C");
+        // Partial clones (`git clone --filter=blob:none`) leave objects out and
+        // fetch them "lazily" from the promisor remote the moment a command needs
+        // one: a `diff` or `cat-file` on an old commit would open a network
+        // connection and write a new pack into the repository. WHY must never do
+        // either, so a missing object has to be an error, not a fetch.
+        // `GIT_NO_LAZY_FETCH=1` (same as the `--no-lazy-fetch` global option)
+        // switches that off. Residual risk: git older than 2.44 (to our
+        // knowledge the release that added it; not tested on old binaries)
+        // ignores the variable and would still fetch.
+        cmd.env("GIT_NO_LAZY_FETCH", "1");
 
         // These variables, if inherited (e.g. WHY launched from a git hook),
         // override `-C` and make git operate on a different repository.
@@ -330,6 +340,9 @@ mod tests {
             .with_env("GIT_DIR", "/somewhere/else");
         assert_eq!(env_of(&r, "GIT_OPTIONAL_LOCKS"), Some(Some("0".into())));
         assert_eq!(env_of(&r, "GIT_TERMINAL_PROMPT"), Some(Some("0".into())));
+        // Applied after caller-chosen variables, so it cannot be turned back on.
+        let r = r.with_env("GIT_NO_LAZY_FETCH", "0");
+        assert_eq!(env_of(&r, "GIT_NO_LAZY_FETCH"), Some(Some("1".into())));
         // Removed (`None`), not set.
         assert_eq!(env_of(&r, "GIT_DIR"), Some(None));
     }

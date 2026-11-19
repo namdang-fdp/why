@@ -25,6 +25,15 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # Stable, well-known hash for worktree ids (std's DefaultHasher is explicitly not
 # stable across Rust releases). Already in the dependency tree via Tauri.
 sha2 = "0.10"
+# `join_all`: run the per-worktree git work concurrently without spawning tasks
+# (so the futures may borrow `AppState`). Already in the tree through Tauri.
+futures-util = { version = "0.3", default-features = false, features = ["alloc"] }
+
+# `O_NOFOLLOW` / `O_NONBLOCK` / `ELOOP` for opening worktree files safely (the
+# raw flag values differ per OS and CPU, so they must come from libc). Already in
+# the dependency tree through tokio and Tauri.
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
 
 [dev-dependencies]
 # Test-only: generates the TypeScript types in ui/src/contracts from the contract
