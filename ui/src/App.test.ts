@@ -148,7 +148,7 @@ describe("review shell", () => {
   it("disables Vs base when a worktree has no base", async () => {
     const user = userEvent.setup();
     render(createElement(App, { store: createWorkspaceStore(new FixtureDataSource()) }));
-    await user.click(await screen.findByRole("button", { name: /^why\s*main/i }));
+    await user.click(await screen.findByRole("button", { name: /^main\b/i }));
     expect(screen.getByRole<HTMLButtonElement>("button", { name: "Vs base" }).disabled).toBe(true);
     expect(screen.getByRole("button", { name: "Uncommitted" }).getAttribute("aria-pressed")).toBe(
       "true",

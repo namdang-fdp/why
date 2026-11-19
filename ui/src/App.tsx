@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { CommandPalette } from "@/components/shell/command-palette";
 import { ShortcutHelp } from "@/components/shell/shortcut-help";
 import { TopBar } from "@/components/shell/top-bar";
+import { TooltipProvider } from "@/components/ui/overlays";
 import { WorkspacePanels } from "@/components/shell/workspace-panels";
 import { useWorkspaceShortcuts } from "@/hooks/use-workspace-shortcuts";
 import { workspaceStore } from "@/stores/workspace";
@@ -21,12 +22,15 @@ export function App({ store = workspaceStore }: { store?: Workspace }) {
 
   return (
     <WorkspaceContext value={store}>
-      <div className="app-shell">
-        <TopBar onHelp={openHelp} />
-        <WorkspacePanels />
-        <CommandPalette />
-        <ShortcutHelp open={helpOpen} onOpenChange={setHelpOpen} />
-      </div>
+      {/* The rail's tooltips need the provider. */}
+      <TooltipProvider>
+        <div className="app-shell">
+          <TopBar onHelp={openHelp} />
+          <WorkspacePanels />
+          <CommandPalette />
+          <ShortcutHelp open={helpOpen} onOpenChange={setHelpOpen} />
+        </div>
+      </TooltipProvider>
     </WorkspaceContext>
   );
 }

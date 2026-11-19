@@ -30,6 +30,8 @@ export const shortcutGroups = [
   {
     title: "Workspace",
     shortcuts: [
+      { label: "Add repository", keys: ["a"] },
+      { label: "Filter repositories, worktrees and files", keys: ["/"] },
       { label: "Toggle inspector", keys: ["i"] },
       { label: "Search commands", keys: paletteKeys.split(" ") },
       { label: "Keyboard shortcuts", keys: ["?"] },
@@ -56,8 +58,11 @@ export function useWorkspaceShortcuts(store: Workspace, helpOpen: boolean, openH
         event.isComposing ||
         event.altKey ||
         state.paletteOpen ||
+        state.addRepositoryOpen ||
         helpOpen ||
-        isEditing(event.target)
+        isEditing(event.target) ||
+        // Any other open dialog, confirmation or menu owns the keyboard.
+        document.querySelector('[role="dialog"], [role="alertdialog"], [role="menu"]') !== null
       )
         return;
 
@@ -96,6 +101,14 @@ export function useWorkspaceShortcuts(store: Workspace, helpOpen: boolean, openH
         case "]":
           event.preventDefault();
           void state.moveWorktree(key === "]" ? 1 : -1);
+          break;
+        case "/":
+          event.preventDefault();
+          document.getElementById("rail-filter")?.focus();
+          break;
+        case "a":
+          event.preventDefault();
+          if (!event.repeat) state.setAddRepositoryOpen(true);
           break;
         case "i":
           event.preventDefault();
