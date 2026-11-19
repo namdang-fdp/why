@@ -22,6 +22,9 @@ thiserror = "2.0"
 anyhow = "1.0"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+# Stable, well-known hash for worktree ids (std's DefaultHasher is explicitly not
+# stable across Rust releases). Already in the dependency tree via Tauri.
+sha2 = "0.10"
 
 [dev-dependencies]
 # Test-only: generates the TypeScript types in ui/src/contracts from the contract

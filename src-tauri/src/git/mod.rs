@@ -15,7 +15,13 @@
 //! the parser.
 
 pub mod error;
+pub mod oid;
+pub mod repo;
 pub mod runner;
+pub mod worktree;
 
 pub use error::{GitError, ParseError};
+pub use oid::Oid;
+pub use repo::{RepoInfo, open_repo};
 pub use runner::GitRunner;
+pub use worktree::{WorktreeEntry, list_worktrees, parse_worktree_list, worktree_id};
