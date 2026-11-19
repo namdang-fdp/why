@@ -1,7 +1,7 @@
 // Sample repositories and worktrees for building the UI without the Rust core.
 // Every value is checked against the generated contract types with `satisfies`, so
 // if a Rust type changes and the bindings are regenerated, `tsc -b ui` flags stale fixtures.
-import type { Repository, Worktree } from "@/contracts";
+import type { Repository, StorageStatus, Worktree } from "@/contracts";
 
 export const REPO_WHY = "repo-why";
 export const REPO_BILLING = "repo-billing-api";
@@ -9,6 +9,7 @@ export const REPO_BILLING = "repo-billing-api";
 export const WT_WHY_MAIN = "wt-why-main";
 export const WT_WHY_AGENT = "wt-why-agent-git";
 export const WT_BILLING_DETACHED = "wt-billing-detached";
+export const WT_BILLING_BROKEN = "wt-billing-broken";
 
 export const repositories = [
   { id: REPO_WHY, name: "why", rootPath: "/home/dev/code/why" },
@@ -31,6 +32,8 @@ export const worktrees = [
     isPrunable: false,
     base: null,
     changeCount: 2,
+    loadError: null,
+    lastActivity: 1_700_000_000,
   },
   {
     // An agent's linked worktree, three commits ahead of origin/main and one behind.
@@ -50,6 +53,8 @@ export const worktrees = [
       behind: 1,
     },
     changeCount: 8,
+    loadError: null,
+    lastActivity: 1_700_003_600,
   },
   {
     // Detached HEAD (for example a checked-out tag): no branch name.
@@ -69,5 +74,38 @@ export const worktrees = [
       behind: 5,
     },
     changeCount: 3,
+    loadError: null,
+    lastActivity: 1_699_990_000,
+  },
+  {
+    // A linked worktree whose `.git` file is corrupt: it is still listed, with
+    // no base and no changes, and says why (`loadError`).
+    id: WT_BILLING_BROKEN,
+    repoId: REPO_BILLING,
+    path: "/home/dev/code/billing-api-worktrees/WHY-77-refunds",
+    branch: "agent/WHY-77-refunds",
+    headSha: null,
+    isMain: false,
+    isDetached: false,
+    isLocked: false,
+    isPrunable: false,
+    base: null,
+    changeCount: 0,
+    loadError: { kind: "gitFailed", message: "fatal: not a git repository: /nonexistent/place" },
+    lastActivity: null,
   },
 ] satisfies Worktree[];
+
+/** Where the fixture data pretends to be stored. */
+export const storagePersistent = {
+  persistent: true,
+  path: "/home/dev/.local/share/io.github.namdang-fdp.why/why.db",
+  reason: null,
+} satisfies StorageStatus;
+
+/** The state after the database failed to open (an in-memory store is used). */
+export const storageTemporary = {
+  persistent: false,
+  path: null,
+  reason: "cannot create /home/dev/.local/share/io.github.namdang-fdp.why: permission denied",
+} satisfies StorageStatus;

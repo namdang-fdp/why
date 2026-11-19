@@ -3,7 +3,7 @@
 //! `ui/src/contracts/` are generated from these definitions by ts-rs
 //! (`pnpm gen:contracts`) and committed. A test fails if they drift apart.
 //!
-//! # Planned commands (not implemented yet)
+//! # Commands
 //!
 //! Every command returns `Result<T, IpcError>`. On the TypeScript side a failed
 //! `invoke` rejects with the serialized `IpcError`.
@@ -16,12 +16,18 @@
 //! | `list_worktrees(repo_id: RepoId)` | `Vec<Worktree>` | Worktrees of one repository |
 //! | `get_changes(worktree_id: WorktreeId, mode: DiffMode)` | `Vec<FileChange>` | Changed-files list |
 //! | `get_file_diff(worktree_id: WorktreeId, path: String, mode: DiffMode)` | `FileDiff` | Both sides of one file |
-//! | `set_base(worktree_id: WorktreeId, base_ref: String)` | `Worktree` | Choose the base ref for `DiffMode::VsBase` |
+//! | `set_base(worktree_id: WorktreeId, base_ref: String)` | `Worktree` | Choose the base ref for `DiffMode::VsBase`; an empty string clears the override |
+//! | `get_storage_status()` | `StorageStatus` | Whether repositories are saved or only kept for this session |
+//! | `pick_repository_folder()` | `Option<String>` | Native folder picker (`None` = cancelled) |
 //!
 //! # Event
 //!
 //! `worktree-changed` ([`WORKTREE_CHANGED_EVENT`]) carries a [`WorktreeChanged`]
 //! payload; the core emits it when the file watcher sees a change.
+//!
+//! `repository-changed` ([`REPOSITORY_CHANGED_EVENT`]) carries a
+//! [`RepositoryChanged`] payload; the core emits it when a repository's set of
+//! worktrees changes (added, removed, pruned).
 //!
 //! # Wire format rules
 //!
@@ -37,12 +43,16 @@ mod error;
 mod events;
 mod ids;
 mod repo;
+mod storage;
 
 pub use changes::{ChangeStatus, DiffMode, FileChange, FileDiff};
 pub use error::IpcError;
-pub use events::{WORKTREE_CHANGED_EVENT, WorktreeChanged};
+pub use events::{
+    REPOSITORY_CHANGED_EVENT, RepositoryChanged, WORKTREE_CHANGED_EVENT, WorktreeChanged,
+};
 pub use ids::{RepoId, WorktreeId};
 pub use repo::{BranchInfo, Repository, Worktree};
+pub use storage::StorageStatus;
 
 // `ts-rs` is a dev-dependency: the types derive `TS` only under `cfg(test)`
 // (`#[cfg_attr(test, derive(TS))]`), so the app binary does not contain it.

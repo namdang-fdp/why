@@ -26,9 +26,9 @@ const allStatuses: Record<ChangeStatus, true> = {
 const allChanges = Object.values(changesByWorktree).flat();
 
 describe("fixtures", () => {
-  it("have 2 repositories and 3 worktrees that reference them", () => {
+  it("have 2 repositories and 4 worktrees that reference them", () => {
     expect(repositories).toHaveLength(2);
-    expect(worktrees).toHaveLength(3);
+    expect(worktrees).toHaveLength(4);
     const repoIds = new Set<string>(repositories.map((r) => r.id));
     for (const wt of worktrees) expect(repoIds.has(wt.repoId)).toBe(true);
   });
@@ -39,11 +39,18 @@ describe("fixtures", () => {
     expect(worktrees.some((w) => w.isDetached && w.branch === null)).toBe(true);
   });
 
+  it("include a worktree that failed to load, with the error and no measurements", () => {
+    const broken = worktrees.filter((w) => w.loadError !== null);
+    expect(broken).toHaveLength(1);
+    expect(broken[0]).toMatchObject({ base: null, changeCount: 0 });
+    // Everything else loaded fine.
+    expect(worktrees.filter((w) => w.loadError === null)).toHaveLength(worktrees.length - 1);
+  });
+
   it("have a changeCount equal to the number of listed changes", () => {
     for (const wt of worktrees) {
-      expect(changesByWorktree[wt.id as keyof typeof changesByWorktree]).toHaveLength(
-        wt.changeCount,
-      );
+      const listed = changesByWorktree[wt.id as keyof typeof changesByWorktree] ?? [];
+      expect(listed).toHaveLength(wt.changeCount);
     }
   });
 

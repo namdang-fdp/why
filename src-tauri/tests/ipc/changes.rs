@@ -927,6 +927,8 @@ async fn list_worktrees_describes_every_kind_of_worktree() {
     assert_eq!(feature.base.as_ref().unwrap().ahead, 1); // `committed.txt`
     assert_eq!(feature.change_count, 8);
     assert!(feature.head_sha.is_some() && !feature.is_main);
+    // Something happened here (the checkout and the edits just made): a recent time.
+    assert!(feature.last_activity.is_some_and(|t| t > 1_600_000_000));
     assert!(!feature.is_locked && !feature.is_prunable && !feature.is_detached);
 
     assert!(by_branch("locked-branch").is_locked);
@@ -939,6 +941,10 @@ async fn list_worktrees_describes_every_kind_of_worktree() {
     let p = by_branch("gone-branch");
     assert!(p.is_prunable);
     assert_eq!((p.change_count, p.base.clone()), (0, None));
+    assert_eq!(
+        p.last_activity, None,
+        "a vanished directory has no activity"
+    );
     // ... and asking for its changes says it is gone.
     assert_eq!(
         get_changes_impl(&f.state, &p.id, DiffMode::Uncommitted)
@@ -1089,12 +1095,23 @@ async fn a_corrupt_worktree_does_not_hide_the_healthy_ones() {
     let bad = by_branch("broken-branch");
     assert_eq!((bad.base.clone(), bad.change_count), (None, 0));
     assert_eq!(Path::new(&bad.path), broken);
+    // ... and says why, so the UI can tell "broken" from "clean".
+    assert!(
+        matches!(
+            bad.load_error,
+            Some(IpcError::GitFailed { .. } | IpcError::NotARepo)
+        ),
+        "{:?}",
+        bad.load_error
+    );
     // The others are unaffected and fully measured.
     let ok = by_branch("healthy-branch");
     assert_eq!(Path::new(&ok.path), healthy);
     assert_eq!(ok.base.as_ref().unwrap().base_ref, "main");
     assert_eq!(by_branch("feature").change_count, 8);
     assert!(list.iter().any(|w| w.is_main));
+    // Only the broken one carries an error.
+    assert!(list.iter().filter(|w| w.load_error.is_some()).count() == 1);
 }
 
 /// `mkfifo` for tests; `false` if the tool is missing.
@@ -1677,4 +1694,31 @@ async fn bench_100_changed_files() {
             .map(|w| w.change_count)
             .collect::<Vec<_>>()
     );
+}
+
+#[tokio::test]
+async fn last_activity_is_the_newest_edit_or_else_the_head_log() {
+    let f = Fixture::new().await;
+
+    // Clean worktree: the HEAD log (the checkout that created it) is the signal.
+    let clean = f.worktrees().await;
+    let clean = clean.iter().find(|w| w.id == f.wt_id).unwrap();
+    assert_eq!(clean.change_count, 0);
+    let log_time = clean
+        .last_activity
+        .expect("a clean worktree has a HEAD log");
+    assert!(log_time > 1_600_000_000);
+
+    // An edit stamped far in the future wins over the log.
+    f.write("mod.txt", "edited\n");
+    let far = std::time::UNIX_EPOCH + Duration::from_secs(4_000_000_000);
+    std::fs::File::options()
+        .write(true)
+        .open(f.wt.join("mod.txt"))
+        .unwrap()
+        .set_modified(far)
+        .unwrap();
+    let list = f.worktrees().await;
+    let edited = list.iter().find(|w| w.id == f.wt_id).unwrap();
+    assert_eq!(edited.last_activity, Some(4_000_000_000));
 }

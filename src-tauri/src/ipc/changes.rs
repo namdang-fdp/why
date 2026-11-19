@@ -8,7 +8,7 @@
 //! map git-level types to the contracts.
 
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use futures_util::future::join_all;
 use tauri::State;
@@ -347,7 +347,7 @@ pub(crate) async fn build_worktree(
     let entry = &wt.entry;
     if entry.prunable.is_some() || !dir_exists(&entry.path).await {
         // Directory gone: nothing to measure. Listed, with zero changes.
-        return Ok(worktree_view(wt, None, 0));
+        return Ok(worktree_view(wt, None, 0, None, None));
     }
     let override_ref = match choice {
         BaseChoice::Stored => state.repos.base_override(&wt.id)?,
@@ -366,15 +366,15 @@ pub(crate) async fn build_worktree(
     };
     let set = git::read_changes(&state.git, &entry.path, &old, target).await?;
     let change_count = u32::try_from(set.changes.len()).unwrap_or(u32::MAX);
-    Ok(worktree_view(wt, base, change_count))
+    let activity = last_activity(&entry.path, &set.changes).await;
+    Ok(worktree_view(wt, base, change_count, None, activity))
 }
 
 /// [`build_worktree`] for the list: one broken worktree must not hide the
 /// healthy ones. A worktree whose git commands fail (a corrupt `.git` file, a
-/// timeout, a pathological file) is listed with `base: None` and
-/// `change_count: 0`, and the error goes to the log.
-// WHY-9: surface per-worktree error (needs a contract field; none yet, so the
-// UI cannot tell "broken" from "clean" for such an entry).
+/// timeout, a pathological file) is listed with `base: None`,
+/// `change_count: 0` and `load_error` set, so the UI can tell "broken" from
+/// "clean". The error is logged too.
 async fn build_worktree_lenient(state: &AppState, wt: &Resolved) -> Result<Worktree, IpcError> {
     match build_worktree(state, wt, BaseChoice::Stored).await {
         // Our own storage failing is not a property of one worktree.
@@ -385,13 +385,19 @@ async fn build_worktree_lenient(state: &AppState, wt: &Resolved) -> Result<Workt
                 error = %err,
                 "cannot measure worktree; listing it without base or changes"
             );
-            Ok(worktree_view(wt, None, 0))
+            Ok(worktree_view(wt, None, 0, Some(err), None))
         }
         Ok(view) => Ok(view),
     }
 }
 
-fn worktree_view(wt: &Resolved, base: Option<BaseInfo>, change_count: u32) -> Worktree {
+fn worktree_view(
+    wt: &Resolved,
+    base: Option<BaseInfo>,
+    change_count: u32,
+    load_error: Option<IpcError>,
+    last_activity: Option<u32>,
+) -> Worktree {
     let entry = &wt.entry;
     Worktree {
         id: wt.id.clone(),
@@ -410,7 +416,75 @@ fn worktree_view(wt: &Resolved, base: Option<BaseInfo>, change_count: u32) -> Wo
             behind: b.behind,
         }),
         change_count,
+        load_error,
+        last_activity,
     }
+}
+
+/// How many changed files are stat-ed to find the newest edit. Bounds the cost
+/// (one `stat` each) for a worktree with thousands of changes.
+const ACTIVITY_FILE_CAP: usize = 100;
+
+/// When something last happened in a worktree, as Unix seconds (see
+/// [`Worktree::last_activity`]): the newest mtime among its changed files and its
+/// HEAD log. Metadata reads only; never the file contents, and symlinks are not
+/// followed (`symlink_metadata`).
+async fn last_activity(root: &Path, changes: &[Change]) -> Option<u32> {
+    use std::path::Component;
+
+    let mut newest: Option<std::time::SystemTime> = None;
+    let mut consider = |time: std::time::SystemTime| {
+        if newest.is_none_or(|current| time > current) {
+            newest = Some(time);
+        }
+    };
+
+    for change in changes.iter().take(ACTIVITY_FILE_CAP) {
+        // Git paths are relative and never contain `..`; refuse one that does.
+        if change
+            .path
+            .components()
+            .any(|c| matches!(c, Component::ParentDir))
+        {
+            continue;
+        }
+        // A deleted file has no mtime; the others report the time of the last edit.
+        if let Ok(modified) = tokio::fs::symlink_metadata(root.join(&change.path))
+            .await
+            .and_then(|m| m.modified())
+        {
+            consider(modified);
+        }
+    }
+    if let Some(log) = head_log(root).await
+        && let Ok(modified) = tokio::fs::metadata(log).await.and_then(|m| m.modified())
+    {
+        consider(modified);
+    }
+
+    let secs = newest?
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()?
+        .as_secs();
+    u32::try_from(secs).ok()
+}
+
+/// `<git dir>/logs/HEAD`: appended on every commit and checkout. The git dir is
+/// `.git` for a main worktree, or named by the `gitdir:` line of the `.git` file
+/// of a linked one.
+async fn head_log(root: &Path) -> Option<PathBuf> {
+    let dot_git = root.join(".git");
+    let meta = tokio::fs::symlink_metadata(&dot_git).await.ok()?;
+    let git_dir = if meta.is_dir() {
+        dot_git
+    } else if meta.is_file() && meta.len() < 4096 {
+        let text = tokio::fs::read_to_string(&dot_git).await.ok()?;
+        let target = text.lines().find_map(|line| line.strip_prefix("gitdir:"))?;
+        root.join(target.trim()) // absolute targets replace `root` in `join`
+    } else {
+        return None;
+    };
+    Some(git_dir.join("logs").join("HEAD"))
 }
 
 async fn dir_exists(path: &Path) -> bool {

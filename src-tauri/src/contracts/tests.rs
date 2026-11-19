@@ -74,6 +74,8 @@ fn worktree_wire_format() {
             behind: 1,
         }),
         change_count: 7,
+        load_error: None,
+        last_activity: Some(1_700_000_000),
     };
     assert_wire(
         &wt,
@@ -82,7 +84,7 @@ fn worktree_wire_format() {
             "branch": "agent/x", "headSha": "abc123",
             "isMain": false, "isDetached": false, "isLocked": false, "isPrunable": false,
             "base": { "baseRef": "origin/main", "mergeBase": "def456", "ahead": 3, "behind": 1 },
-            "changeCount": 7
+            "changeCount": 7, "loadError": null, "lastActivity": 1700000000
         }),
     );
 }
@@ -101,12 +103,62 @@ fn worktree_options_serialize_as_null() {
         is_prunable: false,
         base: None,
         change_count: 0,
+        load_error: None,
+        last_activity: None,
     };
     let value = serde_json::to_value(&wt).unwrap();
     // Present-and-null, not omitted: the TypeScript type is `string | null`, never `undefined`.
-    for key in ["branch", "headSha", "base"] {
+    for key in ["branch", "headSha", "base", "loadError", "lastActivity"] {
         assert_null(&value, key);
     }
+}
+
+#[test]
+fn worktree_load_error_is_a_tagged_ipc_error() {
+    let wt = Worktree {
+        id: WorktreeId("w3".into()),
+        repo_id: RepoId("r1".into()),
+        path: "/p".into(),
+        branch: Some("broken".into()),
+        head_sha: None,
+        is_main: false,
+        is_detached: false,
+        is_locked: false,
+        is_prunable: false,
+        base: None,
+        change_count: 0,
+        load_error: Some(IpcError::GitFailed {
+            message: "fatal: not a git repository".into(),
+        }),
+        last_activity: None,
+    };
+    let value = serde_json::to_value(&wt).unwrap();
+    assert_eq!(
+        value["loadError"],
+        json!({ "kind": "gitFailed", "message": "fatal: not a git repository" })
+    );
+    let back: Worktree = serde_json::from_value(value).unwrap();
+    assert_eq!(back, wt);
+}
+
+#[test]
+fn storage_status_wire_format() {
+    assert_wire(
+        &StorageStatus {
+            persistent: true,
+            path: Some("/data/why.db".into()),
+            reason: None,
+        },
+        json!({ "persistent": true, "path": "/data/why.db", "reason": null }),
+    );
+    assert_wire(
+        &StorageStatus {
+            persistent: false,
+            path: None,
+            reason: Some("cannot create /ro".into()),
+        },
+        json!({ "persistent": false, "path": null, "reason": "cannot create /ro" }),
+    );
 }
 
 #[test]
@@ -252,5 +304,16 @@ fn ipc_error_has_readable_display() {
         }
         .to_string(),
         "internal error: boom"
+    );
+}
+
+#[test]
+fn repository_changed_wire_format() {
+    assert_eq!(REPOSITORY_CHANGED_EVENT, "repository-changed");
+    assert_wire(
+        &RepositoryChanged {
+            repo_id: RepoId("r1".into()),
+        },
+        json!({ "repoId": "r1" }),
     );
 }

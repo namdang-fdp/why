@@ -2,3 +2,4 @@
 // Regenerate with `pnpm gen:contracts`.
 
 export const WORKTREE_CHANGED_EVENT = "worktree-changed";
+export const REPOSITORY_CHANGED_EVENT = "repository-changed";
