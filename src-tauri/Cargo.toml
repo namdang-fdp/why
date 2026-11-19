@@ -30,6 +30,8 @@ sha2 = "0.10"
 # Test-only: generates the TypeScript types in ui/src/contracts from the contract
 # types (`#[cfg_attr(test, derive(TS))]`), so it never ships in the app binary.
 ts-rs = "12.0.1"
+# Throw-away directories for the git integration tests.
+tempfile = "3"
 
 # Dev builds: keep our code fast to compile, but optimise dependencies so the
 # app stays responsive while developing.
