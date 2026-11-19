@@ -1,0 +1,234 @@
+import { useEffect } from "react";
+import { FileDiff, FolderGit2, GitBranch, PanelRight } from "lucide-react";
+import type { DiffMode, FileChange, Repository, Worktree } from "@/contracts";
+import {
+  CommandDialog,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+  CommandShortcut,
+} from "@/components/ui/command";
+import { useDialogFocus } from "@/hooks/use-dialog-focus";
+import { changesKey, diffModes, selectWorktree } from "@/stores/workspace";
+import { useWorkspace } from "@/stores/workspace-context";
+import { ErrorMessage, LoadingMessage } from "./async-message";
+import { branchLabel, displayPath, worktreeName } from "./change-labels";
+
+type SearchableFile = { file: FileChange; modes: DiffMode[] };
+
+function filterCommands(_id: string, search: string, keywords: string[] = []) {
+  const query = search.trim().toLowerCase();
+  if (!query) return 1;
+
+  const fields = keywords.map((keyword) => keyword.toLowerCase());
+  let best = 0;
+  for (const [index, field] of fields.entries()) {
+    const weight = index === 0 ? 1 : 0.85;
+    if (field === query) best = Math.max(best, weight);
+    else if (field.startsWith(query)) best = Math.max(best, 0.9 * weight);
+    else if (field.includes(query)) best = Math.max(best, 0.75 * weight);
+  }
+  if (best > 0) return best;
+
+  const terms = query.split(/\s+/);
+  return terms.every((term) => fields.some((field) => field.includes(term))) ? 0.5 : 0;
+}
+
+function validModes(worktree: Worktree) {
+  return diffModes.filter(({ mode }) => mode !== "vsBase" || worktree.base);
+}
+
+function PaletteContents({ close }: { close: () => void }) {
+  const repositories = useWorkspace((state) => state.repositories);
+  const worktrees = useWorkspace((state) => state.worktrees);
+  const changes = useWorkspace((state) => state.changes);
+  const activeWorktree = useWorkspace(selectWorktree);
+  const inspectorOpen = useWorkspace((state) => state.inspectorOpen);
+  const selectRepo = useWorkspace((state) => state.selectRepository);
+  const selectWorktreeAction = useWorkspace((state) => state.selectWorktree);
+  const jumpToFile = useWorkspace((state) => state.jumpToFile);
+  const loadFiles = useWorkspace((state) => state.loadPaletteFiles);
+  const setMode = useWorkspace((state) => state.setDiffMode);
+  const toggleInspector = useWorkspace((state) => state.toggleInspector);
+
+  useEffect(() => {
+    for (const list of worktrees.values()) {
+      if (list.status !== "ok") continue;
+      for (const worktree of list.data) {
+        for (const { mode } of validModes(worktree)) void loadFiles(worktree, mode);
+      }
+    }
+  }, [worktrees, loadFiles]);
+
+  const repos: Repository[] = repositories.status === "ok" ? repositories.data : [];
+  const visibleWorktrees = repos.flatMap((repo) => {
+    const list = worktrees.get(repo.id);
+    return list?.status === "ok" ? list.data.map((worktree) => ({ repo, worktree })) : [];
+  });
+  const errors = repos.flatMap((repo) => {
+    const list = worktrees.get(repo.id);
+    return list?.status === "error"
+      ? [{ key: repo.id, context: repo.name, error: list.error }]
+      : [];
+  });
+  if (repositories.status === "error") {
+    errors.push({ key: "repositories", context: "Repositories", error: repositories.error });
+  }
+
+  const filesByWorktree = visibleWorktrees.map(({ repo, worktree }) => {
+    const entries = new Map<string, SearchableFile>();
+    let loading = false;
+    for (const { mode, label } of validModes(worktree)) {
+      const key = changesKey(worktree.id, mode);
+      const state = changes.get(key);
+      if (!state || state.status === "loading") loading = true;
+      if (state?.status === "error") {
+        errors.push({ key, context: `${worktreeName(worktree)} · ${label}`, error: state.error });
+      }
+      if (state?.status !== "ok") continue;
+      for (const file of state.data) {
+        const existing = entries.get(file.path);
+        if (existing) existing.modes.push(mode);
+        else entries.set(file.path, { file, modes: [mode] });
+      }
+    }
+    return { repo, worktree, entries, loading };
+  });
+  const loading =
+    repositories.status === "loading" ||
+    repos.some((repo) => worktrees.get(repo.id)?.status === "loading") ||
+    filesByWorktree.some((worktree) => worktree.loading);
+
+  function run(action: () => void) {
+    return () => {
+      close();
+      action();
+    };
+  }
+
+  return (
+    <>
+      <CommandInput
+        aria-label="Search repositories, worktrees, files, and actions"
+        placeholder="Search repositories, worktrees, files, and actions…"
+      />
+      <CommandList className="palette-list">
+        {loading && <LoadingMessage>Loading search results…</LoadingMessage>}
+        {errors.map(({ key, ...result }) => (
+          <ErrorMessage key={key} {...result} />
+        ))}
+        {!loading && <CommandEmpty>No matching commands or files.</CommandEmpty>}
+        <CommandGroup heading="Actions">
+          {diffModes.map(({ mode, label, key }) => (
+            <CommandItem
+              key={mode}
+              value={`action-${mode}`}
+              keywords={[label, "diff mode", key]}
+              disabled={!activeWorktree || (mode === "vsBase" && !activeWorktree.base)}
+              onSelect={run(() => void setMode(mode))}
+            >
+              <FileDiff aria-hidden />
+              {label}
+              <CommandShortcut>
+                <kbd>{key}</kbd>
+              </CommandShortcut>
+            </CommandItem>
+          ))}
+          <CommandItem
+            value="action-inspector"
+            keywords={["toggle inspector", "why", inspectorOpen ? "hide" : "show"]}
+            onSelect={run(toggleInspector)}
+          >
+            <PanelRight aria-hidden />
+            {inspectorOpen ? "Hide Why inspector" : "Show Why inspector"}
+            <CommandShortcut>
+              <kbd>i</kbd>
+            </CommandShortcut>
+          </CommandItem>
+        </CommandGroup>
+        {repos.length > 0 && (
+          <CommandGroup heading="Repositories">
+            {repos.map((repo) => (
+              <CommandItem
+                key={repo.id}
+                value={`repository-${repo.id}`}
+                keywords={[repo.name, repo.rootPath]}
+                onSelect={run(() => void selectRepo(repo.id))}
+              >
+                <FolderGit2 aria-hidden /> {repo.name}
+              </CommandItem>
+            ))}
+          </CommandGroup>
+        )}
+        {visibleWorktrees.length > 0 && (
+          <CommandGroup heading="Worktrees">
+            {visibleWorktrees.map(({ repo, worktree }) => (
+              <CommandItem
+                key={worktree.id}
+                value={`worktree-${worktree.id}`}
+                keywords={[worktreeName(worktree), worktree.path, repo.name, branchLabel(worktree)]}
+                onSelect={run(() => void selectWorktreeAction(worktree))}
+              >
+                <GitBranch aria-hidden />
+                <span className="truncate">{worktreeName(worktree)}</span>
+                <span className="palette-context truncate">{repo.name}</span>
+              </CommandItem>
+            ))}
+          </CommandGroup>
+        )}
+        {filesByWorktree.some(({ entries }) => entries.size > 0) && (
+          <CommandGroup heading="Files">
+            {filesByWorktree.flatMap(({ repo, worktree, entries }) =>
+              Array.from(entries.values(), ({ file, modes }) => (
+                <CommandItem
+                  key={JSON.stringify([worktree.id, file.path])}
+                  value={JSON.stringify(["file", worktree.id, file.path])}
+                  keywords={[
+                    file.path.slice(file.path.lastIndexOf("/") + 1),
+                    file.path,
+                    file.oldPath ?? "",
+                    worktreeName(worktree),
+                    repo.name,
+                  ]}
+                  onSelect={run(() => void jumpToFile(worktree, file.path, modes))}
+                >
+                  <FileDiff aria-hidden />
+                  <span className="palette-path truncate" title={displayPath(file)}>
+                    {displayPath(file)}
+                  </span>
+                  <span className="palette-context truncate">{worktreeName(worktree)}</span>
+                </CommandItem>
+              )),
+            )}
+          </CommandGroup>
+        )}
+      </CommandList>
+      <div className="palette-footer">
+        <kbd>↑</kbd>
+        <kbd>↓</kbd> Navigate <kbd>↵</kbd> Select <kbd>Esc</kbd> Close
+      </div>
+    </>
+  );
+}
+
+export function CommandPalette() {
+  const open = useWorkspace((state) => state.paletteOpen);
+  const setOpen = useWorkspace((state) => state.setPaletteOpen);
+  const focus = useDialogFocus("shell-command");
+  return (
+    <CommandDialog
+      title="Command palette"
+      description="Find a repository, worktree, or file, or run a workspace action."
+      className="palette-dialog shadow-none"
+      filter={filterCommands}
+      showCloseButton={false}
+      open={open}
+      onOpenChange={setOpen}
+      {...focus}
+    >
+      {open && <PaletteContents close={() => setOpen(false)} />}
+    </CommandDialog>
+  );
+}

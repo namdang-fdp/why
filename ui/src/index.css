@@ -113,7 +113,9 @@
   font-size: 13px;
 }
 
-.app-shell button:focus-visible {
+.app-shell button:focus-visible,
+.palette-dialog button:focus-visible,
+.shortcuts-dialog button:focus-visible {
   outline: 2px solid var(--foreground);
   outline-offset: -2px;
 }
@@ -240,6 +242,15 @@ kbd {
 .mode-control button:disabled {
   color: var(--muted-foreground);
   opacity: 0.55;
+}
+
+.top-controls .command-trigger {
+  gap: 7px;
+  border: 1px solid var(--border);
+  padding-inline: 8px;
+  margin-left: 5px;
+  color: var(--muted-foreground);
+  font-size: 12px;
 }
 
 .workspace-scroll {
@@ -693,6 +704,76 @@ kbd {
   font: 11px/1.5 var(--font-mono);
 }
 
+.palette-dialog {
+  top: min(15vh, 110px);
+  translate: -50% 0;
+  max-width: min(550px, calc(100vw - 32px));
+  background: var(--shell-chrome);
+}
+
+.palette-list {
+  max-height: min(440px, 59dvh);
+  padding-block: 4px;
+}
+
+.palette-context {
+  margin-left: auto;
+  flex: 0 1 auto;
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+
+.palette-path {
+  min-width: 0;
+  font: 12px var(--font-mono);
+}
+
+.palette-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  padding: 9px 12px;
+  border-top: 1px solid var(--border);
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+
+.palette-footer kbd:not(:first-child, :nth-child(2)) {
+  margin-left: 8px;
+}
+
+.shortcuts-dialog {
+  max-width: min(430px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+  background: var(--shell-chrome);
+}
+
+.shortcut-groups {
+  display: grid;
+  gap: 13px;
+}
+
+.shortcut-groups h3 {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 550;
+}
+
+.shortcut-row,
+.shortcut-row dd {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.shortcut-row {
+  justify-content: space-between;
+  min-height: 28px;
+  font-size: 13px;
+}
+
 @media (max-width: 950px) {
   .branch-summary {
     display: none;
@@ -715,10 +796,18 @@ kbd {
     margin-left: 0;
   }
 
+  .top-controls .command-trigger {
+    margin-left: auto;
+  }
+  .search-label {
+    display: none;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .app-shell * {
+  .app-shell *,
+  [data-slot="dialog-content"],
+  [data-slot="dialog-overlay"] {
     animation: none !important;
     transition: none !important;
     scroll-behavior: auto !important;

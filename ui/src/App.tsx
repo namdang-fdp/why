@@ -1,10 +1,17 @@
-import { useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { CommandPalette } from "@/components/shell/command-palette";
+import { ShortcutHelp } from "@/components/shell/shortcut-help";
 import { TopBar } from "@/components/shell/top-bar";
 import { WorkspacePanels } from "@/components/shell/workspace-panels";
+import { useWorkspaceShortcuts } from "@/hooks/use-workspace-shortcuts";
 import { workspaceStore } from "@/stores/workspace";
 import { WorkspaceContext, type Workspace } from "@/stores/workspace-context";
 
 export function App({ store = workspaceStore }: { store?: Workspace }) {
+  const [helpOpen, setHelpOpen] = useState(false);
+  const openHelp = useCallback(() => setHelpOpen(true), []);
+  useWorkspaceShortcuts(store, helpOpen, openHelp);
+
   useEffect(() => {
     const workspace = store.getState();
     const unsubscribe = workspace.watchWorktrees();
@@ -15,8 +22,10 @@ export function App({ store = workspaceStore }: { store?: Workspace }) {
   return (
     <WorkspaceContext value={store}>
       <div className="app-shell">
-        <TopBar />
+        <TopBar onHelp={openHelp} />
         <WorkspacePanels />
+        <CommandPalette />
+        <ShortcutHelp open={helpOpen} onOpenChange={setHelpOpen} />
       </div>
     </WorkspaceContext>
   );

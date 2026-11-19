@@ -1,16 +1,19 @@
 import {
   ArrowRight,
   ChevronRight,
+  CircleHelp,
   GitBranch,
   GitPullRequest,
   PanelRight,
+  Search,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { paletteKeys } from "@/hooks/use-workspace-shortcuts";
 import { diffModes, selectDiffMode, selectWorktree } from "@/stores/workspace";
 import { useWorkspace } from "@/stores/workspace-context";
 import { BranchDivergence, branchLabel, worktreeName } from "./change-labels";
 
-export function TopBar() {
+export function TopBar({ onHelp }: { onHelp: () => void }) {
   const repository = useWorkspace((state) =>
     state.repositories.status === "ok"
       ? state.repositories.data.find((repo) => repo.id === state.repoId)
@@ -21,6 +24,7 @@ export function TopBar() {
   const setMode = useWorkspace((state) => state.setDiffMode);
   const inspectorOpen = useWorkspace((state) => state.inspectorOpen);
   const toggleInspector = useWorkspace((state) => state.toggleInspector);
+  const setPaletteOpen = useWorkspace((state) => state.setPaletteOpen);
 
   return (
     <header className="top-bar">
@@ -64,16 +68,17 @@ export function TopBar() {
       )}
       <div className="top-controls">
         <div className="mode-control" role="group" aria-label="Diff mode">
-          {diffModes.map(({ mode: value, label }) => (
+          {diffModes.map(({ mode: value, label, key }) => (
             <button
               key={value}
               type="button"
               aria-pressed={value === mode}
+              aria-keyshortcuts={key}
               disabled={!worktree || (value === "vsBase" && !worktree.base)}
               title={
                 value === "vsBase" && worktree && !worktree.base
                   ? "This worktree has no base ref"
-                  : label
+                  : `${label} (${key})`
               }
               onClick={() => void setMode(value)}
             >
@@ -82,11 +87,39 @@ export function TopBar() {
           ))}
         </div>
         <Button
+          id="shell-command"
+          aria-label="Search commands"
+          aria-haspopup="dialog"
+          aria-keyshortcuts="Meta+K Control+K"
+          title={`Search commands (${paletteKeys})`}
+          variant="ghost"
+          size="sm"
+          className="command-trigger"
+          onClick={() => setPaletteOpen(true)}
+        >
+          <Search className="size-3.5" aria-hidden />
+          <span className="search-label">Search</span>
+          <kbd aria-hidden>{paletteKeys}</kbd>
+        </Button>
+        <Button
+          id="shell-help"
+          aria-label="Keyboard shortcuts"
+          aria-keyshortcuts="?"
+          aria-haspopup="dialog"
+          title="Keyboard shortcuts (?)"
+          variant="ghost"
+          size="icon-sm"
+          onClick={onHelp}
+        >
+          <CircleHelp aria-hidden />
+        </Button>
+        <Button
           id="shell-inspector"
           aria-label="Why inspector"
           aria-expanded={inspectorOpen}
           aria-controls={inspectorOpen ? "why-inspector" : undefined}
-          title={inspectorOpen ? "Hide Why inspector" : "Show Why inspector"}
+          aria-keyshortcuts="I"
+          title={inspectorOpen ? "Hide Why inspector (i)" : "Show Why inspector (i)"}
           variant={inspectorOpen ? "secondary" : "ghost"}
           size="icon-sm"
           onClick={toggleInspector}
