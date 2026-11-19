@@ -19,12 +19,14 @@
 //! `spawn_blocking` without changing this trait.
 
 pub mod memory;
+pub mod sqlite;
 
 use std::path::PathBuf;
 
 use crate::contracts::{RepoId, Repository, WorktreeId};
 
 pub use memory::MemoryRepoStore;
+pub use sqlite::{SqliteRepoStore, StorageMode};
 
 /// A registered repository as the core stores it.
 ///
