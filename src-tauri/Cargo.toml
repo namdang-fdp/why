@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "WHY: review agent-written code with the reasons attached"
 edition = "2024"
 rust-version = "1.90"
+license = "MIT OR Apache-2.0"
 
 # Named `why_lib` (not `why`) so the library and the binary don't clash on Windows.
 [lib]
