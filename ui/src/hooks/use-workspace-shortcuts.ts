@@ -13,13 +13,19 @@ export const shortcutGroups = [
     shortcuts: [
       { label: "Next file", keys: ["j"] },
       { label: "Previous file", keys: ["k"] },
+      { label: "Next change, then next file", keys: ["n"] },
+      { label: "Previous change", keys: ["p"] },
       { label: "Previous worktree", keys: ["["] },
       { label: "Next worktree", keys: ["]"] },
     ],
   },
   {
     title: "Compare",
-    shortcuts: diffModes.map(({ label, key }) => ({ label, keys: [key] })),
+    shortcuts: [
+      ...diffModes.map(({ label, key }) => ({ label, keys: [key] })),
+      { label: "Toggle unified/split", keys: ["u"] },
+      { label: "Focus file list from editor", keys: ["Esc"] },
+    ],
   },
   {
     title: "Workspace",
@@ -35,8 +41,9 @@ function isEditing(target: EventTarget | null) {
   return (
     target instanceof HTMLElement &&
     (target.isContentEditable ||
-      target.closest("input, textarea, select, [contenteditable]:not([contenteditable=false])") !==
-        null)
+      target.closest(
+        "input, textarea, select, [contenteditable]:not([contenteditable=false]), [data-diff-editor]",
+      ) !== null)
   );
 }
 
@@ -76,6 +83,15 @@ export function useWorkspaceShortcuts(store: Workspace, helpOpen: boolean, openH
           event.preventDefault();
           void state.moveFile(key === "j" ? 1 : -1);
           break;
+        case "n":
+        case "p":
+          event.preventDefault();
+          void state.moveChange(key === "n" ? "next" : "previous");
+          break;
+        case "u":
+          event.preventDefault();
+          if (!event.repeat) state.toggleDiffLayout();
+          break;
         case "[":
         case "]":
           event.preventDefault();
@@ -96,7 +112,34 @@ export function useWorkspaceShortcuts(store: Workspace, helpOpen: boolean, openH
           break;
       }
     }
+    // Capture Escape before Monaco consumes it. Other keys follow the normal input guard.
+    function leaveEditor(event: KeyboardEvent) {
+      if (
+        event.key !== "Escape" ||
+        event.isComposing ||
+        event.altKey ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.shiftKey ||
+        helpOpen ||
+        store.getState().paletteOpen ||
+        !(event.target instanceof Element) ||
+        !event.target.closest("[data-diff-editor]")
+      )
+        return;
+      const row = document.querySelector<HTMLButtonElement>(
+        '#changed-file-list button[aria-current="true"]',
+      );
+      if (!row) return;
+      event.preventDefault();
+      event.stopPropagation();
+      row.focus();
+    }
+    window.addEventListener("keydown", leaveEditor, true);
     window.addEventListener("keydown", handleKey);
-    return () => window.removeEventListener("keydown", handleKey);
+    return () => {
+      window.removeEventListener("keydown", leaveEditor, true);
+      window.removeEventListener("keydown", handleKey);
+    };
   }, [store, helpOpen, openHelp]);
 }

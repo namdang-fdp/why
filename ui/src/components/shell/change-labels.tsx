@@ -20,7 +20,7 @@ export function branchLabel(worktree: Worktree) {
   return worktree.headSha ? `detached @ ${worktree.headSha.slice(0, 7)}` : "detached";
 }
 
-export function displayPath(file: FileChange) {
+export function displayPath(file: Pick<FileChange, "oldPath" | "path">) {
   return file.oldPath ? `${file.oldPath} → ${file.path}` : file.path;
 }
 

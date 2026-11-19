@@ -1,14 +1,36 @@
 // @vitest-environment jsdom
 
-import { createElement } from "react";
-import { cleanup, render, screen } from "@testing-library/react";
+import { createElement, useEffect } from "react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { IpcError } from "@/contracts";
+import type { FileDiff, IpcError } from "@/contracts";
+import type { HunkDirection, HunkResult } from "@/components/diff/hunk-navigation";
 import { FixtureDataSource } from "@/data/fixture-data-source";
-import { ipcErrors } from "@/fixtures";
+import { ipcErrors, WT_WHY_AGENT } from "@/fixtures";
 import { createWorkspaceStore } from "@/stores/workspace";
+import { useWorkspace } from "@/stores/workspace-context";
 import { App } from "./App";
+
+const moveHunk = vi.hoisted(() => vi.fn<(direction: HunkDirection) => HunkResult>(() => "moved"));
+
+vi.mock("@/components/diff/monaco-diff", () => ({
+  default: function MonacoDiff({ diff }: { diff: FileDiff | null }) {
+    const register = useWorkspace((state) => state.registerDiffNavigation);
+    const revealFirst = useWorkspace((state) => state.revealFirstChange);
+    useEffect(() => {
+      if (diff) return register(diff, moveHunk);
+    }, [diff, register]);
+    return createElement(
+      "div",
+      { "data-diff-editor": "", hidden: !diff },
+      createElement("textarea", { "aria-label": "Diff editor", readOnly: true }),
+      createElement("pre", { "aria-label": "Original" }, diff?.oldContent ?? ""),
+      createElement("pre", { "aria-label": "Modified" }, diff?.newContent ?? ""),
+      revealFirst && "Reveal first change",
+    );
+  },
+}));
 
 // jsdom does not lay out panels. Real resizing is checked in Chromium.
 beforeEach(() => {
@@ -31,6 +53,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  moveHunk.mockReset();
   localStorage.clear();
   vi.unstubAllGlobals();
   Reflect.deleteProperty(HTMLElement.prototype, "scrollIntoView");
@@ -133,7 +156,7 @@ describe("review shell", () => {
     await screen.findByRole("option", { name: /seed\.json/ });
     await user.keyboard("{Enter}");
 
-    await screen.findByText("Too large to preview");
+    await screen.findByRole("heading", { name: "Too large to preview (> 1 MiB)" });
     expect(store.getState()).toMatchObject({
       worktreeId: "wt-billing-detached",
       filePath: "data/seed.json",
@@ -160,5 +183,123 @@ describe("review shell", () => {
     expect(alert.textContent).toContain(error.kind);
     expect(alert.textContent).toContain(humanMessages[error.kind]);
     if ("message" in error) expect(alert.textContent).toContain(error.message);
+  });
+});
+
+describe("review diff", () => {
+  function setup(source = new FixtureDataSource()) {
+    const store = createWorkspaceStore(source);
+    const user = userEvent.setup();
+    const view = render(createElement(App, { store }));
+    const rail = () => within(screen.getByRole("list", { name: "Changed files" }));
+    const main = () => within(screen.getByRole("main", { name: "Diff" }));
+    const select = async (name: RegExp) => {
+      const list = await screen.findByRole("list", { name: "Changed files" });
+      await user.click(await within(list).findByRole("button", { name }));
+    };
+    return { store, user, view, rail, main, select };
+  }
+
+  it("keeps the editor mounted and passes added, deleted and renamed content through", async () => {
+    const { select, main } = setup();
+    await select(/worktree\.rs/);
+    const editor = await main().findByRole("textbox", { name: "Diff editor" });
+    expect(main().getByLabelText("Original").textContent).toBe("");
+    expect(main().getByLabelText("Modified").textContent).toContain("pub struct RawWorktree");
+
+    await select(/icon\.png/);
+    expect(await main().findByRole("heading", { name: "Binary file" })).toBeTruthy();
+    expect(main().getAllByText("ui/public/icon.png").length).toBeGreaterThan(0);
+    expect(main().queryByRole("textbox")).toBeNull();
+
+    await select(/legacy\.rs/);
+    expect(await main().findByRole("textbox")).toBe(editor);
+    expect(main().getByLabelText("Original").textContent).toContain("pub fn old_helper");
+    expect(main().getByLabelText("Modified").textContent).toBe("");
+
+    await select(/parser\.rs.*parse\.rs/);
+    expect(
+      await main().findByText("src-tauri/src/git/parser.rs → src-tauri/src/git/parse.rs"),
+    ).toBeTruthy();
+    expect(main().getByLabelText("Original").textContent).toContain("pub fn parse");
+    expect(main().getByLabelText("Modified").textContent).toContain("/// Returns the path");
+
+    await select(/porcelain_copy\.txt/);
+    expect(await main().findByRole("heading", { name: "No content changes" })).toBeTruthy();
+  });
+
+  it("shows the lossy-path notice alongside the text preview", async () => {
+    const { select, user, main } = setup();
+    await user.click(await screen.findByRole("button", { name: /detached @/ }));
+    await select(/Lossy path/);
+    expect(await main().findByText("The file path could not be decoded exactly.")).toBeTruthy();
+    expect(await main().findByRole("textbox")).toBeTruthy();
+  });
+
+  it("shows loading and retries the failed diff request for the same file", async () => {
+    const source = new FixtureDataSource();
+    let fail = () => {};
+    const delayed = new Promise<FileDiff>((_, reject) => {
+      fail = () => reject({ kind: "timeout" } satisfies IpcError);
+    });
+    const read = vi.spyOn(source, "getFileDiff").mockReturnValueOnce(delayed);
+    const { select, main, user } = setup(source);
+    await select(/mod\.rs/);
+    expect(await main().findByRole("status")).toHaveProperty("textContent", "Loading diff…");
+    fail();
+    expect(await main().findByRole("alert")).toHaveProperty(
+      "textContent",
+      expect.stringContaining("The request took too long."),
+    );
+    await user.click(main().getByRole("button", { name: "Try again" }));
+    await main().findByRole("textbox");
+    expect(read.mock.calls).toEqual([
+      [WT_WHY_AGENT, "src-tauri/src/git/mod.rs", "vsBase"],
+      [WT_WHY_AGENT, "src-tauri/src/git/mod.rs", "vsBase"],
+    ]);
+  });
+
+  it("navigates hunks, advances files at the end and returns editor focus to the rail", async () => {
+    const { user, store, select, main, rail } = setup();
+    await select(/mod\.rs/);
+    await main().findByRole("textbox");
+    await user.keyboard("np");
+    expect(moveHunk.mock.calls).toEqual([["next"], ["previous"]]);
+    moveHunk.mockReturnValueOnce("boundary");
+    await user.keyboard("n");
+    expect(await main().findByText("Reveal first change")).toBeTruthy();
+    expect(store.getState().filePath).toBe("src-tauri/src/git/worktree.rs");
+
+    const editor = await main().findByRole("textbox");
+    editor.focus();
+    expect(document.activeElement).toBe(editor);
+    await user.keyboard("npujk");
+    expect(moveHunk).toHaveBeenCalledTimes(3);
+    expect(store.getState().diffLayout).toBe("split");
+    expect(store.getState().filePath).toBe("src-tauri/src/git/worktree.rs");
+    await user.keyboard("{Escape}");
+    expect(document.activeElement).toBe(rail().getByRole("button", { name: /worktree\.rs/ }));
+    await user.keyboard("k");
+    expect(store.getState().filePath).toBe("src-tauri/src/git/mod.rs");
+  });
+
+  it("shares diff layout across u, the palette and the header, and restores it on remount", async () => {
+    const { user, view, main } = setup();
+    const layout = (name: string) =>
+      main().getByRole("button", { name }).getAttribute("aria-pressed");
+    expect(layout("Split")).toBe("true");
+    await user.keyboard("u");
+    expect(layout("Unified")).toBe("true");
+    view.unmount();
+
+    setup();
+    expect(layout("Unified")).toBe("true");
+    await user.click(screen.getByRole("button", { name: "Search commands" }));
+    await user.type(await screen.findByRole("combobox"), "Toggle unified/split");
+    await screen.findByRole("option", { name: /Toggle unified\/split/ });
+    await user.keyboard("{Enter}");
+    expect(layout("Split")).toBe("true");
+    await user.click(main().getByRole("button", { name: "Unified" }));
+    expect(layout("Unified")).toBe("true");
   });
 });

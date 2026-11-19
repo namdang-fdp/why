@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { assert, describe, expect, it, vi } from "vitest";
 import type { FileChange } from "@/contracts";
 import { FixtureDataSource } from "@/data/fixture-data-source";
 import { changesByWorktree, WT_WHY_AGENT, WT_WHY_MAIN, worktreeChangedAll } from "@/fixtures";
@@ -70,5 +70,46 @@ describe("workspace selection", () => {
     await pending;
     expect(selectDiffMode(store.getState())).toBe("uncommitted");
     expect(store.getState().filePath).toBe(changesByWorktree[WT_WHY_AGENT][0]?.path);
+  });
+
+  it("keeps the current models' navigation after a slower file request resolves", async () => {
+    const source = new FixtureDataSource();
+    const store = createWorkspaceStore(source);
+    await store.getState().loadRepositories();
+    const [first, second] = changesByWorktree[WT_WHY_AGENT];
+    assert(first && second);
+    const firstDiff = await source.getFileDiff(WT_WHY_AGENT, first.path, "vsBase");
+    let finish: (value: typeof firstDiff) => void = () => {};
+    vi.spyOn(source, "getFileDiff").mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    const pending = store.getState().selectFile(first.path);
+    await store.getState().selectFile(second.path);
+    const { fileDiff } = store.getState();
+    assert(fileDiff.status === "ok");
+    const move = vi.fn(() => "moved" as const);
+    store.getState().registerDiffNavigation(fileDiff.data, move);
+    finish(firstDiff);
+    await pending;
+    await store.getState().moveChange("next");
+    expect(move).toHaveBeenCalledExactlyOnceWith("next");
+    expect(store.getState().filePath).toBe(second.path);
+    expect(store.getState().fileDiff).toBe(fileDiff);
+  });
+
+  it("stops at the last file and keeps previous change in the current file", async () => {
+    const store = createWorkspaceStore(new FixtureDataSource());
+    await store.getState().loadRepositories();
+    await store.getState().moveFile(-1);
+    const { fileDiff, filePath } = store.getState();
+    assert(fileDiff.status === "ok");
+    const move = vi.fn(() => "boundary" as const);
+    store.getState().registerDiffNavigation(fileDiff.data, move);
+    await store.getState().moveChange("next");
+    await store.getState().moveChange("previous");
+    expect(move.mock.calls).toEqual([["next"], ["previous"]]);
+    expect(store.getState().filePath).toBe(filePath);
   });
 });
