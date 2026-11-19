@@ -218,3 +218,11 @@ pub fn write_in(dir: &Path, rel: &str, contents: &[u8]) {
     std::fs::create_dir_all(p.parent().unwrap()).unwrap();
     std::fs::write(p, contents).unwrap();
 }
+
+/// A `GitRunner` that ignores the developer's global/system git config, like
+/// [`git_raw`] does for fixture setup. Use it in every test that runs library
+/// code, so a setting such as `safe.bareRepository=explicit` on the developer's
+/// machine cannot change the result.
+pub fn test_runner() -> why_lib::git::GitRunner {
+    why_lib::git::GitRunner::new().with_isolated_config()
+}

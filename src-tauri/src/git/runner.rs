@@ -36,6 +36,8 @@ pub struct GitRunner {
     program: OsString,
     semaphore: Arc<Semaphore>,
     timeout: Duration,
+    /// Extra environment for every spawned git (see [`GitRunner::with_env`]).
+    extra_env: Vec<(OsString, OsString)>,
 }
 
 impl Default for GitRunner {
@@ -56,6 +58,7 @@ impl GitRunner {
             program: OsString::from("git"),
             semaphore: Arc::new(Semaphore::new(max_concurrency.max(1))),
             timeout,
+            extra_env: Vec::new(),
         }
     }
 
@@ -64,6 +67,33 @@ impl GitRunner {
     pub fn with_program(mut self, program: impl Into<OsString>) -> Self {
         self.program = program.into();
         self
+    }
+
+    /// Set an extra environment variable for every git this runner spawns.
+    ///
+    /// For configuring *where git reads its settings from* (`GIT_CONFIG_GLOBAL`,
+    /// `HOME`, ...), for example to run against a known configuration instead of
+    /// the user's. It is NOT a way to loosen the runner's safety rules: the
+    /// variables the runner sets itself (`GIT_OPTIONAL_LOCKS`,
+    /// `GIT_TERMINAL_PROMPT`, `LC_ALL`) are applied after these and always win,
+    /// and the variables that redirect git to another repository (`GIT_DIR`, ...)
+    /// are always removed, so neither can be overridden here.
+    ///
+    /// Set per runner, never process-wide: `std::env::set_var` is visible to every
+    /// thread, so concurrent tests (or commands) would race on it.
+    pub fn with_env(mut self, key: impl Into<OsString>, value: impl Into<OsString>) -> Self {
+        self.extra_env.push((key.into(), value.into()));
+        self
+    }
+
+    /// Ignore the user's and the system's git configuration: only the
+    /// repository's own config (and the runner's `-c` flags) apply. Makes git's
+    /// behaviour independent of the machine, which tests need (a developer's
+    /// `safe.bareRepository=explicit`, aliases, signing settings, ...).
+    /// Shorthand for two [`GitRunner::with_env`] calls.
+    pub fn with_isolated_config(self) -> Self {
+        self.with_env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .with_env("GIT_CONFIG_NOSYSTEM", "1")
     }
 
     /// Run `git -C <dir> <args...>` and return its raw stdout bytes.
@@ -181,6 +211,9 @@ impl GitRunner {
         // `git` binary would both surface as `NotFound` from `spawn`.
         cmd.arg("-C").arg(dir).args(args);
 
+        // Caller-chosen variables first, so the protected ones below override them.
+        cmd.envs(self.extra_env.iter().map(|(k, v)| (k, v)));
+
         // WHY is a passive observer. `git status` normally *refreshes the index*:
         // when it notices a file's stat data changed it rewrites `.git/index`,
         // taking `.git/index.lock` while it does so. That races with the coding
@@ -264,6 +297,41 @@ mod tests {
         ));
         assert!(!contains(b"short", b"not a git repository"));
         assert!(!contains(b"", b"x"));
+    }
+
+    /// The environment a runner would give git: `Some(v)` = set, `None` = removed.
+    fn env_of(runner: &GitRunner, key: &str) -> Option<Option<OsString>> {
+        let cmd = runner.command(Path::new("/x"), &[]);
+        cmd.as_std()
+            .get_envs()
+            .find(|(k, _)| *k == OsStr::new(key))
+            .map(|(_, v)| v.map(OsStr::to_os_string))
+    }
+
+    #[test]
+    fn with_env_reaches_the_child() {
+        let r = GitRunner::new().with_env("WHY_TEST_VAR", "1");
+        assert_eq!(env_of(&r, "WHY_TEST_VAR"), Some(Some("1".into())));
+        assert_eq!(env_of(&GitRunner::new(), "WHY_TEST_VAR"), None);
+
+        let iso = GitRunner::new().with_isolated_config();
+        assert_eq!(
+            env_of(&iso, "GIT_CONFIG_GLOBAL"),
+            Some(Some("/dev/null".into()))
+        );
+        assert_eq!(env_of(&iso, "GIT_CONFIG_NOSYSTEM"), Some(Some("1".into())));
+    }
+
+    #[test]
+    fn with_env_cannot_override_the_runners_protections() {
+        let r = GitRunner::new()
+            .with_env("GIT_OPTIONAL_LOCKS", "1")
+            .with_env("GIT_TERMINAL_PROMPT", "1")
+            .with_env("GIT_DIR", "/somewhere/else");
+        assert_eq!(env_of(&r, "GIT_OPTIONAL_LOCKS"), Some(Some("0".into())));
+        assert_eq!(env_of(&r, "GIT_TERMINAL_PROMPT"), Some(Some("0".into())));
+        // Removed (`None`), not set.
+        assert_eq!(env_of(&r, "GIT_DIR"), Some(None));
     }
 
     #[test]
