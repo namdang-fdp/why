@@ -1,10 +1,9 @@
 //! Which git versions we support, and how to ask the installed git for its version.
 //!
-//! ## Minimum version: 2.36.0
+//! ## Minimum version: 2.45.1
 //!
-//! The newest feature we depend on is `git worktree list --porcelain -z`. Each
-//! feature and the release notes (`Documentation/RelNotes/<version>.adoc` in
-//! git's repository) that introduced it:
+//! The minimum ensures that Git checks `GIT_NO_LAZY_FETCH` before starting a
+//! fetch from a promisor remote. Versions required by individual features:
 //!
 //! | We use | Since | Release notes |
 //! |---|---|---|
@@ -14,23 +13,17 @@
 //! | `worktree list`: locked annotation | 2.30.0 | 2.30.0 |
 //! | `rev-parse --path-format=absolute` | 2.31.0 | 2.31.0 |
 //! | `worktree list --porcelain`: `locked` / `prunable` lines | 2.31.0 | 2.31.0 |
-//! | **`worktree list --porcelain -z`** | **2.36.0** | 2.36.0 |
+//! | `worktree list --porcelain -z` | 2.36.0 | 2.36.0 |
+//! | **`GIT_NO_LAZY_FETCH` checked at the fetch boundary** | **2.45.1** | 2.45.1 |
 //!
 //! Not pinned down from release notes: `for-each-ref --format=%(symref)`. The
 //! notes of 2.1 to 2.20 do not mention it, so the version that introduced it is
 //! unknown; it is documented in git's reference and works on 2.56 (what the tests
 //! ran on). Everything else we call (`-C`, `merge-base`, `rev-list --left-right
 //! --count`, `symbolic-ref`, `rev-parse --verify`) is much older than 2.11.
-//!
-//! The tests only ran on git 2.56.0; the table says what the *documentation*
-//! requires, not what was exercised on old binaries.
-//!
-//! WHY does not enforce this at startup yet. [`git_version`] and
-//! [`GitVersion::meets_minimum`] are there for a later "git too old" message.
 
 use std::cmp::Ordering;
 use std::fmt;
-use std::path::Path;
 
 use super::error::{GitError, ParseError};
 use super::runner::GitRunner;
@@ -38,8 +31,8 @@ use super::runner::GitRunner;
 /// Oldest git whose documented behaviour covers everything WHY relies on.
 pub const MIN_GIT_VERSION: GitVersion = GitVersion {
     major: 2,
-    minor: 36,
-    patch: 0,
+    minor: 45,
+    patch: 1,
 };
 
 /// `major.minor.patch` of a git executable. Ordered (derive compares fields in
@@ -66,8 +59,7 @@ impl fmt::Display for GitVersion {
 
 /// Ask the git that `runner` would spawn for its version.
 pub async fn git_version(runner: &GitRunner) -> Result<GitVersion, GitError> {
-    // `--version` needs no repository; `.` only satisfies the runner's `-C`.
-    let out = runner.run(Path::new("."), ["--version"]).await?;
+    let out = runner.version_output().await?;
     Ok(parse_git_version(&out)?)
 }
 
@@ -146,10 +138,10 @@ mod tests {
 
     #[test]
     fn ordering_and_minimum() {
-        assert!(v(2, 36, 0).meets_minimum());
+        assert!(v(2, 45, 1).meets_minimum());
         assert!(v(2, 56, 0).meets_minimum());
         assert!(v(3, 0, 0).meets_minimum());
-        assert!(!v(2, 35, 9).meets_minimum());
+        assert!(!v(2, 45, 0).meets_minimum());
         assert!(!v(1, 99, 0).meets_minimum());
         assert!(v(2, 9, 0) < v(2, 10, 0)); // numeric, not textual, comparison
     }
