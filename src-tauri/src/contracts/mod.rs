@@ -46,7 +46,9 @@ pub use repo::{BranchInfo, Repository, Worktree};
 
 // `ts-rs` is a dev-dependency: the types derive `TS` only under `cfg(test)`
 // (`#[cfg_attr(test, derive(TS))]`), so the app binary does not contain it.
-// The serde wire-format tests only matter for development, so they are compiled
-// for `cargo test` only.
+// Binding generation and the serde wire-format tests only matter for development,
+// so they are compiled for `cargo test` only.
+#[cfg(test)]
+mod export;
 #[cfg(test)]
 mod tests;

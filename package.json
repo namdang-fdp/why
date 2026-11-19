@@ -16,6 +16,7 @@
     "lint:rust": "cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings && cargo fmt --manifest-path src-tauri/Cargo.toml --check",
     "lint:ui": "eslint . && tsc -b ui",
     "fmt": "cargo fmt --manifest-path src-tauri/Cargo.toml && prettier --write ui eslint.config.js scripts",
+    "gen:contracts": "cargo test --manifest-path src-tauri/Cargo.toml contracts::export::regenerate_bindings -- --ignored",
     "tauri": "tauri"
   },
   "dependencies": {
