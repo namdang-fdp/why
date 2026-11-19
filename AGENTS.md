@@ -14,7 +14,7 @@ WHY is a local-first desktop app (Tauri 2 + Rust core, React 19 + TypeScript UI)
 
 ## Workflow
 
-- One task = one worktree `why-worktrees/WHY-N-slug` + branch `why/WHY-N-slug` + its own `WHY_DEV_PORT` in `.env`. Work only in that folder.
+- One task = one worktree `why-worktrees/WHY-N-slug` + branch `feature/WHY-N-slug` (prefix `feature/`, never `why/`) + its own `WHY_DEV_PORT` in `.env`. Work only in that folder.
 - Stay inside the paths your brief says you own. If you need a change elsewhere (especially in `contracts/`), stop and report instead of editing.
 - **Do not commit, push, stash or switch branches until told to.** When told: small atomic commits with conventional messages (`feat(git): ...`), each ending with a `Co-Authored-By:` trailer naming the model that actually wrote the code; then push and `gh pr create` against `main`.
 - Never merge a PR, force-push `main`, or delete branches/worktrees.
