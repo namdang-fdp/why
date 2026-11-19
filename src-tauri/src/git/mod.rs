@@ -19,6 +19,7 @@ pub mod error;
 pub mod oid;
 pub mod repo;
 pub mod runner;
+pub mod status;
 pub mod worktree;
 
 pub use base::{BaseInfo, detect_base};
@@ -26,4 +27,8 @@ pub use error::{GitError, ParseError};
 pub use oid::Oid;
 pub use repo::{RepoInfo, open_repo};
 pub use runner::GitRunner;
+pub use status::{
+    AheadBehind, BranchHead, BranchStatus, ConflictKind, FileState, RenameOp, StatusEntry,
+    StatusKind, StatusSnapshot, parse_status, read_status,
+};
 pub use worktree::{WorktreeEntry, list_worktrees, parse_worktree_list, worktree_id};
