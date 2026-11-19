@@ -14,12 +14,14 @@
 //! hand-written fixtures); the `async fn`s next to them only run git and call
 //! the parser.
 
+pub mod base;
 pub mod error;
 pub mod oid;
 pub mod repo;
 pub mod runner;
 pub mod worktree;
 
+pub use base::{BaseInfo, detect_base};
 pub use error::{GitError, ParseError};
 pub use oid::Oid;
 pub use repo::{RepoInfo, open_repo};
