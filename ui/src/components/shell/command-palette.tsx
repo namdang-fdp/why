@@ -6,7 +6,11 @@ import {
   FileDiff,
   FolderGit2,
   GitBranch,
+  Palette,
   PanelRight,
+  Plus,
+  Settings2,
+  Type,
 } from "lucide-react";
 import type { DiffMode, FileChange, Repository, Worktree } from "@/contracts";
 import {
@@ -26,6 +30,8 @@ import {
   selectChanges,
   selectWorktree,
 } from "@/stores/workspace";
+import { useStore } from "zustand";
+import { editorSettingsStore, themeLabels, type EditorTheme } from "@/stores/editor-settings";
 import { useWorkspace } from "@/stores/workspace-context";
 import { ErrorMessage, LoadingMessage } from "./async-message";
 import { branchLabel, displayPath, worktreeName } from "./change-labels";
@@ -51,6 +57,8 @@ function filterCommands(_id: string, search: string, keywords: string[] = []) {
 }
 
 function validModes(worktree: Worktree) {
+  // A worktree that failed to load has no files to search (its error is shown in the rail).
+  if (worktree.loadError) return [];
   return diffModes.filter(({ mode }) => mode !== "vsBase" || worktree.base);
 }
 
@@ -70,15 +78,25 @@ function PaletteContents({ close }: { close: () => void }) {
   const toggleInspector = useWorkspace((state) => state.toggleInspector);
   const toggleLayout = useWorkspace((state) => state.toggleDiffLayout);
   const moveChange = useWorkspace((state) => state.moveChange);
+  const openAdd = useWorkspace((state) => state.setAddRepositoryOpen);
+  const openEditorSettings = useWorkspace((state) => state.setEditorSettingsOpen);
+  const editor = useStore(editorSettingsStore, (state) => state.settings);
+  const updateEditor = useStore(editorSettingsStore, (state) => state.update);
 
+  // Load every list nobody has asked for yet. Re-run when `changes` changes too: a
+  // live update drops the lists it did not refresh, and they must come back while
+  // the palette is open. Only MISSING keys are requested, so a failed list (which
+  // stays cached as an error) is not retried in a loop.
   useEffect(() => {
     for (const list of worktrees.values()) {
       if (list.status !== "ok") continue;
       for (const worktree of list.data) {
-        for (const { mode } of validModes(worktree)) void loadFiles(worktree, mode);
+        for (const { mode } of validModes(worktree)) {
+          if (!changes.has(changesKey(worktree.id, mode))) void loadFiles(worktree, mode);
+        }
       }
     }
-  }, [worktrees, loadFiles]);
+  }, [worktrees, changes, loadFiles]);
 
   const repos: Repository[] = repositories.status === "ok" ? repositories.data : [];
   const visibleWorktrees = repos.flatMap((repo) => {
@@ -152,6 +170,61 @@ function PaletteContents({ close }: { close: () => void }) {
               <CommandShortcut>
                 <kbd>{key}</kbd>
               </CommandShortcut>
+            </CommandItem>
+          ))}
+          <CommandItem
+            value="action-add-repository"
+            keywords={["Add repository", "open folder", "register", "a"]}
+            onSelect={run(() => openAdd(true))}
+          >
+            <Plus aria-hidden />
+            Add repository…
+            <CommandShortcut>
+              <kbd>a</kbd>
+            </CommandShortcut>
+          </CommandItem>
+          <CommandItem
+            value="action-editor-settings"
+            keywords={["Editor settings", "font", "theme", "whitespace", "line height"]}
+            onSelect={run(() => openEditorSettings(true))}
+          >
+            <Settings2 aria-hidden />
+            Editor settings…
+          </CommandItem>
+          <CommandItem
+            value="action-font-larger"
+            keywords={["Editor: increase font size", "bigger", "zoom in", "font"]}
+            onSelect={run(() => updateEditor({ fontSize: editor.fontSize + 1 }))}
+          >
+            <Type aria-hidden />
+            Editor: increase font size
+          </CommandItem>
+          <CommandItem
+            value="action-font-smaller"
+            keywords={["Editor: decrease font size", "smaller", "zoom out", "font"]}
+            onSelect={run(() => updateEditor({ fontSize: editor.fontSize - 1 }))}
+          >
+            <Type aria-hidden />
+            Editor: decrease font size
+          </CommandItem>
+          <CommandItem
+            value="action-ligatures"
+            keywords={["Editor: toggle ligatures", "font ligatures"]}
+            onSelect={run(() => updateEditor({ ligatures: !editor.ligatures }))}
+          >
+            <Type aria-hidden />
+            Editor: {editor.ligatures ? "turn off" : "turn on"} ligatures
+          </CommandItem>
+          {(Object.keys(themeLabels) as EditorTheme[]).map((theme) => (
+            <CommandItem
+              key={theme}
+              value={`action-theme-${theme}`}
+              keywords={[`Editor theme: ${themeLabels[theme]}`, "theme", "colors"]}
+              disabled={editor.theme === theme}
+              onSelect={run(() => updateEditor({ theme }))}
+            >
+              <Palette aria-hidden />
+              Editor theme: {themeLabels[theme]}
             </CommandItem>
           ))}
           <CommandItem

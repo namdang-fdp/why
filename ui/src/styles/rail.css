@@ -1,0 +1,458 @@
+/*
+ * The left rail: a filter, then Repositories and Changed files in a resizable
+ * split. Meant to feel like a Finder / Linear sidebar: a surface one step lighter
+ * than the content, quiet medium-weight section labels, 32 px rows, a soft
+ * selection pill, status dots, small muted numbers in fixed columns.
+ *
+ * Motion (transform/opacity only; reduced motion handled at the end):
+ *   chevron          150 ms ease-out   rotate
+ *   section / group  200 ms ease-out   height (grid rows), see surfaces.css
+ *   selection pill   160 ms ease-out   one bar slides (surfaces.css)
+ *   hover            120 ms            background
+ *   activity pulse   2 s once          ring scale 1 -> 3.2, opacity .5 -> 0
+ *
+ * Text on the rail is white at 48-94% over the rail ground (L 0.188): at least
+ * 4.7:1 for every label (50% is 5.3:1); only decorative marks (the dots, the "·")
+ * go lower.
+ */
+
+:root {
+  --rail-bg: oklch(0.188 0 0);
+  --rail-hover: oklch(1 0 0 / 5.5%);
+  --rail-hover-strong: oklch(1 0 0 / 8%);
+  --rail-accent: oklch(0.74 0.09 255);
+  --rail-pill: color-mix(in oklch, var(--rail-accent) 17%, transparent);
+  --rail-pill-edge: color-mix(in oklch, var(--rail-accent) 28%, transparent);
+  --rail-dim: oklch(1 0 0 / 38%);
+}
+
+.left-rail {
+  background: var(--rail-bg);
+}
+
+/* ---- filter -------------------------------------------------------------- */
+
+.rail-filter {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  margin: 12px 12px 4px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: oklch(1 0 0 / 5%);
+  color: var(--muted-foreground);
+  transition:
+    background-color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out);
+}
+.rail-filter:hover {
+  background: oklch(1 0 0 / 7%);
+}
+.rail-filter:focus-within {
+  border-color: oklch(1 0 0 / 22%);
+  background: oklch(1 0 0 / 8%);
+}
+.rail-filter svg {
+  flex: none;
+}
+.rail-filter input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  background: transparent;
+  color: var(--foreground);
+  font-size: 12.5px;
+  outline: none;
+}
+.rail-filter input::placeholder {
+  color: oklch(1 0 0 / 50%);
+}
+.rail-filter kbd {
+  min-width: 17px;
+  height: 17px;
+  background: transparent;
+  font-size: 10px;
+}
+.rail-filter-clear {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  color: var(--muted-foreground);
+}
+.rail-filter-clear:hover {
+  background: oklch(1 0 0 / 10%);
+  color: var(--foreground);
+}
+
+/* ---- the split ------------------------------------------------------------- */
+
+.rail-sections {
+  flex: 1;
+  min-height: 0;
+}
+
+.repository-section,
+.files-section {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.rail-sections [data-slot="resizable-handle"] {
+  background: var(--border);
+  transition: background-color var(--dur-fast) var(--ease-out);
+}
+/* A hairline to look at, an 8 px strip to grab. */
+.rail-sections [data-slot="resizable-handle"]::after {
+  inset-block: -4px;
+  height: auto;
+}
+.rail-sections [data-slot="resizable-handle"]:hover,
+.rail-sections [data-slot="resizable-handle"][data-separator="active"] {
+  background: var(--rail-accent);
+}
+
+/* ---- section headers ----------------------------------------------------------- */
+
+.rail-heading {
+  padding: 0 12px 0 6px;
+  gap: 6px;
+  font-weight: 500;
+}
+.rail-heading h2 {
+  display: flex;
+  flex: none;
+  font-size: 12px;
+  font-weight: 500;
+}
+.rail-heading-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 8px 0 6px;
+  border-radius: 6px;
+  color: var(--muted-foreground);
+  transition:
+    background-color var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out);
+}
+.rail-heading-toggle:hover {
+  background: var(--rail-hover);
+  color: var(--foreground);
+}
+.rail-heading-toggle .disclosure,
+.disclosure {
+  transition: rotate 150ms var(--ease-out);
+}
+.rail-heading-toggle[aria-expanded="true"] .disclosure {
+  rotate: 90deg;
+}
+.rail-heading-context {
+  min-width: 0;
+  flex: 0 1 auto;
+  overflow: hidden;
+  color: oklch(1 0 0 / 52%);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rail-heading-context::before {
+  content: "·";
+  margin-right: 6px;
+  color: var(--rail-dim);
+}
+.rail-heading-end {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+.rail-heading-end .rail-total {
+  min-width: 14px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- scrolling ---------------------------------------------------------------------- */
+
+.rail-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  /* Room at both ends for the fade, so a row at rest is never dimmed. */
+  padding: 6px 8px 14px;
+  scroll-behavior: smooth;
+  scrollbar-width: thin;
+  scrollbar-color: oklch(1 0 0 / 14%) transparent;
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    #000 8px,
+    #000 calc(100% - 14px),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    #000 8px,
+    #000 calc(100% - 14px),
+    transparent 100%
+  );
+}
+
+/* ---- rows ------------------------------------------------------------------------------ */
+
+.repo-list,
+.worktree-list,
+.file-list,
+.clean-list {
+  display: grid;
+  gap: 2px;
+}
+.repo-list {
+  gap: 6px;
+}
+
+.rail-row {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  gap: 8px;
+  min-height: 32px;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  text-align: left;
+}
+.rail-row:hover {
+  background: var(--rail-hover);
+}
+.rail-row:hover:active {
+  background: var(--rail-hover-strong);
+}
+/* A collapsed repository that holds the selection shows the pill itself. */
+.rail-row[aria-current="true"] {
+  background: var(--rail-pill);
+  border-color: var(--rail-pill-edge);
+}
+
+.slide-highlight {
+  border-color: var(--rail-pill-edge);
+  background: var(--rail-pill);
+}
+
+.repository-row {
+  color: oklch(1 0 0 / 88%);
+  font-weight: 550;
+}
+.repository-row > svg:not(.disclosure) {
+  color: oklch(1 0 0 / 55%);
+}
+.repository-row .disclosure {
+  color: var(--muted-foreground);
+}
+.repo-count {
+  margin-left: auto;
+  color: var(--muted-foreground);
+  font: 11px/16px var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+.repo-head .repository-row {
+  padding-right: 32px;
+}
+
+.worktree-list {
+  margin: 0 0 4px 14px;
+  padding-left: 6px;
+  border-left: 1px solid oklch(1 0 0 / 7%);
+}
+
+/* Worktree row: dot | title + detail | time + count / ahead-behind. */
+.rail-row.worktree-row {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) auto;
+  align-items: start;
+  column-gap: 10px;
+  min-height: 36px;
+  padding: 7px 8px;
+}
+
+.wt-dot {
+  position: relative;
+  width: 8px;
+  height: 8px;
+  margin-top: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  color: var(--rail-dim);
+}
+.wt-dot[data-state="changes"] {
+  color: var(--git-added);
+}
+.wt-dot[data-state="error"] {
+  color: var(--git-modified);
+}
+.wt-pulse {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0;
+  animation: wt-pulse 2s ease-out;
+}
+@keyframes wt-pulse {
+  from {
+    opacity: 0.55;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(3.2);
+  }
+}
+
+.worktree-text {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+.worktree-title,
+.worktree-ref {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
+}
+.worktree-title {
+  font-size: 13px;
+  font-weight: 550;
+  line-height: 18px;
+}
+.worktree-ref {
+  color: oklch(1 0 0 / 50%);
+  font: 11px/14px var(--font-mono);
+}
+.worktree-ref > svg {
+  flex: none;
+}
+.worktree-ref > :first-child:not(:only-child) {
+  flex: 0 1 auto;
+}
+
+.worktree-stats {
+  display: grid;
+  flex: none;
+  justify-items: end;
+  gap: 2px;
+}
+.stats-top {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 18px;
+}
+.worktree-time {
+  min-width: 3ch;
+  color: oklch(1 0 0 / 50%);
+  font: 11px/16px var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.count-badge {
+  min-width: 22px;
+  padding: 0 6px;
+  border: none;
+  border-radius: 9px;
+  background: oklch(1 0 0 / 9%);
+  color: oklch(1 0 0 / 82%);
+  font: 11px/18px var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+.worktree-row .branch-divergence {
+  min-width: 6ch;
+  color: oklch(1 0 0 / 45%);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* "N clean": the worktrees with nothing to review, folded away. */
+.clean-group {
+  display: grid;
+}
+.clean-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 6px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  transition:
+    background-color var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out);
+}
+.clean-toggle:hover {
+  background: var(--rail-hover);
+  color: var(--foreground);
+}
+.clean-toggle[aria-expanded="true"] .disclosure {
+  rotate: 90deg;
+}
+.clean-list {
+  padding-bottom: 2px;
+}
+
+/* ---- file rows: the same grid and baseline as the worktree rows ------------------- */
+
+.rail-row.file-row {
+  gap: 10px;
+  min-height: 32px;
+  padding: 6px 8px;
+}
+.file-path {
+  gap: 1px;
+}
+.path-directory,
+.file-old-path {
+  color: oklch(1 0 0 / 52%);
+}
+.path-basename {
+  color: oklch(1 0 0 / 94%);
+  font-weight: 550;
+}
+.line-counts {
+  min-width: 7ch;
+  justify-content: flex-end;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- reduced motion --------------------------------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  /* No expanding ring: a still, brighter halo for the 2 s the pulse lasts. */
+  .wt-pulse {
+    animation: none !important;
+    opacity: 0.45;
+    transform: scale(2.4);
+  }
+  .rail-scroll {
+    scroll-behavior: auto;
+  }
+}
+
+.count-badge[data-zero] {
+  background: transparent;
+  color: oklch(1 0 0 / 48%);
+}

@@ -1,5 +1,8 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+@import "./styles/overlays.css";
+@import "./styles/surfaces.css";
+@import "./styles/rail.css";
 
 /* The app is dark-only for now: <html class="dark"> is set in index.html. */
 @custom-variant dark (&:is(.dark *));
@@ -113,11 +116,13 @@
   font-size: 13px;
 }
 
-.app-shell button:focus-visible,
-.palette-dialog button:focus-visible,
-.shortcuts-dialog button:focus-visible {
-  outline: 2px solid var(--foreground);
+/* One focus ring for everything interactive, portalled overlays included. */
+:where(button, a, [tabindex], [role="menuitem"]):focus-visible {
+  outline: 2px solid oklch(0.82 0 0);
   outline-offset: -2px;
+}
+.input:focus-visible {
+  outline: none;
 }
 
 kbd {
@@ -140,7 +145,7 @@ kbd {
   display: flex;
   align-items: center;
   gap: 16px;
-  padding: 8px 14px;
+  padding: 8px 16px;
   background: var(--shell-chrome);
   border-bottom: 1px solid var(--border);
 }
@@ -205,7 +210,6 @@ kbd {
 .breadcrumbs svg,
 .branch-summary svg,
 .top-controls,
-.worktree-ref svg,
 .pane-heading > svg {
   flex: none;
 }
@@ -225,7 +229,7 @@ kbd {
 }
 
 .mode-control button {
-  padding: 5px 9px;
+  padding: 4px 8px;
   border-radius: 4px;
   color: var(--muted-foreground);
   font-size: 12px;
@@ -281,159 +285,32 @@ kbd {
   overflow: hidden;
 }
 
-.left-rail,
 .inspector {
   background: var(--shell-pane);
-}
-
-.repository-section,
-.files-section {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-
-.repository-section {
-  max-height: 48%;
-  border-bottom: 1px solid var(--border);
-}
-
-.files-section {
-  flex: 1;
 }
 
 .rail-heading,
 .pane-heading {
   display: flex;
   align-items: center;
-  gap: 9px;
-  min-height: 42px;
-  padding: 0 14px;
+  gap: 8px;
+  /* One height for every pane header (rail, diff, inspector). */
+  height: var(--pane-header);
+  flex: none;
+  padding: 0 16px;
   font-weight: 550;
-}
-
-.rail-heading {
-  justify-content: space-between;
-  padding-inline: 14px;
 }
 
 .rail-total {
   color: var(--muted-foreground);
   font: 11px var(--font-mono);
-}
-
-.rail-scroll {
-  min-height: 0;
-  overflow: auto;
-  padding: 0 7px 8px;
-  overscroll-behavior: contain;
-  scrollbar-width: thin;
-  scrollbar-color: var(--input) transparent;
+  white-space: nowrap;
 }
 
 .rail-note {
-  margin: 7px 8px;
+  margin: 8px;
   color: var(--muted-foreground);
   font-size: 12px;
-}
-
-.repo-list,
-.worktree-list,
-.file-list {
-  display: grid;
-  gap: 2px;
-}
-
-.rail-row {
-  display: flex;
-  align-items: center;
-  width: 100%;
-  min-width: 0;
-  gap: 7px;
-  padding: 5px 7px;
-  border: 1px solid transparent;
-  border-radius: 5px;
-  text-align: left;
-}
-
-.rail-row:hover {
-  background: var(--shell-hover);
-}
-
-.rail-row[aria-current="true"] {
-  background: var(--shell-selected);
-  border-color: var(--border);
-}
-
-.repository-row {
-  min-height: 29px;
-  color: var(--muted-foreground);
-  font-weight: 550;
-}
-
-.repository-row[data-active="true"] {
-  color: var(--foreground);
-}
-
-.repository-row > svg {
-  flex: none;
-  color: var(--muted-foreground);
-}
-
-.worktree-list {
-  margin: 1px 0 4px 13px;
-  padding-left: 6px;
-  border-left: 1px solid var(--border);
-}
-
-.worktree-row {
-  align-items: flex-start;
-  min-height: 44px;
-}
-
-.worktree-icon {
-  flex: none;
-  margin-top: 2px;
-  color: var(--muted-foreground);
-}
-
-.worktree-text {
-  display: grid;
-  min-width: 0;
-  flex: 1;
-  gap: 3px;
-}
-
-.worktree-title,
-.worktree-ref {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 5px;
-  line-height: 15px;
-}
-
-.worktree-title {
-  font-weight: 550;
-}
-
-.worktree-ref {
-  color: var(--muted-foreground);
-  font: 10px/14px var(--font-mono);
-}
-
-.worktree-ref > :first-child {
-  flex: 0 1 auto;
-}
-
-.worktree-ref > :last-child {
-  flex-shrink: 0;
-  max-width: 58%;
-}
-
-.worktree-ref > :only-child {
-  flex-shrink: 1;
-  max-width: none;
 }
 
 .worktree-marker {
@@ -442,34 +319,15 @@ kbd {
   color: var(--muted-foreground);
 }
 
-.worktree-stats {
-  display: grid;
-  flex: none;
-  justify-items: end;
-  gap: 4px;
-}
-
-.count-badge {
-  display: inline-grid;
-  min-width: 19px;
-  place-items: center;
-  padding: 1px 4px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: var(--shell-hover);
-  color: var(--muted-foreground);
-  font: 10px/13px var(--font-mono);
-}
-
 .branch-divergence {
   flex: none;
   color: var(--muted-foreground);
   white-space: nowrap;
-  font: 10px/13px var(--font-mono);
+  font: 11px/14px var(--font-mono);
 }
 
 .file-row {
-  min-height: 30px;
+  min-height: 32px;
 }
 
 .change-status {
@@ -563,7 +421,6 @@ kbd {
 }
 
 .pane-heading {
-  min-height: 43px;
   border-bottom: 1px solid var(--border);
 }
 
@@ -612,31 +469,11 @@ kbd {
   color: var(--foreground);
 }
 
-.diff-metadata {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 7px;
-  padding: 9px 14px;
-  border-bottom: 1px solid var(--border);
-}
-
-.diff-metadata:empty {
-  display: none;
-}
-
-.diff-metadata span {
-  padding: 1px 6px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  color: var(--muted-foreground);
-  font-size: 11px;
-}
-
 .diff-path-notice {
   display: flex;
   align-items: center;
   gap: 7px;
-  padding: 8px 14px;
+  padding: 8px 16px;
   border-bottom: 1px solid var(--border);
   color: var(--muted-foreground);
   font-size: 12px;
@@ -655,15 +492,12 @@ kbd {
   background: var(--background);
 }
 
+.diff-editor-stack,
 .diff-editor-host,
 .diff-content,
 .diff-body > .diff-skeleton {
   position: absolute;
   inset: 0;
-}
-
-.diff-editor-host[inert] {
-  visibility: hidden;
 }
 
 .diff-content {
@@ -676,6 +510,7 @@ kbd {
 .diff-skeleton {
   display: grid;
   width: 100%;
+  background: var(--background);
   align-content: start;
   gap: 11px;
   padding: 22px 24px;
@@ -880,11 +715,17 @@ kbd {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .app-shell *,
-  [data-slot="dialog-content"],
-  [data-slot="dialog-overlay"] {
-    animation: none !important;
-    transition: none !important;
+  /* Content and state changes stay; only the travel is dropped. Radix still
+     gets an animation-end, so closing overlays unmount immediately. */
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+  .row-flash {
+    animation: none !important;
   }
 }

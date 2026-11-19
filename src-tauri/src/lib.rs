@@ -34,12 +34,15 @@ pub fn run() {
     tracing::info!(version = env!("CARGO_PKG_VERSION"), "starting WHY");
 
     tauri::Builder::default()
+        // Registered for the core's own use (`ipc::dialog`); no capability
+        // grants the webview any `dialog:*` permission, see that module.
+        .plugin(tauri_plugin_dialog::init())
         // `setup` runs once the app (and its path API) exists, before any
         // window loads, so commands never see the state missing.
         .setup(|app| {
             let (store, storage) = open_repo_store(app.handle());
-            // WHY-9: surface temporary storage in the UI (read this managed
-            // `StorageMode`; `Temporary` means changes are lost at exit).
+            // Managed on its own (not inside `AppState`) so `get_storage_status`
+            // can read it; `Temporary` means changes are lost at exit.
             app.manage(storage);
             // The ONE runner; the watcher gets a clone, and clones share its
             // semaphore, so its git calls count against the same global cap.
@@ -63,6 +66,8 @@ pub fn run() {
             ipc::changes::list_worktrees,
             ipc::changes::get_changes,
             ipc::changes::get_file_diff,
+            ipc::storage::get_storage_status,
+            ipc::dialog::pick_repository_folder,
         ])
         .run(tauri::generate_context!())
         .expect("error while running WHY");

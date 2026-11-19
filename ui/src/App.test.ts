@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { createElement, useEffect } from "react";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FileDiff, IpcError } from "@/contracts";
@@ -15,19 +15,25 @@ import { App } from "./App";
 const moveHunk = vi.hoisted(() => vi.fn<(direction: HunkDirection) => HunkResult>(() => "moved"));
 
 vi.mock("@/components/diff/monaco-diff", () => ({
-  default: function MonacoDiff({ diff }: { diff: FileDiff | null }) {
+  default: function MonacoDiff({
+    diff,
+    onReveal,
+  }: {
+    diff: FileDiff | null;
+    onReveal?: (diff: FileDiff | null) => void;
+  }) {
     const register = useWorkspace((state) => state.registerDiffNavigation);
-    const revealFirst = useWorkspace((state) => state.revealFirstChange);
     useEffect(() => {
+      // The real editor reports a file once it has been computed and swapped in.
+      onReveal?.(diff);
       if (diff) return register(diff, moveHunk);
-    }, [diff, register]);
+    }, [diff, onReveal, register]);
     return createElement(
       "div",
       { "data-diff-editor": "", hidden: !diff },
       createElement("textarea", { "aria-label": "Diff editor", readOnly: true }),
       createElement("pre", { "aria-label": "Original" }, diff?.oldContent ?? ""),
       createElement("pre", { "aria-label": "Modified" }, diff?.newContent ?? ""),
-      revealFirst && "Reveal first change",
     );
   },
 }));
@@ -70,7 +76,10 @@ describe("review shell", () => {
     await user.click(screen.getByRole("button", { name: /detached @/ }));
     expect(screen.getByRole("list", { name: "Worktrees in why" })).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "why" }));
-    expect(screen.queryByRole("list", { name: "Worktrees in why" })).toBeNull();
+    // The section animates closed, then unmounts.
+    await waitFor(() =>
+      expect(screen.queryByRole("list", { name: "Worktrees in why" })).toBeNull(),
+    );
     expect(screen.getByRole("list", { name: "Worktrees in billing-api" })).toBeTruthy();
 
     first.unmount();
@@ -139,7 +148,7 @@ describe("review shell", () => {
   it("disables Vs base when a worktree has no base", async () => {
     const user = userEvent.setup();
     render(createElement(App, { store: createWorkspaceStore(new FixtureDataSource()) }));
-    await user.click(await screen.findByRole("button", { name: /^why\s*main/i }));
+    await user.click(await screen.findByRole("button", { name: /^main\b/i }));
     expect(screen.getByRole<HTMLButtonElement>("button", { name: "Vs base" }).disabled).toBe(true);
     expect(screen.getByRole("button", { name: "Uncommitted" }).getAttribute("aria-pressed")).toBe(
       "true",
@@ -166,7 +175,7 @@ describe("review shell", () => {
   });
 
   const humanMessages = {
-    notARepo: "This location is no longer a Git repository.",
+    notARepo: "This location is not a Git repository.",
     gitMissing: "Git is unavailable. Check that Git is installed and on your PATH.",
     gitFailed: "Git could not complete the request.",
     timeout: "The request took too long.",
@@ -175,11 +184,23 @@ describe("review shell", () => {
     internal: "WHY could not complete the request because of an internal error.",
   } satisfies Record<IpcError["kind"], string>;
 
+  const titles = {
+    notARepo: "Not a Git repository",
+    gitMissing: "Git isn't installed",
+    gitFailed: "Git couldn't read this",
+    timeout: "Git took too long",
+    notFound: "Not found",
+    invalidInput: "That isn't available",
+    internal: "Something went wrong inside WHY",
+  } satisfies Record<IpcError["kind"], string>;
+
   it.each(ipcErrors)("renders the $kind IPC error", async (error) => {
     const source = new FixtureDataSource();
     vi.spyOn(source, "listRepositories").mockRejectedValue(error);
     render(createElement(App, { store: createWorkspaceStore(source) }));
     const alert = await screen.findByRole("alert");
+    // A human headline first; the technical kind stays as secondary detail.
+    expect(within(alert).getByText(titles[error.kind])).toBeTruthy();
     expect(alert.textContent).toContain(error.kind);
     expect(alert.textContent).toContain(humanMessages[error.kind]);
     if ("message" in error) expect(alert.textContent).toContain(error.message);
@@ -228,6 +249,41 @@ describe("review diff", () => {
     expect(await main().findByRole("heading", { name: "No content changes" })).toBeTruthy();
   });
 
+  it("keeps the previous diff on screen during a quick switch and shows the skeleton only for a slow one", async () => {
+    const source = new FixtureDataSource();
+    let release: (diff: FileDiff) => void = () => {};
+    const real = source.getFileDiff.bind(source);
+    // One file (not a neighbour, so not prefetched) answers slowly.
+    vi.spyOn(source, "getFileDiff").mockImplementation((worktree, path, mode) =>
+      path === "src-tauri/src/git/legacy.rs"
+        ? new Promise<FileDiff>((resolve) => {
+            release = resolve;
+          })
+        : real(worktree, path, mode),
+    );
+    const { select, main } = setup(source);
+    await select(/mod\.rs/);
+    await waitFor(() => expect(main().getByLabelText("Modified").textContent).toContain("pub mod"));
+    const old = main().getByLabelText("Modified").textContent;
+
+    await select(/legacy\.rs/);
+    // Right after the click: the OLD diff is still there, and no skeleton yet.
+    expect(main().getByLabelText("Modified").textContent).toBe(old);
+    expect(main().queryByRole("status")).toBeNull();
+
+    // A genuinely slow load gets the skeleton (after ~200 ms).
+    expect(await main().findByRole("status", {}, { timeout: 1500 })).toHaveProperty(
+      "textContent",
+      "Loading diff…",
+    );
+
+    release(await real("wt-why-agent-git", "src-tauri/src/git/legacy.rs", "vsBase"));
+    await waitFor(() =>
+      expect(main().getByLabelText("Original").textContent).toContain("pub fn old_helper"),
+    );
+    expect(main().queryByRole("status")).toBeNull();
+  });
+
   it("shows the lossy-path notice alongside the text preview", async () => {
     const { select, user, main } = setup();
     await user.click(await screen.findByRole("button", { name: /detached @/ }));
@@ -253,7 +309,8 @@ describe("review diff", () => {
     );
     await user.click(main().getByRole("button", { name: "Try again" }));
     await main().findByRole("textbox");
-    expect(read.mock.calls).toEqual([
+    // Asked for twice (the failure, then the retry); neighbours are prefetched too.
+    expect(read.mock.calls.filter(([, path]) => path === "src-tauri/src/git/mod.rs")).toEqual([
       [WT_WHY_AGENT, "src-tauri/src/git/mod.rs", "vsBase"],
       [WT_WHY_AGENT, "src-tauri/src/git/mod.rs", "vsBase"],
     ]);
@@ -267,7 +324,7 @@ describe("review diff", () => {
     expect(moveHunk.mock.calls).toEqual([["next"], ["previous"]]);
     moveHunk.mockReturnValueOnce("boundary");
     await user.keyboard("n");
-    expect(await main().findByText("Reveal first change")).toBeTruthy();
+    await waitFor(() => expect(store.getState().filePath).toBe("src-tauri/src/git/worktree.rs"));
     expect(store.getState().filePath).toBe("src-tauri/src/git/worktree.rs");
 
     const editor = await main().findByRole("textbox");

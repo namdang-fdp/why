@@ -32,7 +32,7 @@ use super::debounce::{Change, DebounceConfig, RawChange, RawSender, raw_channel,
 use super::ignore_rules::IgnoreRules;
 use super::poller::Poller;
 use super::route::{PathInfo, Registry, RepoSpec, Routed, WorktreeSpec};
-use crate::contracts::{WorktreeChanged, WorktreeId};
+use crate::contracts::{RepoId, RepositoryChanged, WorktreeChanged, WorktreeId};
 use crate::git::{self, GitRunner, RepoInfo};
 use crate::store::{RepoRecord, RepoStore};
 
@@ -126,6 +126,9 @@ struct Inner {
     watchers: Mutex<Watchers>,
     raw: RawSender,
     maint: mpsc::UnboundedSender<Maint>,
+    /// Repositories whose set of worktrees changed. Unbounded: one tiny message
+    /// per `git worktree add/remove`, at the pace of a person or an agent.
+    repo_events: mpsc::UnboundedSender<RepositoryChanged>,
     /// Serializes `sync` (a tokio mutex because it is held across git calls).
     sync_state: tokio::sync::Mutex<SyncState>,
 }
@@ -143,6 +146,18 @@ struct SyncState {
 struct Known {
     spec: Arc<WorktreeSpec>,
     stamp: Stamp,
+}
+
+/// The ids of the worktrees each repository has in `known`.
+fn members_by_repo(known: &HashMap<WorktreeId, Known>) -> HashMap<RepoId, HashSet<WorktreeId>> {
+    let mut by_repo: HashMap<RepoId, HashSet<WorktreeId>> = HashMap::new();
+    for (id, k) in known {
+        by_repo
+            .entry(k.spec.repo.clone())
+            .or_default()
+            .insert(id.clone());
+    }
+    by_repo
 }
 
 /// Modification times of a worktree's HEAD, index and checked-out branch ref,
@@ -175,6 +190,22 @@ impl WatchHub {
         store: Arc<dyn RepoStore>,
         cfg: WatchConfig,
     ) -> (Self, mpsc::Receiver<WorktreeChanged>) {
+        let (hub, events, _repo_events) = Self::start_with_repo_events(git, store, cfg);
+        (hub, events)
+    }
+
+    /// Like [`WatchHub::start`], plus the stream of [`RepositoryChanged`] events:
+    /// one whenever a registered repository's set of worktrees changed (a linked
+    /// worktree added, removed or pruned) after the startup baseline.
+    pub fn start_with_repo_events(
+        git: GitRunner,
+        store: Arc<dyn RepoStore>,
+        cfg: WatchConfig,
+    ) -> (
+        Self,
+        mpsc::Receiver<WorktreeChanged>,
+        mpsc::UnboundedReceiver<RepositoryChanged>,
+    ) {
         let (raw, raw_rx) = raw_channel(cfg.debounce.queue_capacity);
         // Debounced events: bounded, async on both sides, so backpressure is
         // fine; at most a few per second leave the debouncer.
@@ -183,6 +214,7 @@ impl WatchHub {
         // directory events, ignore-file/index changes and watch errors (at the
         // pace of the user's or agent's actions), and drained every 300 ms.
         let (maint, maint_rx) = mpsc::unbounded_channel();
+        let (repo_events, repo_events_rx) = mpsc::unbounded_channel();
 
         let registry = Arc::new(RwLock::new(Registry::default()));
         let router = Router {
@@ -225,6 +257,7 @@ impl WatchHub {
             }),
             raw,
             maint,
+            repo_events,
             sync_state: tokio::sync::Mutex::new(SyncState::default()),
         });
 
@@ -237,7 +270,7 @@ impl WatchHub {
                 cfg.reconcile_every,
             )),
         ];
-        (Self { inner, tasks }, out_rx)
+        (Self { inner, tasks }, out_rx, repo_events_rx)
     }
 
     /// Re-read the registered repositories from the store and sync to them.
@@ -414,6 +447,9 @@ impl Inner {
         let mut st = self.sync_state.lock().await;
         let initial = !st.initial_done;
         let mut old = std::mem::take(&mut st.known);
+        // Which worktrees each repository had before this sync, to notice a
+        // linked worktree being added or removed.
+        let before = members_by_repo(&old);
         let mut known: HashMap<WorktreeId, Known> = HashMap::new();
         let mut repo_specs = Vec::new();
         let mut changed: HashSet<WorktreeId> = HashSet::new();
@@ -509,6 +545,21 @@ impl Inner {
             worktrees,
         };
         st.known = known;
+        // Membership: only for repositories we already knew (a repository that
+        // was just registered is not "changed", the UI is adding it itself), and
+        // only after the baseline. A repository we could not list this time kept
+        // its old entries, so it compares equal and stays quiet.
+        let after = members_by_repo(&st.known);
+        let membership_changed: Vec<RepoId> = repos
+            .iter()
+            .filter(|rec| {
+                !initial
+                    && before
+                        .get(&rec.id)
+                        .is_some_and(|was| Some(was) != after.get(&rec.id))
+            })
+            .map(|rec| rec.id.clone())
+            .collect();
 
         // Still holding the sync lock: two overlapping syncs (the periodic one
         // and a resync) must apply their watch sets in the same order as their
@@ -527,6 +578,11 @@ impl Inner {
 
         for id in changed {
             self.raw.send(RawChange::refetch_all(id));
+        }
+        for repo_id in membership_changed {
+            tracing::info!(repo = %repo_id.0, "worktrees of the repository changed");
+            // Err only when nobody listens (`start` drops the receiver).
+            let _ = self.repo_events.send(RepositoryChanged { repo_id });
         }
     }
 

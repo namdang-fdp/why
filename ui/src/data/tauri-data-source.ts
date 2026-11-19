@@ -1,0 +1,119 @@
+import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import type {
+  DiffMode,
+  FileChange,
+  FileDiff,
+  RepoId,
+  Repository,
+  RepositoryChanged,
+  StorageStatus,
+  Worktree,
+  WorktreeChanged,
+  WorktreeId,
+} from "@/contracts";
+import { REPOSITORY_CHANGED_EVENT, WORKTREE_CHANGED_EVENT } from "@/contracts";
+import { toIpcError } from "./async-state";
+import type { DataSource } from "./data-source";
+
+/**
+ * The real backend: every method is one Tauri command.
+ *
+ * Command and argument names mirror the Rust signatures in `src-tauri/src/ipc`.
+ * Tauri converts the Rust `snake_case` argument names to `camelCase` for
+ * `invoke` (`repo_id` is `repoId`), which is why the keys below are camelCase
+ * while the command names stay `snake_case`.
+ */
+export class TauriDataSource implements DataSource {
+  /**
+   * `invoke` rejects with whatever the Rust command returned as `Err`: for our
+   * commands that is a serialized `IpcError` object, not an `Error`. Anything
+   * else (the IPC layer itself failing) becomes `{ kind: "internal" }`.
+   * Normalising here means callers only ever see `IpcError`.
+   */
+  private async call<T>(command: string, args?: Record<string, unknown>): Promise<T> {
+    try {
+      return await invoke<T>(command, args);
+    } catch (error) {
+      throw toIpcError(error);
+    }
+  }
+
+  listRepositories() {
+    return this.call<Repository[]>("list_repositories");
+  }
+
+  listWorktrees(repoId: RepoId) {
+    return this.call<Worktree[]>("list_worktrees", { repoId });
+  }
+
+  getChanges(worktreeId: WorktreeId, mode: DiffMode) {
+    return this.call<FileChange[]>("get_changes", { worktreeId, mode });
+  }
+
+  getFileDiff(worktreeId: WorktreeId, path: string, mode: DiffMode) {
+    return this.call<FileDiff>("get_file_diff", { worktreeId, path, mode });
+  }
+
+  addRepository(path: string) {
+    return this.call<Repository>("add_repository", { path });
+  }
+
+  removeRepository(id: RepoId) {
+    return this.call<void>("remove_repository", { id });
+  }
+
+  setBase(worktreeId: WorktreeId, baseRef: string) {
+    return this.call<Worktree>("set_base", { worktreeId, baseRef });
+  }
+
+  pickRepositoryFolder() {
+    return this.call<string | null>("pick_repository_folder");
+  }
+
+  getStorageStatus() {
+    return this.call<StorageStatus>("get_storage_status");
+  }
+
+  onWorktreeChanged(callback: (event: WorktreeChanged) => void) {
+    return subscribe(WORKTREE_CHANGED_EVENT, callback);
+  }
+
+  onRepositoryChanged(callback: (event: RepositoryChanged) => void) {
+    return subscribe(REPOSITORY_CHANGED_EVENT, callback);
+  }
+}
+
+/**
+ * `listen` is async (it registers with the Rust side and resolves to the
+ * function that undoes the registration), but this must return its
+ * unsubscribe function *synchronously*, because React effects clean up
+ * synchronously. So there is a window where the caller can unsubscribe
+ * before registration has finished (React StrictMode mounts, unmounts and
+ * mounts again immediately). Handled with a flag: if we were cancelled while
+ * waiting, undo the registration the moment it resolves instead of leaking
+ * a listener that would deliver events to a dead subscriber forever.
+ */
+function subscribe<T>(eventName: string, callback: (payload: T) => void) {
+  let cancelled = false;
+  let unlisten: UnlistenFn | undefined;
+
+  listen<T>(eventName, (event) => {
+    if (!cancelled) callback(event.payload);
+  }).then(
+    (stop) => {
+      if (cancelled) stop();
+      else unlisten = stop;
+    },
+    (error: unknown) => {
+      // Not fatal: the UI still works, it just stops updating on its own.
+      console.error(`cannot listen for ${eventName}`, error);
+    },
+  );
+
+  return () => {
+    cancelled = true;
+    unlisten?.();
+    unlisten = undefined;
+  };
+}

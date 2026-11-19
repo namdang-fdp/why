@@ -37,6 +37,9 @@ rusqlite = { version = "0.43", features = ["bundled"] }
 notify = "8.2"
 # ripgrep's gitignore matcher, so the watcher skips node_modules/, target/, ...
 ignore = "0.4"
+# Native folder picker, driven from the Rust core only (see `ipc/dialog.rs`):
+# the webview is granted no `dialog:*` permission.
+tauri-plugin-dialog = "2.8"
 
 # `O_NOFOLLOW` / `O_NONBLOCK` / `ELOOP` for opening worktree files safely (the
 # raw flag values differ per OS and CPU, so they must come from libc). Already in

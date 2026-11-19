@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
+import { AddRepositoryDialog } from "@/components/shell/add-repository-dialog";
 import { CommandPalette } from "@/components/shell/command-palette";
+import { StorageBanner } from "@/components/shell/storage-banner";
+import { Toaster } from "@/components/shell/toaster";
+import { TooltipProvider } from "@/components/ui/overlays";
 import { ShortcutHelp } from "@/components/shell/shortcut-help";
 import { TopBar } from "@/components/shell/top-bar";
 import { WorkspacePanels } from "@/components/shell/workspace-panels";
@@ -15,18 +19,24 @@ export function App({ store = workspaceStore }: { store?: Workspace }) {
   useEffect(() => {
     const workspace = store.getState();
     const unsubscribe = workspace.watchWorktrees();
+    void workspace.loadStorageStatus();
     void workspace.loadRepositories();
     return unsubscribe;
   }, [store]);
 
   return (
     <WorkspaceContext value={store}>
-      <div className="app-shell">
-        <TopBar onHelp={openHelp} />
-        <WorkspacePanels />
-        <CommandPalette />
-        <ShortcutHelp open={helpOpen} onOpenChange={setHelpOpen} />
-      </div>
+      <TooltipProvider>
+        <div className="app-shell">
+          <TopBar onHelp={openHelp} />
+          <StorageBanner />
+          <WorkspacePanels />
+          <CommandPalette />
+          <AddRepositoryDialog />
+          <ShortcutHelp open={helpOpen} onOpenChange={setHelpOpen} />
+          <Toaster />
+        </div>
+      </TooltipProvider>
     </WorkspaceContext>
   );
 }

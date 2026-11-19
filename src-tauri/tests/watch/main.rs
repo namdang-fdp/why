@@ -13,8 +13,8 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use common::{TestRepo, test_runner};
-use tokio::sync::mpsc::Receiver;
-use why_lib::contracts::{RepoId, WorktreeChanged, WorktreeId};
+use tokio::sync::mpsc::{Receiver, UnboundedReceiver};
+use why_lib::contracts::{RepoId, RepositoryChanged, WorktreeChanged, WorktreeId};
 use why_lib::git;
 use why_lib::ipc::repos::{add_repository_impl, remove_repository_impl};
 use why_lib::state::AppState;
@@ -683,4 +683,116 @@ async fn moving_a_directory_with_a_gitignore_updates_the_rules() {
 
     w.repo.write("b/z.tmp", "z");
     assert_eq!(w.drain().await, vec![], "the rule moved with its directory");
+}
+
+// ---------------------------------------------------------------------------
+// Repository-scoped events: linked worktrees coming and going
+// ---------------------------------------------------------------------------
+
+/// Like `watch_any`, with the `repository-changed` stream too.
+async fn watch_repo_events(
+    repo: TestRepo,
+) -> (Watched, UnboundedReceiver<RepositoryChanged>, RepoId) {
+    let common = common_dir(&repo);
+    let repo_id = RepoId(git::repo_id(&common));
+    let store = Arc::new(MemoryRepoStore::new());
+    store
+        .insert(RepoRecord {
+            id: repo_id.clone(),
+            name: "repo".into(),
+            root_path: repo.path.clone(),
+            common_dir: common,
+        })
+        .unwrap();
+    let (hub, rx, repo_rx) =
+        WatchHub::start_with_repo_events(test_runner(), store as Arc<dyn RepoStore>, cfg());
+    hub.refresh().await; // the baseline: nothing is "changed" yet
+    let main_id = wt_id(&repo, &repo.path);
+    (
+        Watched {
+            repo,
+            hub,
+            rx,
+            main_id,
+        },
+        repo_rx,
+        repo_id,
+    )
+}
+
+async fn next_repo_event(rx: &mut UnboundedReceiver<RepositoryChanged>) -> RepositoryChanged {
+    tokio::time::timeout(EXPECT_WITHIN, rx.recv())
+        .await
+        .expect("timed out waiting for a repository-changed event")
+        .expect("hub channel closed")
+}
+
+async fn quiet(rx: &mut UnboundedReceiver<RepositoryChanged>) -> Vec<RepositoryChanged> {
+    let mut out = Vec::new();
+    while let Ok(Some(e)) = tokio::time::timeout(QUIET, rx.recv()).await {
+        out.push(e);
+    }
+    out
+}
+
+#[tokio::test]
+async fn adding_a_linked_worktree_announces_its_repository() {
+    let (w, mut repo_rx, repo_id) = watch_repo_events(TestRepo::with_initial_commit()).await;
+    assert_eq!(
+        quiet(&mut repo_rx).await,
+        vec![],
+        "the baseline is not a change"
+    );
+
+    w.repo.add_worktree("feature", "feature");
+
+    assert_eq!(
+        next_repo_event(&mut repo_rx).await,
+        RepositoryChanged { repo_id }
+    );
+}
+
+#[tokio::test]
+async fn removing_a_linked_worktree_announces_its_repository() {
+    let repo = TestRepo::with_initial_commit();
+    let wt_path = repo.add_worktree("gone", "gone");
+    let (w, mut repo_rx, repo_id) = watch_repo_events(repo).await;
+    assert_eq!(quiet(&mut repo_rx).await, vec![]);
+
+    w.repo.git([
+        std::ffi::OsStr::new("worktree"),
+        std::ffi::OsStr::new("remove"),
+        wt_path.as_os_str(),
+    ]);
+
+    assert_eq!(
+        next_repo_event(&mut repo_rx).await,
+        RepositoryChanged { repo_id }
+    );
+}
+
+#[tokio::test]
+async fn deleting_a_worktree_directory_announces_its_repository() {
+    // Not `git worktree remove`: the directory just disappears, git still lists
+    // it (prunable) and the watcher stops watching it.
+    let repo = TestRepo::with_initial_commit();
+    let wt_path = repo.add_worktree("vanished", "vanished");
+    let (_w, mut repo_rx, repo_id) = watch_repo_events(repo).await;
+    assert_eq!(quiet(&mut repo_rx).await, vec![]);
+
+    std::fs::remove_dir_all(&wt_path).unwrap();
+
+    assert_eq!(
+        next_repo_event(&mut repo_rx).await,
+        RepositoryChanged { repo_id }
+    );
+}
+
+#[tokio::test]
+async fn ordinary_edits_and_commits_do_not_announce_the_repository() {
+    let (mut w, mut repo_rx, _) = watch_repo_events(TestRepo::with_initial_commit()).await;
+    w.repo.write("README.md", "edited\n");
+    w.repo.git(["commit", "-q", "-am", "edit"]);
+    w.wait_for(refetch_all_for(&w.main_id.clone())).await;
+    assert_eq!(quiet(&mut repo_rx).await, vec![]);
 }

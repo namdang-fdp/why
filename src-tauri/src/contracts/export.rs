@@ -17,8 +17,8 @@ use anyhow::{Context, Result};
 use ts_rs::{Config, TS};
 
 use super::{
-    DiffMode, FileChange, FileDiff, IpcError, Repository, WORKTREE_CHANGED_EVENT, Worktree,
-    WorktreeChanged,
+    DiffMode, FileChange, FileDiff, IpcError, REPOSITORY_CHANGED_EVENT, Repository,
+    RepositoryChanged, StorageStatus, WORKTREE_CHANGED_EVENT, Worktree, WorktreeChanged,
 };
 
 /// Where the committed bindings live, relative to this crate (`src-tauri/`).
@@ -38,13 +38,17 @@ fn export_all(dir: &Path) -> Result<()> {
     FileChange::export_all(&cfg)?;
     FileDiff::export_all(&cfg)?;
     WorktreeChanged::export_all(&cfg)?;
+    RepositoryChanged::export_all(&cfg)?;
     IpcError::export_all(&cfg)?;
+    StorageStatus::export_all(&cfg)?;
 
     const NOTE: &str = "// This file was generated from the Rust contracts in src-tauri/src/contracts. Do not edit it manually.\n// Regenerate with `pnpm gen:contracts`.\n";
 
     fs::write(
         dir.join("events.ts"),
-        format!("{NOTE}\nexport const WORKTREE_CHANGED_EVENT = \"{WORKTREE_CHANGED_EVENT}\";\n"),
+        format!(
+            "{NOTE}\nexport const WORKTREE_CHANGED_EVENT = \"{WORKTREE_CHANGED_EVENT}\";\nexport const REPOSITORY_CHANGED_EVENT = \"{REPOSITORY_CHANGED_EVENT}\";\n"
+        ),
     )?;
 
     // Barrel: one `export type` line per generated type file, sorted for stable output.

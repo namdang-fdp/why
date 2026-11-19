@@ -52,6 +52,31 @@ describe("diff model ownership", () => {
     expect(live.size).toBe(0);
   });
 
+  it("rewrites the models in place when the same file's content changes", () => {
+    const { create, attach, live } = fakeMonaco();
+    const update = vi.fn();
+    const manager = createModelManager(create, attach, update);
+    expect(manager.show({ worktreeId: "w", mode: "vsBase", diff: modifiedFile })).toBe(true);
+    const keys = [...live];
+
+    const edited = { ...modifiedFile, newContent: "after, edited" };
+    expect(manager.show({ worktreeId: "w", mode: "vsBase", diff: edited })).toBe(false);
+    // Same models, only the changed side touched, nothing re-attached.
+    expect([...live]).toEqual(keys);
+    expect(create).toHaveBeenCalledTimes(2);
+    expect(attach).toHaveBeenCalledTimes(1);
+    expect(update).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ value: "after" }),
+      "after, edited",
+    );
+
+    // A different file (or mode, or worktree) still replaces the pair.
+    const other = { ...edited, path: "src/other.ts" };
+    expect(manager.show({ worktreeId: "w", mode: "vsBase", diff: other })).toBe(true);
+    expect(manager.show({ worktreeId: "w", mode: "staged", diff: other })).toBe(true);
+    expect(create).toHaveBeenCalledTimes(6);
+  });
+
   it("includes worktree, Git mode, side and path in model identity", () => {
     const { create, attach, live } = fakeMonaco();
     const manager = createModelManager(create, attach);

@@ -1,282 +1,125 @@
-import { useEffect, useRef, useState } from "react";
-import {
-  Archive,
-  ArrowRight,
-  Binary,
-  ChevronDown,
-  ChevronRight,
-  FileWarning,
-  FolderGit2,
-  GitBranch,
-  Lock,
-  SquareDashed,
-} from "lucide-react";
-import type { FileChange, RepoId, Worktree } from "@/contracts";
-import { selectChanges, selectWorktrees } from "@/stores/workspace";
-import { useWorkspace } from "@/stores/workspace-context";
-import { ErrorMessage, LoadingMessage } from "./async-message";
-import {
-  BranchDivergence,
-  ChangeStatusBadge,
-  LineCounts,
-  branchLabel,
-  displayPath,
-  worktreeName,
-} from "./change-labels";
+import { useEffect, useState } from "react";
+import { useGroupRef, usePanelRef } from "react-resizable-panels";
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
+import { saveLayout, usePanelLayout } from "@/hooks/use-panel-layout";
+import { ChangedFiles } from "./rail-files";
+import { RailFilter } from "./rail-filter";
+import { Repositories } from "./rail-repositories";
 
-function RowMarker({ label, Icon }: { label: string; Icon: typeof Lock }) {
-  return (
-    <span className="worktree-marker" title={label}>
-      <Icon size={12} aria-hidden />
-      <span className="sr-only">{label}</span>
-    </span>
-  );
-}
+const layoutKey = "why:rail-sections:v1";
+const collapsedKey = "why:rail-collapsed:v1";
+const defaultLayout = { repos: 46, files: 54 };
+/** A collapsed section is its header: keep in step with `--pane-header` in the CSS. */
+const HEADER_PX = 40;
+const MIN_PX = 120;
 
-function WorktreeRow({ worktree, selected }: { worktree: Worktree; selected: boolean }) {
-  const select = useWorkspace((state) => state.selectWorktree);
-  return (
-    <button
-      type="button"
-      className="rail-row worktree-row"
-      aria-current={selected || undefined}
-      title={worktree.path}
-      onClick={() => void select(worktree)}
-    >
-      <GitBranch size={14} className="worktree-icon" aria-hidden />
-      <span className="worktree-text">
-        <span className="worktree-title">
-          <span className="truncate">{worktreeName(worktree)}</span>
-          {worktree.isMain && <RowMarker Icon={SquareDashed} label="Main" />}
-          {worktree.isLocked && <RowMarker Icon={Lock} label="Locked" />}
-          {worktree.isPrunable && <RowMarker Icon={Archive} label="Prunable" />}
-        </span>
-        <span className="worktree-ref">
-          <span className="truncate">{branchLabel(worktree)}</span>
-          {worktree.base && (
-            <>
-              <ArrowRight size={11} aria-hidden />
-              <span className="truncate">{worktree.base.baseRef}</span>
-            </>
-          )}
-        </span>
-      </span>
-      <span className="worktree-stats">
-        <span className="count-badge" aria-label={`${worktree.changeCount} changed files`}>
-          {worktree.changeCount}
-        </span>
-        {worktree.base && <BranchDivergence base={worktree.base} />}
-      </span>
-    </button>
-  );
-}
+type Collapsed = { repos: boolean; files: boolean };
 
-const collapsedReposKey = "why:collapsed-repositories:v1";
-
-function readCollapsedRepos(): ReadonlySet<RepoId> {
+function readCollapsed(): Collapsed {
   try {
-    const saved: unknown = JSON.parse(window.localStorage.getItem(collapsedReposKey) ?? "[]");
-    if (Array.isArray(saved)) {
-      return new Set(saved.filter((id): id is RepoId => typeof id === "string"));
+    const saved: unknown = JSON.parse(window.localStorage.getItem(collapsedKey) ?? "{}");
+    if (typeof saved === "object" && saved !== null) {
+      const repos = Reflect.get(saved, "repos") === true;
+      const files = Reflect.get(saved, "files") === true;
+      // Never both: the rail would be two headers and nothing else.
+      if (!(repos && files)) return { repos, files };
     }
   } catch {
-    // Start with every repository open if storage cannot be read.
+    // Fall through to "both open".
   }
-  return new Set();
+  return { repos: false, files: false };
 }
 
-function Repositories() {
-  const repositories = useWorkspace((state) => state.repositories);
-  const activeRepo = useWorkspace((state) => state.repoId);
-  const activeWorktree = useWorkspace((state) => state.worktreeId);
-  const activeWorktrees = useWorkspace(selectWorktrees);
-  const worktreeLists = useWorkspace((state) => state.worktrees);
-  const retryWorktrees = useWorkspace((state) => state.retryWorktrees);
-  const loadRepositories = useWorkspace((state) => state.loadRepositories);
-  const [collapsedRepos, setCollapsedRepos] = useState(readCollapsedRepos);
-  const rows = useRef<HTMLDivElement>(null);
+/**
+ * The rail: a filter, then two sections (Repositories, Changed files) in a
+ * vertical resizable split. Drag the hairline between them (or focus it and use
+ * the arrow keys); double-click resets it. Each section's title folds it to its
+ * header and the other takes the space. Sizes and folds are remembered.
+ */
+export function LeftRail() {
+  const sizes = usePanelLayout(layoutKey, defaultLayout);
+  const group = useGroupRef();
+  const repos = usePanelRef();
+  const files = usePanelRef();
+  const [collapsed, setCollapsed] = useState(readCollapsed);
 
+  // Re-apply a remembered fold once the panels exist.
   useEffect(() => {
-    rows.current?.querySelector("[aria-current=true]")?.scrollIntoView?.({ block: "nearest" });
-  }, [activeRepo, activeWorktree, activeWorktrees]);
+    if (collapsed.repos) repos.current?.collapse();
+    if (collapsed.files) files.current?.collapse();
+    // Only on mount: later folds come from the user and are applied directly.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  function toggleRepo(id: RepoId) {
-    const next = new Set(collapsedRepos);
-    if (!next.delete(id)) next.add(id);
-    setCollapsedRepos(next);
+  function remember(next: Collapsed) {
+    setCollapsed(next);
     try {
-      window.localStorage.setItem(collapsedReposKey, JSON.stringify([...next]));
+      window.localStorage.setItem(collapsedKey, JSON.stringify(next));
     } catch {
-      // Keep the disclosure state for this session if storage is unavailable.
+      // Keep the fold for this session.
     }
   }
 
-  return (
-    <section className="repository-section" aria-labelledby="repositories-heading">
-      <div className="rail-heading">
-        <h2 id="repositories-heading">Repositories</h2>
-        {repositories.status === "ok" && (
-          <span className="rail-total">{repositories.data.length}</span>
-        )}
-      </div>
-      <div className="rail-scroll" ref={rows}>
-        {(repositories.status === "loading" || repositories.status === "idle") && (
-          <LoadingMessage>Loading repositories…</LoadingMessage>
-        )}
-        {repositories.status === "error" && (
-          <ErrorMessage error={repositories.error} retry={() => void loadRepositories()} />
-        )}
-        {repositories.status === "ok" &&
-          (repositories.data.length === 0 ? (
-            <p className="rail-note">No repositories registered.</p>
-          ) : (
-            <ul className="repo-list">
-              {repositories.data.map((repo) => {
-                const active = repo.id === activeRepo;
-                const expanded = !collapsedRepos.has(repo.id);
-                const worktrees = worktreeLists.get(repo.id);
-                return (
-                  <li key={repo.id}>
-                    <button
-                      type="button"
-                      className="rail-row repository-row"
-                      aria-expanded={expanded}
-                      aria-current={active && !expanded ? true : undefined}
-                      data-active={active}
-                      title={repo.rootPath}
-                      onClick={() => toggleRepo(repo.id)}
-                    >
-                      {expanded ? (
-                        <ChevronDown size={13} aria-hidden />
-                      ) : (
-                        <ChevronRight size={13} aria-hidden />
-                      )}
-                      <FolderGit2 size={15} aria-hidden />
-                      <span className="truncate">{repo.name}</span>
-                    </button>
-                    {expanded && (
-                      <>
-                        {(!worktrees || worktrees.status === "loading") && (
-                          <LoadingMessage>Loading worktrees…</LoadingMessage>
-                        )}
-                        {worktrees?.status === "error" && (
-                          <ErrorMessage
-                            error={worktrees.error}
-                            retry={() => void retryWorktrees(repo.id)}
-                          />
-                        )}
-                        {worktrees?.status === "ok" &&
-                          (worktrees.data.length === 0 ? (
-                            <p className="rail-note">No worktrees found.</p>
-                          ) : (
-                            <ul className="worktree-list" aria-label={`Worktrees in ${repo.name}`}>
-                              {worktrees.data.map((worktree) => (
-                                <li key={worktree.id}>
-                                  <WorktreeRow
-                                    worktree={worktree}
-                                    selected={activeWorktree === worktree.id}
-                                  />
-                                </li>
-                              ))}
-                            </ul>
-                          ))}
-                      </>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          ))}
-      </div>
-    </section>
-  );
-}
+  // A section can also fold or open by dragging the hairline past its minimum.
+  function sync() {
+    const next = {
+      repos: repos.current?.isCollapsed() ?? false,
+      files: files.current?.isCollapsed() ?? false,
+    };
+    if (next.repos !== collapsed.repos || next.files !== collapsed.files) remember(next);
+  }
 
-function PathPart({ path }: { path: string }) {
-  const nameIndex = path.lastIndexOf("/") + 1;
-  return (
-    <span className="path-part">
-      <span className="path-directory">{path.slice(0, nameIndex)}</span>
-      <span className="path-basename">{path.slice(nameIndex)}</span>
-    </span>
-  );
-}
+  function toggle(which: keyof Collapsed) {
+    const [mine, other] = which === "repos" ? [repos, files] : [files, repos];
+    if (collapsed[which]) {
+      mine.current?.expand();
+      remember({ ...collapsed, [which]: false });
+    } else {
+      // Folding the last open section would leave two bare headers: open the other first.
+      if (collapsed[which === "repos" ? "files" : "repos"]) other.current?.expand();
+      mine.current?.collapse();
+      remember({ repos: which === "repos", files: which === "files" });
+    }
+  }
 
-function FileRow({ file, selected }: { file: FileChange; selected: boolean }) {
-  const selectFile = useWorkspace((state) => state.selectFile);
-  return (
-    <button
-      type="button"
-      className="rail-row file-row"
-      aria-current={selected || undefined}
-      title={displayPath(file)}
-      onClick={() => void selectFile(file.path)}
-    >
-      <ChangeStatusBadge status={file.status} />
-      <span className="file-path">
-        {file.oldPath && (
-          <span className="file-old-path">
-            <PathPart path={file.oldPath} /> <span aria-hidden>→</span>
-          </span>
-        )}
-        <PathPart path={file.path} />
-      </span>
-      <span className="file-markers">
-        {file.binary && <RowMarker Icon={Binary} label="Binary file" />}
-        {file.pathLossy && <RowMarker Icon={FileWarning} label="Lossy path" />}
-        <LineCounts file={file} />
-      </span>
-    </button>
-  );
-}
+  function reset() {
+    group.current?.setLayout(defaultLayout);
+    saveLayout(layoutKey, defaultLayout);
+    remember({ repos: false, files: false });
+  }
 
-function ChangedFiles() {
-  const changes = useWorkspace(selectChanges);
-  const selectedPath = useWorkspace((state) => state.filePath);
-  const retry = useWorkspace((state) => state.retryChanges);
-  const rows = useRef<HTMLUListElement>(null);
-
-  useEffect(() => {
-    const list = rows.current;
-    const selection = list?.querySelector<HTMLButtonElement>("[aria-current=true]");
-    selection?.scrollIntoView?.({ block: "nearest" });
-    if (list?.contains(document.activeElement)) selection?.focus({ preventScroll: true });
-  }, [selectedPath, changes]);
-
-  return (
-    <section className="files-section" aria-labelledby="files-heading">
-      <div className="rail-heading">
-        <h2 id="files-heading">Changed files</h2>
-        {changes.status === "ok" && <span className="rail-total">{changes.data.length}</span>}
-      </div>
-      <div className="rail-scroll">
-        {changes.status === "idle" && <p className="rail-note">Select a worktree.</p>}
-        {changes.status === "loading" && <LoadingMessage>Loading changes…</LoadingMessage>}
-        {changes.status === "error" && (
-          <ErrorMessage error={changes.error} retry={() => void retry()} />
-        )}
-        {changes.status === "ok" &&
-          (changes.data.length === 0 ? (
-            <p className="rail-note">No changes in this mode.</p>
-          ) : (
-            <ul id="changed-file-list" className="file-list" aria-label="Changed files" ref={rows}>
-              {changes.data.map((file) => (
-                <li key={file.path}>
-                  <FileRow file={file} selected={file.path === selectedPath} />
-                </li>
-              ))}
-            </ul>
-          ))}
-      </div>
-    </section>
-  );
-}
-
-export function LeftRail() {
   return (
     <nav aria-label="Review navigation" className="left-rail">
-      <Repositories />
-      <ChangedFiles />
+      <RailFilter />
+      <div className="rail-sections">
+        <ResizablePanelGroup id="rail-sections" orientation="vertical" groupRef={group} {...sizes}>
+          <ResizablePanel
+            id="repos"
+            panelRef={repos}
+            collapsible
+            collapsedSize={HEADER_PX}
+            minSize={MIN_PX}
+            onResize={sync}
+          >
+            <Repositories expanded={!collapsed.repos} onToggle={() => toggle("repos")} />
+          </ResizablePanel>
+          <ResizableHandle
+            aria-label="Resize repositories and changed files"
+            title="Drag to resize, double-click to reset"
+            onDoubleClick={reset}
+          />
+          <ResizablePanel
+            id="files"
+            panelRef={files}
+            collapsible
+            collapsedSize={HEADER_PX}
+            minSize={MIN_PX}
+            onResize={sync}
+          >
+            <ChangedFiles expanded={!collapsed.files} onToggle={() => toggle("files")} />
+          </ResizablePanel>
+        </ResizablePanelGroup>
+      </div>
     </nav>
   );
 }

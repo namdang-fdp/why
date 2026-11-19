@@ -10,7 +10,8 @@
 //! * [`notifying_store`]: a `RepoStore` decorator that wakes the hub when a
 //!   repository is added or removed.
 //! * [`start_for_app`]: the thin Tauri adapter that emits those values as the
-//!   `worktree-changed` event.
+//!   `worktree-changed` event, and worktree-membership changes of a repository
+//!   as `repository-changed`.
 //!
 //! The watcher only ever reads: it never writes inside a watched repository and
 //! only runs read-only git commands (`worktree list`, `rev-parse`) through the
@@ -31,7 +32,7 @@ pub use debounce::{DebounceConfig, RawChange};
 pub use hub::{ResyncHandle, WatchConfig, WatchHub};
 pub use notifying_store::NotifyingRepoStore;
 
-use crate::contracts::{WORKTREE_CHANGED_EVENT, WorktreeChanged};
+use crate::contracts::{REPOSITORY_CHANGED_EVENT, WORKTREE_CHANGED_EVENT, WorktreeChanged};
 use crate::git::GitRunner;
 use crate::store::RepoStore;
 
@@ -46,7 +47,17 @@ use crate::store::RepoStore;
 /// Pass a clone of the app's one `GitRunner` (clones share its semaphore, so
 /// the watcher's git calls count against the same global cap).
 pub fn start_for_app(app: &AppHandle, git: GitRunner, store: Arc<dyn RepoStore>) -> ResyncHandle {
-    let (hub, mut events) = WatchHub::start(git, store, WatchConfig::default());
+    let (hub, mut events, mut repo_events) =
+        WatchHub::start_with_repo_events(git, store, WatchConfig::default());
+    let repo_handle = app.clone();
+    tauri::async_runtime::spawn(async move {
+        while let Some(ev) = repo_events.recv().await {
+            tracing::debug!(repo = %ev.repo_id.0, "emit {REPOSITORY_CHANGED_EVENT}");
+            if let Err(e) = repo_handle.emit(REPOSITORY_CHANGED_EVENT, &ev) {
+                tracing::warn!(%e, "cannot emit {REPOSITORY_CHANGED_EVENT}");
+            }
+        }
+    });
     let handle = app.clone();
     tauri::async_runtime::spawn(async move {
         while let Some(ev) = events.recv().await {

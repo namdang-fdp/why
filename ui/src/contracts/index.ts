@@ -10,6 +10,8 @@ export type { FileDiff } from "./FileDiff";
 export type { IpcError } from "./IpcError";
 export type { RepoId } from "./RepoId";
 export type { Repository } from "./Repository";
+export type { RepositoryChanged } from "./RepositoryChanged";
+export type { StorageStatus } from "./StorageStatus";
 export type { Worktree } from "./Worktree";
 export type { WorktreeChanged } from "./WorktreeChanged";
 export type { WorktreeId } from "./WorktreeId";

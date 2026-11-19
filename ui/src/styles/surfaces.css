@@ -1,0 +1,437 @@
+/*
+ * Shell surfaces added or refined for the live app: the sliding selection
+ * highlight, row flash for live updates, collapsible sections, skeleton
+ * shimmer, storage banner and onboarding.
+ *
+ * Motion spec (all `transform`/`opacity` only):
+ *   selection highlight   160ms ease-out   translateY + height of one bar
+ *   section expand/close  200ms ease-out   grid-template-rows 0fr <-> 1fr
+ *   chevron               160ms ease-out   rotate 90deg
+ *   live-update flash     700ms ease-out   opacity 0.14 -> 0
+ *   skeleton shimmer      1.6s  linear     translateX of a soft band, looped
+ *   onboarding            240ms ease-out   opacity + translateY(6px), staggered 40ms
+ */
+
+/* ---- sliding selection highlight ----------------------------------------- */
+
+.file-list,
+.worktree-list {
+  position: relative;
+}
+
+.slide-highlight {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--shell-selected);
+  opacity: 0;
+  pointer-events: none;
+}
+.slide-highlight[data-visible="true"] {
+  opacity: 1;
+}
+.slide-highlight[data-ready] {
+  transition:
+    transform var(--dur) var(--ease-out),
+    height var(--dur) var(--ease-out),
+    width var(--dur) var(--ease-out),
+    opacity var(--dur-fast) var(--ease-out);
+}
+
+/* The bar draws the selected look, so the row itself only keeps its text weight. */
+/* Higher specificity than `.rail-row[aria-current]` in index.css, which loads later. */
+.rail-row.worktree-row[aria-current="true"],
+.rail-row.file-row[aria-current="true"] {
+  background: transparent;
+  border-color: transparent;
+}
+.worktree-list li:not(.slide-highlight),
+.file-list li:not(.slide-highlight) {
+  position: relative;
+}
+
+/* ---- rows ---------------------------------------------------------------- */
+
+.rail-row {
+  position: relative;
+  transition: background-color var(--dur-fast) var(--ease-out);
+}
+.rail-row:hover:active {
+  background: var(--shell-selected);
+}
+
+.repo-head {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.repo-head .repository-row {
+  flex: 1;
+  padding-right: 30px;
+}
+.repository-row .disclosure {
+  transition: rotate var(--dur) var(--ease-out);
+}
+.repository-row[aria-expanded="true"] .disclosure {
+  rotate: 90deg;
+}
+
+/* Visible on hover, keyboard focus and while its menu is open. */
+.row-action {
+  position: absolute;
+  right: 4px;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 5px;
+  color: var(--muted-foreground);
+  opacity: 0;
+  transition:
+    opacity var(--dur-fast) var(--ease-out),
+    background-color var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out);
+}
+.repo-head:hover .row-action,
+.repo-head:focus-within .row-action,
+.repo-head[data-menu-open] .row-action {
+  opacity: 1;
+}
+.row-action:hover,
+.row-action[data-state="open"] {
+  background: oklch(1 0 0 / 8%);
+  color: var(--foreground);
+}
+@media (hover: none) {
+  .row-action {
+    opacity: 1;
+  }
+}
+
+.worktree-warning {
+  color: var(--git-modified);
+  border-radius: 3px;
+}
+.worktree-row:has(.worktree-warning) .worktree-ref {
+  opacity: 0.7;
+}
+
+/* A file touched by a live update lights up, then fades (see `flashes` in the store). */
+.row-flash {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--foreground);
+  opacity: 0;
+  pointer-events: none;
+  animation: row-flash 700ms var(--ease-out);
+}
+@keyframes row-flash {
+  from {
+    opacity: 0.14;
+  }
+}
+
+.rail-heading-end {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: -6px;
+}
+.rail-heading-end .rail-total {
+  min-width: 14px;
+  text-align: right;
+}
+
+/* ---- collapsible --------------------------------------------------------- */
+
+.collapsible {
+  display: grid;
+  grid-template-rows: 1fr;
+}
+.collapsible[data-state="closed"] {
+  grid-template-rows: 0fr;
+}
+.collapsible[data-animate] {
+  transition: grid-template-rows var(--dur-slow) var(--ease-out);
+}
+.collapsible[data-animate][data-state="open"] {
+  animation: collapsible-open var(--dur-slow) var(--ease-out);
+}
+@keyframes collapsible-open {
+  from {
+    grid-template-rows: 0fr;
+  }
+}
+.collapsible-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+.collapsible[data-state="closed"] .collapsible-inner {
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease-in);
+}
+
+/* ---- loading ------------------------------------------------------------- */
+
+.rail-note[role="status"] {
+  animation: breathe 1.6s ease-in-out infinite;
+}
+@keyframes breathe {
+  50% {
+    opacity: 0.45;
+  }
+}
+
+.diff-skeleton > [aria-hidden="true"] {
+  position: relative;
+  overflow: hidden;
+}
+.diff-skeleton > [aria-hidden="true"]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, oklch(1 0 0 / 7%), transparent);
+  translate: -100% 0;
+  animation: shimmer 1.6s linear infinite;
+}
+@keyframes shimmer {
+  to {
+    translate: 100% 0;
+  }
+}
+
+/* ---- storage banner ------------------------------------------------------ */
+
+.storage-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 16px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in oklch, var(--git-modified) 7%, var(--shell-chrome));
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 18px;
+}
+.storage-banner svg {
+  flex: none;
+  color: var(--git-modified);
+}
+.storage-banner strong {
+  color: var(--foreground);
+  font-weight: 550;
+}
+.storage-banner p {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* ---- onboarding ---------------------------------------------------------- */
+
+.onboarding {
+  display: grid;
+  flex: 1;
+  min-height: 0;
+  place-items: center;
+  padding: 24px;
+  overflow: auto;
+  background: var(--background);
+}
+.onboarding-card {
+  display: grid;
+  justify-items: start;
+  gap: 12px;
+  max-width: 420px;
+}
+.onboarding-card > * {
+  animation: rise 240ms var(--ease-out) backwards;
+}
+.onboarding-card > :nth-child(2) {
+  animation-delay: 40ms;
+}
+.onboarding-card > :nth-child(3) {
+  animation-delay: 80ms;
+}
+.onboarding-card > :nth-child(4) {
+  animation-delay: 120ms;
+}
+.onboarding-card > :nth-child(5) {
+  animation-delay: 160ms;
+}
+@keyframes rise {
+  from {
+    opacity: 0;
+    translate: 0 6px;
+  }
+}
+.onboarding-mark {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  margin-bottom: 4px;
+  border: 1px solid var(--input);
+  border-radius: 10px;
+  background: var(--shell-hover);
+}
+.onboarding h2 {
+  font-size: 20px;
+  line-height: 26px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+.onboarding-lead {
+  color: var(--muted-foreground);
+  font-size: 14px;
+  line-height: 1.6;
+}
+.onboarding-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+}
+.onboarding-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+.onboarding-note {
+  padding-top: 12px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+/* ---- top bar: the base readout is a button ------------------------------- */
+
+button.branch-summary {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  margin-left: 0;
+  padding: 4px 8px;
+  border: 1px solid transparent;
+  border-left: none;
+  border-radius: 6px;
+  text-align: left;
+  transition:
+    background-color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out);
+}
+button.branch-summary::before {
+  content: "";
+  position: absolute;
+  left: -9px;
+  top: 4px;
+  bottom: 4px;
+  width: 1px;
+  background: var(--border);
+}
+button.branch-summary:hover,
+button.branch-summary[data-state="open"] {
+  background: var(--shell-hover);
+  border-color: var(--border);
+}
+.branch-summary-empty {
+  color: var(--muted-foreground);
+  text-decoration: underline;
+  text-decoration-color: oklch(1 0 0 / 25%);
+  text-underline-offset: 3px;
+}
+
+/* Digits keep their width while counts and line totals update live. */
+.count-badge,
+.line-counts,
+.rail-total,
+.branch-divergence,
+kbd {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- error panels: a human headline, the technical kind as quiet detail --- */
+
+.error-heading strong {
+  font-weight: 550;
+}
+.error-context {
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+.error-kind {
+  color: var(--muted-foreground);
+  font: 10.5px/1.4 var(--font-mono);
+  opacity: 0.8;
+}
+
+/* ---- layout rhythm ---------------------------------------------------------- */
+
+:root {
+  /* Every pane header (rail, diff, inspector) shares this height. */
+  --pane-header: 40px;
+}
+
+/* ---- the diff viewer: two editors, one in front ------------------------------ */
+/*
+ * The file on screen stays in front while the next one is built behind it, and the
+ * two swap when the new one is ready (see `buffered-diff.ts`). Motion: the new
+ * front fades in over 80 ms; the old one stays opaque underneath for 160 ms,
+ * then is hidden, so there is never a dip to the background. Reduced motion
+ * removes the fade (the swap is then instant).
+ */
+
+.diff-editor-stack {
+  transition: opacity var(--dur-slow) var(--ease-out);
+}
+/* The previous file, dimmed a little while a slow next one is loading. */
+.diff-editor-stack[data-stale] {
+  opacity: 0.55;
+}
+
+.diff-editor-host {
+  z-index: 1;
+  opacity: 1;
+}
+.diff-editor-host[data-front="true"] {
+  z-index: 2;
+  animation: diff-reveal 80ms var(--ease-out);
+}
+.diff-editor-host[data-front="false"] {
+  opacity: 0;
+  pointer-events: none;
+  /* Stay visible while the new front fades in, then vanish. */
+  transition: opacity 0s linear 160ms;
+}
+@keyframes diff-reveal {
+  from {
+    opacity: 0;
+  }
+}
+
+.diff-content,
+.diff-body > .diff-skeleton {
+  z-index: 3;
+}
+
+/* ---- pane header chips (Staged / Unstaged), inline with the file name -------- */
+
+.diff-chips {
+  display: flex;
+  flex: none;
+  gap: 4px;
+}
+.diff-chips span {
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  line-height: 16px;
+}

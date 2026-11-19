@@ -14,3 +14,14 @@ only call Rust and Tauri APIs that some capability allows.
 - Anything powerful (reading repos, running `git`) will happen in the Rust
   core behind our own commands, not by handing the webview fs/shell plugins.
   Add permissions here only when a task needs them, one by one.
+
+## The dialog plugin is registered but not granted
+
+`tauri-plugin-dialog` is a dependency and is registered in `lib.rs`, but
+`default.json` deliberately lists **no** `dialog:*` permission. The folder
+picker is reachable only through our own command, `pick_repository_folder`
+(`src/ipc/dialog.rs`), which hard-codes the options and returns just a path.
+If the webview could call the plugin directly it could open any dialog with
+any options (save dialogs, message boxes, file filters). Granting the narrow
+capability is not possible anyway: the plugin's permissions are per plugin
+command, and `dialog:allow-open` exposes all of `open()`'s options.

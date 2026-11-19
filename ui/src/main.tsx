@@ -12,6 +12,16 @@ favicon.href =
   );
 document.head.append(favicon);
 
+// Dev only: `VITE_WHY_BENCH=1 pnpm dev` times file switching (see dev/bench.ts).
+if (import.meta.env.DEV && import.meta.env.VITE_WHY_BENCH) {
+  void import("@/dev/bench").then(({ runBench }) =>
+    runBench().catch((error: unknown) => {
+      console.error("bench failed", error);
+      void fetch("/__why_perf", { method: "POST", body: JSON.stringify({ error: String(error) }) });
+    }),
+  );
+}
+
 const root = document.getElementById("root");
 if (!root) throw new Error("#root element missing from index.html");
 

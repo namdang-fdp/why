@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 #[cfg(test)]
 use ts_rs::TS;
 
+use super::error::IpcError;
 use super::ids::{RepoId, WorktreeId};
 
 // Number types: every count below is `u32`. ts-rs maps `u32` to TypeScript `number`
@@ -46,6 +47,18 @@ pub struct Worktree {
     /// list. Counted like `get_changes` with `DiffMode::VsBase`, or with
     /// `DiffMode::Uncommitted` when `base` is `None`.
     pub change_count: u32,
+    /// Why this worktree could not be measured (a corrupt `.git` file, a git
+    /// timeout, ...); `None` when it was. The worktree is still listed, with
+    /// `base: None` and `change_count: 0`, so the UI can tell "broken" from
+    /// "clean" and offer the message. Per worktree, so one broken checkout never
+    /// hides the healthy ones.
+    pub load_error: Option<IpcError>,
+    /// When something last happened in this worktree, as Unix seconds: the newest
+    /// of the modification times of its changed files (the first 100) and of its
+    /// HEAD log (last commit or checkout). `None` when unknown (the directory is
+    /// gone, or the worktree could not be read). Used to order worktrees by
+    /// recent activity and to show "2m ago"; it is a hint, not a record.
+    pub last_activity: Option<u32>,
 }
 
 /// A worktree's position relative to its base ref.

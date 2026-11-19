@@ -169,17 +169,14 @@ async fn status_does_not_rewrite_the_index() {
 #[cfg(unix)]
 #[tokio::test]
 async fn status_never_runs_a_configured_fsmonitor_hook() {
-    use std::os::unix::fs::PermissionsExt;
-
     let repo = TestRepo::with_initial_commit();
     let marker = repo.base().join("fsmonitor-ran");
     let hook = repo.base().join("fsmonitor-hook.sh");
-    std::fs::write(
+    // Git executes the hook, so it must not be "text file busy" (see the helper).
+    crate::common::write_executable_script(
         &hook,
-        format!("#!/bin/sh\ntouch '{}'\nexit 0\n", marker.display()),
-    )
-    .unwrap();
-    std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
+        &format!("touch '{}'\nexit 0\n", marker.display()),
+    );
     repo.git(["config", "core.fsmonitor", hook.to_str().unwrap()]);
 
     // Control: plain git DOES run the hook, so a green result below means something.
@@ -216,16 +213,12 @@ async fn reports_the_installed_git_version() {
 #[cfg(unix)]
 #[tokio::test]
 async fn old_git_is_rejected_before_any_repository_command() {
-    use std::os::unix::fs::PermissionsExt;
-
     let dir = tempfile::tempdir().unwrap();
     let old_git = dir.path().join("git");
-    std::fs::write(
+    crate::common::write_executable_script(
         &old_git,
-        "#!/bin/sh\nfor arg do :; done\nif [ \"$arg\" = --version ]; then\n  printf 'git version 2.45.0\\n'\nelse\n  exit 99\nfi\n",
-    )
-    .unwrap();
-    std::fs::set_permissions(&old_git, std::fs::Permissions::from_mode(0o700)).unwrap();
+        "for arg do :; done\nif [ \"$arg\" = --version ]; then\n  printf 'git version 2.45.0\\n'\nelse\n  exit 99\nfi\n",
+    );
     let err = crate::common::test_runner()
         .with_program(old_git)
         .run(dir.path(), ["status"])
