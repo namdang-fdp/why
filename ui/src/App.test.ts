@@ -175,7 +175,7 @@ describe("review shell", () => {
   });
 
   const humanMessages = {
-    notARepo: "This location is no longer a Git repository.",
+    notARepo: "This location is not a Git repository.",
     gitMissing: "Git is unavailable. Check that Git is installed and on your PATH.",
     gitFailed: "Git could not complete the request.",
     timeout: "The request took too long.",
@@ -184,11 +184,23 @@ describe("review shell", () => {
     internal: "WHY could not complete the request because of an internal error.",
   } satisfies Record<IpcError["kind"], string>;
 
+  const titles = {
+    notARepo: "Not a Git repository",
+    gitMissing: "Git isn't installed",
+    gitFailed: "Git couldn't read this",
+    timeout: "Git took too long",
+    notFound: "Not found",
+    invalidInput: "That isn't available",
+    internal: "Something went wrong inside WHY",
+  } satisfies Record<IpcError["kind"], string>;
+
   it.each(ipcErrors)("renders the $kind IPC error", async (error) => {
     const source = new FixtureDataSource();
     vi.spyOn(source, "listRepositories").mockRejectedValue(error);
     render(createElement(App, { store: createWorkspaceStore(source) }));
     const alert = await screen.findByRole("alert");
+    // A human headline first; the technical kind stays as secondary detail.
+    expect(within(alert).getByText(titles[error.kind])).toBeTruthy();
     expect(alert.textContent).toContain(error.kind);
     expect(alert.textContent).toContain(humanMessages[error.kind]);
     if ("message" in error) expect(alert.textContent).toContain(error.message);

@@ -1,17 +1,12 @@
-import {
-  ArrowRight,
-  ChevronRight,
-  CircleHelp,
-  GitBranch,
-  GitPullRequest,
-  PanelRight,
-  Search,
-} from "lucide-react";
+import { ChevronRight, CircleHelp, GitPullRequest, PanelRight, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Tip } from "@/components/ui/overlays";
 import { paletteKeys } from "@/hooks/use-workspace-shortcuts";
 import { diffModes, selectDiffMode, selectWorktree } from "@/stores/workspace";
 import { useWorkspace } from "@/stores/workspace-context";
-import { BranchDivergence, branchLabel, worktreeName } from "./change-labels";
+import { BaseSummary } from "./base-popover";
+import { EditorSettingsPopover } from "./editor-settings-popover";
+import { worktreeName } from "./change-labels";
 
 export function TopBar({ onHelp }: { onHelp: () => void }) {
   const repository = useWorkspace((state) =>
@@ -49,23 +44,7 @@ export function TopBar({ onHelp }: { onHelp: () => void }) {
           </>
         )}
       </nav>
-      {worktree && (
-        <div className="branch-summary" aria-label="Branch comparison">
-          <GitBranch size={14} aria-hidden />
-          <span className="truncate" title={branchLabel(worktree)}>
-            {branchLabel(worktree)}
-          </span>
-          {worktree.base && (
-            <>
-              <ArrowRight size={13} aria-hidden />
-              <span className="truncate" title={worktree.base.baseRef}>
-                {worktree.base.baseRef}
-              </span>
-              <BranchDivergence base={worktree.base} />
-            </>
-          )}
-        </div>
-      )}
+      {worktree && <BaseSummary worktree={worktree} />}
       <div className="top-controls">
         <div className="mode-control" role="group" aria-label="Diff mode">
           {diffModes.map(({ mode: value, label, key }) => (
@@ -91,7 +70,6 @@ export function TopBar({ onHelp }: { onHelp: () => void }) {
           aria-label="Search commands"
           aria-haspopup="dialog"
           aria-keyshortcuts="Meta+K Control+K"
-          title={`Search commands (${paletteKeys})`}
           variant="ghost"
           size="sm"
           className="command-trigger"
@@ -101,31 +79,34 @@ export function TopBar({ onHelp }: { onHelp: () => void }) {
           <span className="search-label">Search</span>
           <kbd aria-hidden>{paletteKeys}</kbd>
         </Button>
-        <Button
-          id="shell-help"
-          aria-label="Keyboard shortcuts"
-          aria-keyshortcuts="?"
-          aria-haspopup="dialog"
-          title="Keyboard shortcuts (?)"
-          variant="ghost"
-          size="icon-sm"
-          onClick={onHelp}
-        >
-          <CircleHelp aria-hidden />
-        </Button>
-        <Button
-          id="shell-inspector"
-          aria-label="Why inspector"
-          aria-expanded={inspectorOpen}
-          aria-controls={inspectorOpen ? "why-inspector" : undefined}
-          aria-keyshortcuts="I"
-          title={inspectorOpen ? "Hide Why inspector (i)" : "Show Why inspector (i)"}
-          variant={inspectorOpen ? "secondary" : "ghost"}
-          size="icon-sm"
-          onClick={toggleInspector}
-        >
-          <PanelRight aria-hidden />
-        </Button>
+        <EditorSettingsPopover />
+        <Tip label="Keyboard shortcuts" shortcut="?">
+          <Button
+            id="shell-help"
+            aria-label="Keyboard shortcuts"
+            aria-keyshortcuts="?"
+            aria-haspopup="dialog"
+            variant="ghost"
+            size="icon-sm"
+            onClick={onHelp}
+          >
+            <CircleHelp aria-hidden />
+          </Button>
+        </Tip>
+        <Tip label={inspectorOpen ? "Hide Why inspector" : "Show Why inspector"} shortcut="I">
+          <Button
+            id="shell-inspector"
+            aria-label="Why inspector"
+            aria-expanded={inspectorOpen}
+            aria-controls={inspectorOpen ? "why-inspector" : undefined}
+            aria-keyshortcuts="I"
+            variant={inspectorOpen ? "secondary" : "ghost"}
+            size="icon-sm"
+            onClick={toggleInspector}
+          >
+            <PanelRight aria-hidden />
+          </Button>
+        </Tip>
       </div>
     </header>
   );
