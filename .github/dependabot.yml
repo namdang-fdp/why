@@ -1,0 +1,44 @@
+version: 2
+updates:
+  # Rust crates. The Cargo manifest lives in src-tauri/, not the repo root.
+  - package-ecosystem: cargo
+    directory: /src-tauri
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      # Tauri crates must move together. Keep them out of the catch-all so a minor bump of one
+      # does not land without the others.
+      tauri:
+        patterns: ["tauri", "tauri-*"]
+      rust-minor-patch:
+        patterns: ["*"]
+        exclude-patterns: ["tauri", "tauri-*"]
+        update-types: ["minor", "patch"]
+
+  # JavaScript packages (pnpm lockfile at the repo root).
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      # The npm Tauri packages must stay in step with the Rust `tauri` crate version.
+      tauri:
+        patterns: ["@tauri-apps/*"]
+      npm-minor-patch:
+        patterns: ["*"]
+        exclude-patterns: ["@tauri-apps/*"]
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "chore(ci)"
+    groups:
+      actions:
+        patterns: ["*"]

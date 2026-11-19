@@ -1,0 +1,35 @@
+name: Agent harness support request
+description: Ask WHY to understand sessions from another coding agent
+labels: ["agent-support"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        WHY is meant to be harness-agnostic. Claude Code and Codex adapters are planned first;
+        others depend on what each tool lets WHY observe. This is a request, not a commitment.
+  - type: input
+    id: harness
+    attributes:
+      label: Agent or harness
+      description: Name and version (for example "OpenCode 1.x", "Cursor agent", "Antigravity").
+    validations:
+      required: true
+  - type: textarea
+    id: data
+    attributes:
+      label: What it records
+      description: |
+        Does it write session transcripts, hooks, logs or events to disk? Where, and in what format?
+        Links to its documentation are ideal. Please do not paste private transcripts.
+    validations:
+      required: true
+  - type: textarea
+    id: worktrees
+    attributes:
+      label: How you run it
+      description: One repo or many? Do you use git worktrees? How many sessions at once?
+  - type: textarea
+    id: context
+    attributes:
+      label: What you would want to see in WHY
+      description: What question about its changes would you want answered?

@@ -1,0 +1,35 @@
+name: Feature request
+description: Suggest an improvement to how you review agent-written code
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        WHY is a passive, local-first observer for reviewing agent work. It is not an IDE, an agent
+        harness, an automated reviewer or an orchestrator. Ideas that fit that direction are most
+        welcome; see `why-brain/00 - WHY.md` and `why-brain/06 - Decisions.md` in the repo.
+  - type: textarea
+    id: problem
+    attributes:
+      label: The reviewing problem
+      description: What are you trying to understand or decide when reviewing agent changes, and what is hard about it today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+      description: What would you like WHY to do? A sketch or example is welcome.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives and current workaround
+      description: How do you handle this today?
+  - type: checkboxes
+    id: contribute
+    attributes:
+      label: Contribution
+      options:
+        - label: I would be willing to work on this (I understand I should wait for a go-ahead before opening a large PR).
