@@ -10,11 +10,13 @@ pub mod watch;
 
 use std::sync::Arc;
 
+use tauri::Manager;
 use tracing_subscriber::EnvFilter;
 
 use crate::git::GitRunner;
 use crate::state::AppState;
-use crate::store::{MemoryRepoStore, RepoStore};
+use crate::store::{MemoryRepoStore, RepoStore, SqliteRepoStore, StorageMode};
+use crate::watch::NotifyingRepoStore;
 
 // Async rule: Tauri already owns a tokio runtime. Do NOT add `#[tokio::main]` or
 // build a second `Runtime`; spawn with `tauri::async_runtime::spawn`. Use the
@@ -31,13 +33,26 @@ pub fn run() {
 
     tracing::info!(version = env!("CARGO_PKG_VERSION"), "starting WHY");
 
-    // WHY-6: replace this line with the SQLite-backed store (nothing else changes).
-    let repos: Arc<dyn RepoStore> = Arc::new(MemoryRepoStore::new());
-    let state = AppState::new(GitRunner::new(), repos);
-
     tauri::Builder::default()
-        // Managed state: commands receive it as `State<'_, AppState>`.
-        .manage(state)
+        // `setup` runs once the app (and its path API) exists, before any
+        // window loads, so commands never see the state missing.
+        .setup(|app| {
+            let (store, storage) = open_repo_store(app.handle());
+            // WHY-9: surface temporary storage in the UI (read this managed
+            // `StorageMode`; `Temporary` means changes are lost at exit).
+            app.manage(storage);
+            // The ONE runner; the watcher gets a clone, and clones share its
+            // semaphore, so its git calls count against the same global cap.
+            let git = GitRunner::new();
+            let resync = watch::start_for_app(app.handle(), git.clone(), Arc::clone(&store));
+            // Commands see the store through the notifying decorator, so adding
+            // or removing a repository resyncs the watcher immediately.
+            let repos: Arc<dyn RepoStore> = Arc::new(NotifyingRepoStore::new(store, resync));
+            app.manage(AppState::new(git, repos));
+            #[cfg(debug_assertions)]
+            dev_register_from_env(app.handle());
+            Ok(())
+        })
         // Every command the webview may `invoke` must be registered here.
         .invoke_handler(tauri::generate_handler![
             ipc::ping,
@@ -51,4 +66,61 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running WHY");
+}
+
+/// Open the SQLite store at `<app data dir>/why.db`, creating the directory.
+///
+/// On failure (unwritable data dir, corrupt file, a database from a newer WHY)
+/// the app still starts, with an in-memory store and a loud error in the log:
+/// the user can keep reviewing, and nothing on disk is touched or overwritten.
+/// The cost is that repositories added in this session are forgotten on exit.
+/// Crashing at startup would be worse: the user could not even see the error.
+fn open_repo_store(app: &tauri::AppHandle) -> (Arc<dyn RepoStore>, StorageMode) {
+    let opened = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("no app data dir: {e}"))
+        .and_then(|dir| {
+            std::fs::create_dir_all(&dir)
+                .map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
+            let path = dir.join("why.db");
+            let store = SqliteRepoStore::open(&path).map_err(|e| e.to_string())?;
+            tracing::info!(path = %path.display(), "opened repository store");
+            Ok((store, path))
+        });
+    match opened {
+        Ok((store, path)) => (Arc::new(store), StorageMode::Persistent(path)),
+        Err(e) => {
+            tracing::error!(
+                error = %e,
+                "CANNOT OPEN THE REPOSITORY DATABASE; using a temporary in-memory store. \
+                 Repositories added now will be forgotten when WHY exits."
+            );
+            (
+                Arc::new(MemoryRepoStore::new()),
+                StorageMode::Temporary { reason: e },
+            )
+        }
+    }
+}
+
+/// Dev builds only: `WHY_DEV_REGISTER=/path/to/repo pnpm dev` registers that
+/// repository through the real `add_repository` command logic 3 s after start,
+/// so the watcher's "newly registered repo" path can be checked by hand before
+/// the UI can add repositories. Compiled out of release builds.
+#[cfg(debug_assertions)]
+fn dev_register_from_env(app: &tauri::AppHandle) {
+    let Some(path) = std::env::var_os("WHY_DEV_REGISTER") else {
+        return;
+    };
+    let handle = app.clone();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+        let path = path.to_string_lossy().into_owned();
+        let state = handle.state::<AppState>();
+        match ipc::repos::add_repository_impl(&state, &path).await {
+            Ok(repo) => tracing::info!(id = %repo.id.0, %path, "dev: registered repository"),
+            Err(e) => tracing::warn!(?e, %path, "dev: cannot register repository"),
+        }
+    });
 }

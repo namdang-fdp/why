@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "WHY: review agent-written code with the reasons attached"
 edition = "2024"
 rust-version = "1.90"
+license = "MIT OR Apache-2.0"
 
 # Named `why_lib` (not `why`) so the library and the binary don't clash on Windows.
 [lib]
@@ -29,6 +30,14 @@ sha2 = "0.10"
 # (so the futures may borrow `AppState`). Already in the tree through Tauri.
 futures-util = { version = "0.3", default-features = false, features = ["alloc"] }
 
+# SQLite for the repository store. `bundled` compiles SQLite into the binary, so
+# the app does not depend on (or vary with) the system's libsqlite3.
+rusqlite = { version = "0.43", features = ["bundled"] }
+# Cross-platform filesystem events (inotify on Linux, FSEvents on macOS).
+notify = "8.2"
+# ripgrep's gitignore matcher, so the watcher skips node_modules/, target/, ...
+ignore = "0.4"
+
 # `O_NOFOLLOW` / `O_NONBLOCK` / `ELOOP` for opening worktree files safely (the
 # raw flag values differ per OS and CPU, so they must come from libc). Already in
 # the dependency tree through tokio and Tauri.
@@ -41,6 +50,9 @@ libc = "0.2"
 ts-rs = "12.0.1"
 # Throw-away directories for the git integration tests.
 tempfile = "3"
+# `test-util` adds the paused clock (`tokio::time::pause`/`advance`) for the
+# debounce tests; `macros` + `rt` give `#[tokio::test]`. Test-only, never shipped.
+tokio = { version = "1.54", features = ["test-util", "macros", "rt"] }
 
 # Dev builds: keep our code fast to compile, but optimise dependencies so the
 # app stays responsive while developing.
