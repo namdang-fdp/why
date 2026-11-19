@@ -9,6 +9,8 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
+use super::version::GitVersion;
+
 /// Git printed output that does not match the documented format.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("{0}")]
@@ -30,6 +32,13 @@ pub enum GitError {
     /// is missing, never "the directory is missing".
     #[error("git executable `{program}` not found (is git installed and on PATH?)")]
     GitNotFound { program: String },
+
+    /// Git is too old to reliably disable lazy fetching.
+    #[error("Git {installed} is installed. WHY requires Git {minimum} or newer.")]
+    UnsupportedVersion {
+        installed: GitVersion,
+        minimum: GitVersion,
+    },
 
     /// `git` ran but the directory is not inside a repository.
     #[error("not a git repository: {}", path.display())]

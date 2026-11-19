@@ -5,8 +5,8 @@
 //! right now, so every function here only reads, never takes a lock an agent
 //! could trip over, and bounds its own cost (see [`runner`]).
 //!
-//! Requires **git >= 2.36** (`worktree list --porcelain -z`); see [`version`]
-//! for the per-feature table.
+//! Requires **git >= 2.45.1** to disable lazy fetching. See [`version`] for
+//! the versions required by individual Git features.
 //!
 //! Layering: this module returns types that model *what git reports*
 //! ([`StatusSnapshot`], [`WorktreeEntry`], ...). Mapping them to the UI-facing

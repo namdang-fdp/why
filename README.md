@@ -78,8 +78,8 @@ them.
 
 - **Read-only.** WHY never runs `checkout`, `reset`, `add`, `commit` or any other command that
   writes to a repository.
-- **No network.** It never runs `fetch`, `pull`, `push`, `clone` or `ls-remote`, and the app's own
-  code makes no network requests.
+- **No network.** WHY only issues local Git commands and sets `GIT_NO_LAZY_FETCH=1` to keep
+  partial clones from downloading missing objects on demand.
 - **One controlled entry point.** Every git call goes through a single runner: arguments are passed
   as an argument vector (never through a shell), concurrency is capped, and each call has a
   timeout.
@@ -113,8 +113,7 @@ bet is the combination: harness-agnostic, many repos and worktrees in one place,
 
 ## Development
 
-**Prerequisites:** Node 24+, pnpm 10, Rust 1.90+, `git` 2.36+ (WHY shells out to it;
-`git worktree list -z` needs 2.36), and the
+**Prerequisites:** Node 24+, pnpm 10, Rust 1.90+, Git 2.45.1+ (to disable lazy fetching), and the
 [Tauri system dependencies](https://v2.tauri.app/start/prerequisites/). On Debian and Ubuntu:
 
 ```bash
