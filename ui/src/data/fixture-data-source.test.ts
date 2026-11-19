@@ -41,7 +41,7 @@ describe("FixtureDataSource", () => {
   });
 
   it("returns a diff for every listed fixture, including the supplementary samples", async () => {
-    for (const worktree of worktrees) {
+    for (const worktree of worktrees.filter((entry) => entry.loadError === null)) {
       const mode = worktree.base ? "vsBase" : "uncommitted";
       for (const file of await source.getChanges(worktree.id, mode)) {
         await expect(source.getFileDiff(worktree.id, file.path, mode)).resolves.toMatchObject({

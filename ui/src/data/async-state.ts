@@ -6,6 +6,9 @@ export type AsyncState<T> =
   | { status: "ok"; data: T }
   | { status: "error"; error: IpcError };
 
+/** The two outcomes of a finished request. */
+export type Settled<T> = Extract<AsyncState<T>, { status: "ok" | "error" }>;
+
 export const idle = { status: "idle" } as const;
 
 type IpcErrorKind = IpcError["kind"];
@@ -44,10 +47,13 @@ export function toIpcError(error: unknown): IpcError {
     const normalized = readIpcError[error.kind](error);
     if (normalized) return normalized;
   }
-  return { kind: "gitFailed", message: error instanceof Error ? error.message : String(error) };
+  // Not one of ours: the IPC layer itself failed (a command the capability
+  // refuses, a closed channel, a thrown `Error`). That is not git's fault, so
+  // it must not look like a git failure.
+  return { kind: "internal", message: error instanceof Error ? error.message : String(error) };
 }
 
-export async function resolveState<T>(read: () => Promise<T>): Promise<AsyncState<T>> {
+export async function resolveState<T>(read: () => Promise<T>): Promise<Settled<T>> {
   try {
     return { status: "ok", data: await read() };
   } catch (error) {
