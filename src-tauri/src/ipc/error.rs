@@ -19,6 +19,9 @@ impl From<GitError> for IpcError {
         tracing::warn!(error = ?err, "git error: {err}");
         match err {
             GitError::GitNotFound { .. } => IpcError::GitMissing,
+            GitError::UnsupportedVersion { .. } => IpcError::GitFailed {
+                message: err.to_string(),
+            },
             GitError::NotARepository { .. } => IpcError::NotARepo,
             GitError::NonZeroExit { args, code, stderr } => IpcError::GitFailed {
                 // `stderr` is already trimmed and capped by the runner. An empty

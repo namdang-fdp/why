@@ -213,6 +213,30 @@ async fn reports_the_installed_git_version() {
     );
 }
 
+#[cfg(unix)]
+#[tokio::test]
+async fn old_git_is_rejected_before_any_repository_command() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = tempfile::tempdir().unwrap();
+    let old_git = dir.path().join("git");
+    std::fs::write(
+        &old_git,
+        "#!/bin/sh\nfor arg do :; done\nif [ \"$arg\" = --version ]; then\n  printf 'git version 2.45.0\\n'\nelse\n  exit 99\nfi\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&old_git, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let err = crate::common::test_runner()
+        .with_program(old_git)
+        .run(dir.path(), ["status"])
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, GitError::UnsupportedVersion { .. }),
+        "got {err:?}"
+    );
+}
+
 #[tokio::test]
 async fn with_env_points_git_at_a_chosen_global_config() {
     let repo = TestRepo::with_initial_commit();

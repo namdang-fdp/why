@@ -17,9 +17,10 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use tokio::process::Command;
-use tokio::sync::Semaphore;
+use tokio::sync::{OnceCell, Semaphore};
 
 use super::error::GitError;
+use super::version::{MIN_GIT_VERSION, git_version};
 
 /// Default per-command timeout.
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(10);
@@ -35,6 +36,7 @@ const STDERR_EXCERPT_BYTES: usize = 1024;
 pub struct GitRunner {
     program: OsString,
     semaphore: Arc<Semaphore>,
+    supported_version: Arc<OnceCell<()>>,
     timeout: Duration,
     /// Extra environment for every spawned git (see [`GitRunner::with_env`]).
     extra_env: Vec<(OsString, OsString)>,
@@ -57,6 +59,7 @@ impl GitRunner {
         Self {
             program: OsString::from("git"),
             semaphore: Arc::new(Semaphore::new(max_concurrency.max(1))),
+            supported_version: Arc::new(OnceCell::new()),
             timeout,
             extra_env: Vec::new(),
         }
@@ -66,6 +69,7 @@ impl GitRunner {
     /// non-existent name in tests to exercise [`GitError::GitNotFound`]).
     pub fn with_program(mut self, program: impl Into<OsString>) -> Self {
         self.program = program.into();
+        self.supported_version = Arc::new(OnceCell::new());
         self
     }
 
@@ -74,7 +78,7 @@ impl GitRunner {
     /// For configuring *where git reads its settings from* (`GIT_CONFIG_GLOBAL`,
     /// `HOME`, ...), for example to run against a known configuration instead of
     /// the user's. It is NOT a way to loosen the runner's safety rules: the
-    /// variables the runner sets itself (`GIT_OPTIONAL_LOCKS`,
+    /// variables the runner sets itself (`GIT_OPTIONAL_LOCKS`, `GIT_NO_LAZY_FETCH`,
     /// `GIT_TERMINAL_PROMPT`, `LC_ALL`) are applied after these and always win,
     /// and the variables that redirect git to another repository (`GIT_DIR`, ...)
     /// are always removed, so neither can be overridden here.
@@ -83,6 +87,8 @@ impl GitRunner {
     /// thread, so concurrent tests (or commands) would race on it.
     pub fn with_env(mut self, key: impl Into<OsString>, value: impl Into<OsString>) -> Self {
         self.extra_env.push((key.into(), value.into()));
+        // An environment override can select a different Git via PATH.
+        self.supported_version = Arc::new(OnceCell::new());
         self
     }
 
@@ -99,11 +105,33 @@ impl GitRunner {
     /// Run `git -C <dir> <args...>` and return its raw stdout bytes.
     ///
     /// Output is bytes, not `String`: paths in git output may not be UTF-8.
-    ///
-    /// Errors: [`GitError::GitNotFound`], [`GitError::NotARepository`],
-    /// [`GitError::NonZeroExit`] (with the exit code and a stderr excerpt),
-    /// [`GitError::Timeout`], [`GitError::Io`].
     pub async fn run<I, S>(&self, dir: &Path, args: I) -> Result<Vec<u8>, GitError>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<OsStr>,
+    {
+        // Older Git can fetch missing objects from a partial clone. Check
+        // before any repository command and share the result with all clones.
+        self.supported_version
+            .get_or_try_init(|| async {
+                let installed = git_version(self).await?;
+                if !installed.meets_minimum() {
+                    return Err(GitError::UnsupportedVersion {
+                        installed,
+                        minimum: MIN_GIT_VERSION,
+                    });
+                }
+                Ok(())
+            })
+            .await?;
+        self.run_command(dir, args).await
+    }
+
+    pub(super) async fn version_output(&self) -> Result<Vec<u8>, GitError> {
+        self.run_command(Path::new("."), ["--version"]).await
+    }
+
+    async fn run_command<I, S>(&self, dir: &Path, args: I) -> Result<Vec<u8>, GitError>
     where
         I: IntoIterator<Item = S>,
         S: AsRef<OsStr>,
@@ -227,6 +255,13 @@ impl GitRunner {
         cmd.env("GIT_TERMINAL_PROMPT", "0");
         // C locale: English, stable messages for the few places we match on stderr.
         cmd.env("LC_ALL", "C");
+        // Partial clones (`git clone --filter=blob:none`) leave objects out and
+        // fetch them "lazily" from the promisor remote the moment a command needs
+        // one: a `diff` or `cat-file` on an old commit would open a network
+        // connection and write a new pack into the repository. WHY must never do
+        // either, so a missing object has to be an error, not a fetch.
+        // Since Git 2.45.1, the fetch path itself honors this setting.
+        cmd.env("GIT_NO_LAZY_FETCH", "1");
 
         // These variables, if inherited (e.g. WHY launched from a git hook),
         // override `-C` and make git operate on a different repository.
@@ -330,6 +365,9 @@ mod tests {
             .with_env("GIT_DIR", "/somewhere/else");
         assert_eq!(env_of(&r, "GIT_OPTIONAL_LOCKS"), Some(Some("0".into())));
         assert_eq!(env_of(&r, "GIT_TERMINAL_PROMPT"), Some(Some("0".into())));
+        // Applied after caller-chosen variables, so it cannot be turned back on.
+        let r = r.with_env("GIT_NO_LAZY_FETCH", "0");
+        assert_eq!(env_of(&r, "GIT_NO_LAZY_FETCH"), Some(Some("1".into())));
         // Removed (`None`), not set.
         assert_eq!(env_of(&r, "GIT_DIR"), Some(None));
     }

@@ -36,6 +36,8 @@ code.
   and a timeout.
 - `GIT_OPTIONAL_LOCKS=0`, so reading status never takes `index.lock` and cannot interfere with an
   agent's own git operations.
+- `GIT_NO_LAZY_FETCH=1` prevents fetching missing objects from a partial clone. The runner
+  requires Git 2.45.1 or newer before it runs repository commands.
 - `core.fsmonitor=false` is forced on every call, because a repo-local `core.fsmonitor` can name a
   program that git runs during `git status`.
 - Diff commands must pass `--no-ext-diff --no-textconv` so repo-configured diff drivers cannot run
