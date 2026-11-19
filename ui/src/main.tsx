@@ -3,6 +3,15 @@ import { createRoot } from "react-dom/client";
 import { App } from "@/App";
 import "@/index.css";
 
+const favicon = document.createElement("link");
+favicon.rel = "icon";
+favicon.href =
+  "data:image/svg+xml," +
+  encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="24" height="24" rx="5" fill="#252525"/><text x="12" y="17.5" fill="white" font-size="16" font-family="system-ui" font-weight="700" text-anchor="middle">W</text></svg>',
+  );
+document.head.append(favicon);
+
 const root = document.getElementById("root");
 if (!root) throw new Error("#root element missing from index.html");
 
