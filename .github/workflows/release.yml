@@ -1,0 +1,55 @@
+# DRAFT release workflow. It only runs when a tag starting with "v" is pushed, and it creates a
+# *draft* GitHub release (nothing is published until the maintainer clicks "Publish").
+# Linux only for now: AppImage and .deb. Not yet exercised: review before the first tag.
+name: Release (draft)
+
+on:
+  push:
+    tags: ["v*"]
+
+# Only this workflow may write to the repository (to attach files to the draft release).
+permissions:
+  contents: write
+
+jobs:
+  build-linux:
+    name: Build Linux bundles
+    # An older Ubuntu keeps the AppImage compatible with more distributions.
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Tauri system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
+            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - run: pnpm install --frozen-lockfile
+
+      - uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tauriScript: pnpm tauri
+          # tauri.conf.json says "targets": "all"; only build what we mean to ship.
+          args: --bundles appimage,deb
+          tagName: ${{ github.ref_name }}
+          releaseName: WHY ${{ github.ref_name }}
+          releaseBody: See the assets below to download. This is early software.
+          releaseDraft: true
+          prerelease: true
