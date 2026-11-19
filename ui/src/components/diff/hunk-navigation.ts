@@ -4,6 +4,9 @@ export type HunkDirection = "next" | "previous";
 export type HunkResult = "pending" | "moved" | "boundary";
 
 type ModifiedEditor = Pick<editor.ICodeEditor, "setPosition" | "revealLineInCenter"> & {
+  // Optional so a minimal editor (a test double) still satisfies the type.
+  setScrollTop?: editor.ICodeEditor["setScrollTop"];
+  getTopForLineNumber?: editor.ICodeEditor["getTopForLineNumber"];
   getPosition(): { lineNumber: number } | null;
   getModel(): Pick<editor.ITextModel, "getLineCount"> | null;
 };
@@ -59,6 +62,24 @@ export function createHunkNavigator(diffEditor: DiffNavigationEditor) {
     revealFirst() {
       const first = hunkLines()?.[0];
       if (first !== undefined) jump(first, modified.getPosition()?.lineNumber ?? 1, "next");
+    },
+    /**
+     * Put the top of the first change at the top of the editor with `context`
+     * lines above it, like opening a review: you land ON the change, not in the
+     * middle of the file. Returns false while the diff is not computed yet.
+     */
+    revealFirstChange(context = 3) {
+      const first = hunkLines()?.[0];
+      if (first === undefined) return false;
+      modified.setPosition({ lineNumber: first, column: 1 });
+      if (modified.setScrollTop && modified.getTopForLineNumber) {
+        const top = modified.getTopForLineNumber(Math.max(1, first - context));
+        modified.setScrollTop(top, editor.ScrollType.Immediate);
+      } else {
+        modified.revealLineInCenter(first, editor.ScrollType.Immediate);
+      }
+      lastJump = first;
+      return true;
     },
   };
 }
