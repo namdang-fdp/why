@@ -115,6 +115,15 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # `why-hook` is the tiny binary agents run for every hook event. It ships next to the app as a
+      # Tauri sidecar (`bundle.externalBin`). The script builds it and stages it as
+      # src-tauri/binaries/why-hook-<target-triple>; the same script is behind `pnpm build`, so local and
+      # CI bundles are identical. `externalBin` is declared only in src-tauri/tauri.bundle-hook.conf.json
+      # (passed with --config below), NOT in tauri.conf.json: tauri-build refuses to compile the app
+      # when a declared sidecar is missing, which would break every plain `cargo build`/`cargo test`.
+      - name: Build why-hook and stage it as the Tauri sidecar
+        run: node scripts/stage-hook.mjs
+
       # Tag push: build, create the DRAFT release (not a pre-release) and upload the bundles.
       - name: Build and create the draft release
         id: tauri-release
@@ -125,7 +134,7 @@ jobs:
         with:
           tauriScript: pnpm tauri
           # tauri.conf.json says "targets": "all"; only build what we mean to ship.
-          args: --bundles appimage,deb
+          args: --bundles appimage,deb --config src-tauri/tauri.bundle-hook.conf.json
           tagName: ${{ github.ref_name }}
           releaseName: WHY ${{ github.ref_name }}
           releaseBody: ${{ steps.notes.outputs.body }}
@@ -143,7 +152,7 @@ jobs:
         uses: tauri-apps/tauri-action@v1
         with:
           tauriScript: pnpm tauri
-          args: --bundles appimage,deb
+          args: --bundles appimage,deb --config src-tauri/tauri.bundle-hook.conf.json
 
       # tauri-action keeps the file names Tauri gives the bundles: <productName>_<version>_<arch>.
       # Fail loudly if that ever changes, because the README, the checklist and the checksum job
