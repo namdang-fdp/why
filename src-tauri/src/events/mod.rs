@@ -2,8 +2,9 @@
 //!
 //! The same seam pattern as [`crate::store`]: the IPC commands and the
 //! collector depend only on the [`EventStore`] trait; backends plug in behind
-//! it. [`MemoryEventStore`] works for real now (so the UI and IPC tests run);
-//! WHY-12 adds the SQLite `events.db` (decision 24) and swaps it in `lib.rs`.
+//! it. [`MemoryEventStore`] is the fake tests plug in and the fallback when
+//! `events.db` cannot be opened; [`SqliteEventStore`] is the real, persistent
+//! store (decision 24), chosen in `lib.rs` only.
 //!
 //! Data flow (v0.2):
 //!
@@ -24,9 +25,11 @@
 //! If WHY-12 needs a variant (say, "database from a newer WHY"), adding it to
 //! `StoreError` forces the mapping to be written (the match is exhaustive).
 
+pub mod clock;
 pub mod ingest;
 pub mod memory;
 pub mod model;
+pub mod sqlite;
 pub mod timeline;
 
 #[cfg(test)]
@@ -37,11 +40,13 @@ use std::time::Duration;
 use crate::contracts::{SessionSummary, SessionTimeline, WorktreeId};
 use crate::store::StoreError;
 
+pub use clock::Clock;
 pub use memory::MemoryEventStore;
 pub use model::{
     EXCERPT_MAX_BYTES, EventKey, EventKind, NormalizedEvent, SessionKey, ToolCall, ToolClass,
     excerpt,
 };
+pub use sqlite::{SqliteEventStore, open_event_store};
 
 /// How long events are kept (decision 22).
 pub const RETENTION: Duration = Duration::from_secs(30 * 24 * 60 * 60);
