@@ -81,6 +81,8 @@ of it is implemented yet.
   distributions ship an older git (for example Ubuntu 22.04 and 24.04, and Debian 12).
 - **The "Why" inspector is a placeholder.** Session context and provenance arrive in v0.2 and
   later; v0.1 is the live diff only.
+- **The filter-driver guard has limits** (a config-write race, and trust covers the command string
+  only). They are listed in [`SECURITY.md`](SECURITY.md).
 - **Unsigned builds, no auto-update.** Check downloads against the published `SHA256SUMS`.
 
 ## Install
@@ -145,7 +147,7 @@ them.
   repo-local setting can name a program that git would execute during `git status`. Diff commands
   must also pass `--no-ext-diff --no-textconv`.
 
-- **Git filter programs need your OK.** A repository's own config can define *filter drivers*
+- **Git filter programs need your OK.** A repository's own config can define _filter drivers_
   (`filter.<name>.clean` / `process`, picked by `.gitattributes`) that git runs while it reads
   files, so merely reading a repository could run a program that an agent wrote there. WHY checks
   before every read and refuses (the repository is shown as blocked, with the programs listed) until

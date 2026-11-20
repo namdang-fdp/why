@@ -11,7 +11,7 @@ the GitHub release notes, so keep each version section self-contained. Details a
 
 ## [Unreleased]
 
-## [0.1.0] - YYYY-MM-DD
+## [0.1.0] - 2026-11-20
 
 First release: a read-only desktop viewer that shows the live diff of every repository and git
 worktree your coding agents are working in. Linux only for now (AppImage and `.deb`).
@@ -67,8 +67,17 @@ disturb them.
 - Working-tree files are opened without following symlinks.
 - The webview has no filesystem or dialog permissions; the folder picker is a command in the Rust
   core that returns only the chosen path.
-- TODO(WHY-39): one line on the git filter-driver guard (what it blocks and how it behaves), to be
-  filled in by the WHY-39 change before this release is tagged.
+- Git filter drivers need your approval. A repository's own config can define filter drivers
+  (`filter.<name>.clean` or `process`, picked by `.gitattributes`) that git runs while it reads
+  files, so merely reading a repository could run a program an agent wrote there. Before every read
+  WHY checks the worktree's filter configuration and refuses to read it until you choose "Trust and
+  continue" in a panel that lists each program, its full command and where it is defined. Trust is
+  stored per driver as a fingerprint, so a new or edited driver is asked about again; you can stop
+  trusting a repository later. Drivers from your own git config (for example git-lfs) are allowed
+  without asking.
+- The legacy `GIT_CONFIG` variable is removed from every git call, `git status` no longer descends
+  into dirty submodules (their own filters would run), and WHY re-reads a repository when its git
+  config or `info/attributes` changes.
 
 ### Known limitations
 
@@ -79,6 +88,10 @@ disturb them.
   distributions ship an older git (for example Ubuntu 22.04 and 24.04, and Debian 12).
 - **The "Why" inspector is a placeholder.** Session context, provenance and the reasons behind each
   change arrive in v0.2 and later; v0.1 is the live diff only.
+- **The filter-driver guard has limits.** A process that can write a repository's git config while
+  WHY is open can still race the check, and trust covers the configured command string (a command
+  that points at a file inside the repository trusts whatever that file later contains). See
+  [`SECURITY.md`](SECURITY.md) for these and the other limits.
 - **Unsigned builds.** The release assets are not code-signed and WHY has no auto-update. Check the
   download against `SHA256SUMS`.
 
