@@ -1669,8 +1669,9 @@ async fn bench_100_changed_files() {
     .await
     .unwrap()
     .unwrap();
+    let permit = crate::common::permit(&state.git, &wt).await.unwrap();
     time("  git status", || {
-        why_lib::git::read_status(&state.git, &wt)
+        why_lib::git::read_status(&state.git, &permit)
     })
     .await
     .unwrap();
@@ -1679,7 +1680,7 @@ async fn bench_100_changed_files() {
     };
     let old = why_lib::git::OldSide::Commit(base.merge_base.clone());
     time("  read_changes (status+diff)", || {
-        why_lib::git::read_changes(&state.git, &wt, &old, target)
+        why_lib::git::read_changes(&state.git, &permit, &old, target)
     })
     .await
     .unwrap();

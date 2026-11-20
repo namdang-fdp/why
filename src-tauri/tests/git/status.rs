@@ -2,10 +2,9 @@ use std::path::{Path, PathBuf};
 
 use why_lib::git::{
     AheadBehind, BranchHead, ConflictKind, FileState, GitRunner, RenameOp, StatusEntry, StatusKind,
-    read_status,
 };
 
-use crate::common::{TestRepo, git_raw, write_in};
+use crate::common::{TestRepo, git_raw, status_of, write_in};
 
 fn find<'a>(entries: &'a [StatusEntry], path: &str) -> &'a StatusEntry {
     entries
@@ -17,7 +16,7 @@ fn find<'a>(entries: &'a [StatusEntry], path: &str) -> &'a StatusEntry {
 #[tokio::test]
 async fn clean_worktree() {
     let repo = TestRepo::with_initial_commit();
-    let s = read_status(&GitRunner::new(), &repo.path).await.unwrap();
+    let s = status_of(&GitRunner::new(), &repo.path).await.unwrap();
     assert!(s.entries.is_empty());
     assert_eq!(s.branch.head, Some(BranchHead::Branch("main".into())));
     assert_eq!(
@@ -32,7 +31,7 @@ async fn clean_worktree() {
 async fn unborn_branch_has_no_oid() {
     let repo = TestRepo::new();
     repo.write("new.txt", "x\n");
-    let s = read_status(&GitRunner::new(), &repo.path).await.unwrap();
+    let s = status_of(&GitRunner::new(), &repo.path).await.unwrap();
     assert_eq!(s.branch.oid, None);
     assert_eq!(s.branch.head, Some(BranchHead::Branch("main".into())));
     assert_eq!(find(&s.entries, "new.txt").kind, StatusKind::Untracked);
@@ -51,7 +50,7 @@ async fn staged_rename_unstaged_modify_and_nested_untracked() {
     repo.write("mod.rs", "fn a() {}\nfn b() {}\n"); // unstaged modify
     repo.write("dir/nested/deep file.txt", "u\n"); // untracked, nested
 
-    let s = read_status(&GitRunner::new(), &repo.path).await.unwrap();
+    let s = status_of(&GitRunner::new(), &repo.path).await.unwrap();
     assert_eq!(s.entries.len(), 3, "{:#?}", s.entries);
 
     let renamed = find(&s.entries, "new name.rs");
@@ -92,7 +91,7 @@ async fn staged_and_unstaged_changes_to_the_same_file() {
     repo.write("README.md", "hello\n");
     std::fs::remove_file(repo.path.join("README.md")).unwrap();
 
-    let s = read_status(&GitRunner::new(), &repo.path).await.unwrap();
+    let s = status_of(&GitRunner::new(), &repo.path).await.unwrap();
     assert_eq!(
         find(&s.entries, "a.txt").kind,
         StatusKind::Changed {
@@ -124,7 +123,7 @@ async fn assert_names_round_trip(names: &[&str]) {
         repo.write(name, &format!("{i}\n"));
     }
 
-    let s = read_status(&GitRunner::new(), &repo.path).await.unwrap();
+    let s = status_of(&GitRunner::new(), &repo.path).await.unwrap();
     let shown: Vec<_> = s
         .entries
         .iter()
@@ -162,7 +161,7 @@ async fn non_utf8_file_name_is_preserved() {
     let name = std::ffi::OsStr::from_bytes(b"caf\xe9-\xff.txt");
     std::fs::write(repo.path.join(name), "x").unwrap();
 
-    let s = read_status(&GitRunner::new(), &repo.path).await.unwrap();
+    let s = status_of(&GitRunner::new(), &repo.path).await.unwrap();
     assert_eq!(s.entries.len(), 1);
     let e = &s.entries[0];
     assert_eq!(e.path.as_os_str().as_bytes(), b"caf\xe9-\xff.txt");
@@ -196,7 +195,7 @@ async fn merge_conflict_yields_unmerged_entries() {
         String::from_utf8_lossy(&out.stdout)
     );
 
-    let s = read_status(&GitRunner::new(), &repo.path).await.unwrap();
+    let s = status_of(&GitRunner::new(), &repo.path).await.unwrap();
     assert_eq!(
         find(&s.entries, "c.txt").kind,
         StatusKind::Unmerged {
@@ -221,7 +220,7 @@ async fn upstream_and_ahead_behind_headers() {
     write_in(&clone.path, "local2.txt", b"y\n");
     clone.commit_all("local 2");
 
-    let s = read_status(&GitRunner::new(), &clone.path).await.unwrap();
+    let s = status_of(&GitRunner::new(), &clone.path).await.unwrap();
     assert_eq!(s.branch.upstream.as_deref(), Some("origin/main"));
     assert_eq!(
         s.branch.ahead_behind,
@@ -236,7 +235,7 @@ async fn upstream_and_ahead_behind_headers() {
 async fn detached_head_header() {
     let repo = TestRepo::with_initial_commit();
     repo.git(["checkout", "-q", "--detach"]);
-    let s = read_status(&GitRunner::new(), &repo.path).await.unwrap();
+    let s = status_of(&GitRunner::new(), &repo.path).await.unwrap();
     assert_eq!(s.branch.head, Some(BranchHead::Detached));
     assert!(s.branch.oid.is_some());
 }
@@ -247,8 +246,8 @@ async fn status_runs_in_a_linked_worktree_independently() {
     let wt = repo.add_worktree("wt", "feature");
     write_in(&wt, "only-in-wt.txt", b"x\n");
 
-    let main = read_status(&GitRunner::new(), &repo.path).await.unwrap();
-    let linked = read_status(&GitRunner::new(), &wt).await.unwrap();
+    let main = status_of(&GitRunner::new(), &repo.path).await.unwrap();
+    let linked = status_of(&GitRunner::new(), &wt).await.unwrap();
     assert!(
         main.entries.is_empty(),
         "the file lives only in the other worktree"

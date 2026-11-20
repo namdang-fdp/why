@@ -1,8 +1,8 @@
 use std::time::{Duration, Instant};
 
-use why_lib::git::{GitError, GitRunner, read_status};
+use why_lib::git::{GitError, GitRunner};
 
-use crate::common::{TestRepo, git, git_raw};
+use crate::common::{TestRepo, git, git_raw, status_of};
 
 #[tokio::test]
 async fn returns_raw_stdout() {
@@ -143,7 +143,7 @@ async fn status_does_not_rewrite_the_index() {
     repo.write("a.txt", "same\n");
 
     let before = std::fs::read(&index).unwrap();
-    let snapshot = read_status(&GitRunner::new(), &repo.path).await.unwrap();
+    let snapshot = status_of(&GitRunner::new(), &repo.path).await.unwrap();
     assert!(snapshot.entries.is_empty(), "content is identical: clean");
     assert_eq!(
         std::fs::read(&index).unwrap(),
@@ -189,7 +189,7 @@ async fn status_never_runs_a_configured_fsmonitor_hook() {
     std::fs::remove_file(&marker).unwrap();
 
     // Through the runner (`-c core.fsmonitor=false`): the hook must not run.
-    read_status(&GitRunner::new(), &repo.path).await.unwrap();
+    status_of(&GitRunner::new(), &repo.path).await.unwrap();
     GitRunner::new()
         .run(&repo.path, ["rev-parse", "HEAD"])
         .await

@@ -1,7 +1,7 @@
 import { isTauri } from "@tauri-apps/api/core";
 import type { WorktreeChanged } from "@/contracts";
 import type { DataSource } from "./data-source";
-import { FixtureDataSource, type FixtureOptions } from "./fixture-data-source";
+import { FixtureDataSource, sampleFilters, type FixtureOptions } from "./fixture-data-source";
 import { TauriDataSource } from "./tauri-data-source";
 
 /**
@@ -16,6 +16,10 @@ function fixtureOptionsFromUrl(): FixtureOptions {
     empty: params.get("empty") === "1",
     many: params.get("many") === "1",
     latencyMs: Number.isFinite(latency) ? latency : 0,
+    // `?filters=1` gives each sample repository a different filter-driver state:
+    // `why` is blocked (its own .git/config defines one), `billing-api` only uses
+    // the user's git-lfs.
+    ...(params.get("filters") === "1" && { filters: sampleFilters }),
     ...(params.get("storage") === "temporary" && {
       storage: {
         persistent: false,

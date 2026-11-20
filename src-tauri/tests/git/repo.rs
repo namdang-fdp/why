@@ -112,7 +112,7 @@ async fn repository_directory_with_a_newline_in_its_name() {
     assert_eq!(wts.len(), 2);
     assert_eq!(wts[1].path, wt);
     assert!(
-        why_lib::git::read_status(&runner, &wt)
+        crate::common::status_of(&runner, &wt)
             .await
             .unwrap()
             .entries

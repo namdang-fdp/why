@@ -8,6 +8,7 @@ export const errorTitles = {
   timeout: "Git took too long",
   notFound: "Not found",
   invalidInput: "That isn't available",
+  untrustedFilters: "Blocked until you review it",
   internal: "Something went wrong inside WHY",
 } satisfies Record<IpcError["kind"], string>;
 
@@ -19,6 +20,8 @@ export const errorMessages = {
   timeout: "The request took too long.",
   notFound: "The requested repository, worktree, or file could not be found.",
   invalidInput: "This request is unavailable for the current selection.",
+  untrustedFilters:
+    "This repository sets up git filter programs. WHY has not read its files and has not run them. Review them first.",
   internal: "WHY could not complete the request because of an internal error.",
 } satisfies Record<IpcError["kind"], string>;
 

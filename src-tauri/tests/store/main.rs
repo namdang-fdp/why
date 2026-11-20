@@ -61,7 +61,7 @@ fn file_database_uses_wal_and_latest_version() {
     let version: i64 = conn
         .pragma_query_value(None, "user_version", |r| r.get(0))
         .unwrap();
-    assert_eq!(version, 1);
+    assert_eq!(version, 2);
 }
 
 #[test]
@@ -78,11 +78,68 @@ fn reopening_is_idempotent() {
     let version: i64 = conn
         .pragma_query_value(None, "user_version", |r| r.get(0))
         .unwrap();
-    assert_eq!(version, 1);
+    assert_eq!(version, 2);
     let rows: i64 = conn
         .query_row("SELECT count(*) FROM repositories", [], |r| r.get(0))
         .unwrap();
     assert_eq!(rows, 1);
+}
+
+#[test]
+fn v1_database_is_upgraded_to_v2_keeping_its_data() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = db_in(&dir);
+    {
+        // A database exactly as the released v1 schema left it.
+        let conn = Connection::open(&path).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE repositories (
+                 id TEXT PRIMARY KEY NOT NULL, name TEXT NOT NULL,
+                 root_path BLOB NOT NULL, common_dir BLOB NOT NULL, added_at INTEGER NOT NULL);
+             CREATE TABLE base_overrides (
+                 worktree_id TEXT PRIMARY KEY NOT NULL, base_ref TEXT NOT NULL,
+                 updated_at INTEGER NOT NULL);
+             INSERT INTO repositories VALUES ('a', 'app', CAST('/code/app' AS BLOB),
+                 CAST('/code/app/.git' AS BLOB), 1);
+             INSERT INTO base_overrides VALUES ('w1', 'origin/main', 1);
+             PRAGMA user_version = 1;",
+        )
+        .unwrap();
+    }
+    let store = SqliteRepoStore::open(&path).unwrap();
+    assert_eq!(store.list().unwrap(), vec![rec("a", "app", "/code/app")]);
+    assert_eq!(
+        store
+            .base_override(&WorktreeId("w1".into()))
+            .unwrap()
+            .as_deref(),
+        Some("origin/main")
+    );
+    // The new table works and starts empty: an upgrade trusts nothing.
+    let a = RepoId("a".into());
+    assert!(store.trusted_filters(&a).unwrap().is_empty());
+    store.set_trusted_filters(&a, &["fp".into()]).unwrap();
+    assert!(store.trusted_filters(&a).unwrap().contains("fp"));
+}
+
+#[test]
+fn filter_trust_survives_reopen_and_is_dropped_with_the_repository() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = db_in(&dir);
+    let a = rec("a", "app", "/code/app");
+    {
+        let store = SqliteRepoStore::open(&path).unwrap();
+        store.insert(a.clone()).unwrap();
+        store
+            .set_trusted_filters(&a.id, &["f1".into(), "f2".into()])
+            .unwrap();
+    }
+    let store = SqliteRepoStore::open(&path).unwrap();
+    assert_eq!(store.trusted_filters(&a.id).unwrap().len(), 2);
+    assert!(store.remove(&a.id).unwrap());
+    // Re-adding the same path (same id) must not inherit the old decision.
+    store.insert(a.clone()).unwrap();
+    assert!(store.trusted_filters(&a.id).unwrap().is_empty());
 }
 
 #[test]

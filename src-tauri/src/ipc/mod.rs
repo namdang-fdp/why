@@ -27,6 +27,9 @@
 //! * [`repos`]: registering repositories (`list_repositories`, `add_repository`,
 //!   `remove_repository`, `set_base`).
 //! * [`changes`]: reading a repository's worktrees and diffs.
+//! * [`security`]: the git filter-driver guard and its trust commands
+//!   (`get_repository_security`, `trust_repository_filters`,
+//!   `revoke_repository_filters`).
 //! * [`storage`]: `get_storage_status` (are repositories saved?).
 //! * [`dialog`]: `pick_repository_folder` (native folder picker, opened by the core).
 //! * [`error`]: the one place errors become `IpcError`.
@@ -35,6 +38,7 @@ pub mod changes;
 pub mod dialog;
 mod error;
 pub mod repos;
+pub mod security;
 pub mod storage;
 
 // Commands are not re-exported here. `#[tauri::command]` also generates helper

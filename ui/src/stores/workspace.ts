@@ -9,6 +9,8 @@ import type {
   RepoId,
   Repository,
   RepositoryChanged,
+  RepositorySecurity,
+  RevokeResult,
   StorageStatus,
   Worktree,
   WorktreeChanged,
@@ -34,6 +36,8 @@ type WorkspaceStore = {
   storage: AsyncState<StorageStatus>;
   worktrees: Queries<Worktree[]>;
   changes: Queries<FileChange[]>;
+  /** Each repository's git filter programs and whether WHY may read it (WHY-39). */
+  security: Queries<RepositorySecurity>;
   fileDiff: AsyncState<FileDiff>;
   repoId: RepoId | null;
   worktreeId: WorktreeId | null;
@@ -62,6 +66,12 @@ type WorkspaceStore = {
   removeRepository: (repo: Repository) => Promise<Settled<void>>;
   setBase: (worktree: Worktree, baseRef: string) => Promise<Settled<Worktree>>;
   retryWorktrees: (repoId: RepoId) => Promise<void>;
+  /** `refresh` bypasses the cache (the panel asks for the truth, not what was cached). */
+  loadSecurity: (repoId: RepoId, refresh?: boolean) => Promise<void>;
+  /** Trust the filter programs shown to the user (`fingerprint` is what they saw). */
+  trustFilters: (repo: Repository, fingerprint: string) => Promise<Settled<RepositorySecurity>>;
+  /** Forget that trust decision. */
+  revokeFilters: (repo: Repository) => Promise<Settled<RevokeResult>>;
   selectRepository: (repoId: RepoId) => Promise<void>;
   selectWorktree: (worktree: Worktree) => Promise<void>;
   jumpToFile: (worktree: Worktree, path: string, availableModes: DiffMode[]) => Promise<void>;
@@ -234,10 +244,26 @@ export function createWorkspaceStore(source: DataSource, toasts: StoreApi<Toasts
       () => get().changes,
       (changes) => set({ changes }),
     );
+    const securityQueries = createQueryLoader(
+      () => get().security,
+      (security) => set({ security }),
+    );
     const loadWorktrees = (id: RepoId, refresh = false) =>
       worktreeQueries.load(id, () => source.listWorktrees(id), refresh, sameJson);
+    const loadSecurityOf = (id: RepoId, refresh = false) =>
+      securityQueries.load(id, () => source.getRepositorySecurity(id), refresh, sameJson);
     const loadChanges = (id: WorktreeId, mode: DiffMode) =>
-      changeQueries.load(changesKey(id, mode), () => source.getChanges(id, mode));
+      changeQueries.load(changesKey(id, mode), () => source.getChanges(id, mode)).then((state) => {
+        // The core just refused to read this repository. The security report we
+        // may have cached says otherwise (the driver arrived through a file the
+        // watcher does not route, say), and the explanation panel would then sit
+        // on "Reading changes…". Ask again, past the cache.
+        if (state.status === "error" && state.error.kind === "untrustedFilters") {
+          const owner = ownerOf(id);
+          if (owner !== undefined) void loadSecurityOf(owner, true);
+        }
+        return state;
+      });
     const notify = (title: string, detail?: string) =>
       toasts.getState().push({ tone: "info", title, detail });
     const notifyError = (title: string, error: IpcError) =>
@@ -511,6 +537,9 @@ export function createWorkspaceStore(source: DataSource, toasts: StoreApi<Toasts
      */
     async function relistRepository(repoId: RepoId) {
       const previous = get().worktrees.get(repoId);
+      // A re-list follows commits and config edits: the repository may just have
+      // gained (or lost) a git filter program, so its security view is re-read too.
+      void loadSecurityOf(repoId, true);
       await loadWorktrees(repoId, true);
       const list = get().worktrees.get(repoId);
       if (list?.status !== "ok") return;
@@ -532,6 +561,24 @@ export function createWorkspaceStore(source: DataSource, toasts: StoreApi<Toasts
         navigationVersion++;
         set({ worktreeId: null, filePath: null, fileDiff: idle });
       }
+    }
+
+    /**
+     * Trust was granted or revoked: what was read (or refused) under the old
+     * decision is stale, in every worktree of the repository. Drop it and read
+     * again, keeping the selection.
+     */
+    async function rereadAfterTrustChange(repoId: RepoId) {
+      const list = get().worktrees.get(repoId);
+      if (list?.status === "ok") {
+        for (const wt of list.data) invalidateDiffs(wt.id);
+        changeQueries.invalidate(
+          list.data.flatMap((wt) => diffModes.map(({ mode }) => changesKey(wt.id, mode))),
+        );
+      }
+      await relistRepository(repoId);
+      const current = selectWorktree(get());
+      if (get().repoId === repoId && current) await syncChanges(current);
     }
 
     async function refreshWorktree(
@@ -689,6 +736,7 @@ export function createWorkspaceStore(source: DataSource, toasts: StoreApi<Toasts
       storage: idle,
       worktrees: new Map(),
       changes: new Map(),
+      security: new Map(),
       fileDiff: idle,
       repoId: null,
       worktreeId: null,
@@ -713,6 +761,7 @@ export function createWorkspaceStore(source: DataSource, toasts: StoreApi<Toasts
         if (repositories.status !== "ok") return;
 
         const [first, ...otherRepos] = repositories.data;
+        for (const repo of repositories.data) void loadSecurityOf(repo.id);
         for (const repo of otherRepos) void loadWorktrees(repo.id);
         if (first) await get().selectRepository(first.id);
       },
@@ -751,6 +800,7 @@ export function createWorkspaceStore(source: DataSource, toasts: StoreApi<Toasts
                 },
         });
         worktreeQueries.invalidate([repo.id]);
+        void loadSecurityOf(repo.id, true);
         await get().selectRepository(repo.id);
         notify(`Added ${repo.name}`, repo.rootPath);
         return result;
@@ -770,6 +820,7 @@ export function createWorkspaceStore(source: DataSource, toasts: StoreApi<Toasts
           );
         }
         worktreeQueries.invalidate([repo.id]);
+        securityQueries.invalidate([repo.id]);
         const current = get().repositories;
         const remaining =
           current.status === "ok" ? current.data.filter((entry) => entry.id !== repo.id) : [];
@@ -824,6 +875,50 @@ export function createWorkspaceStore(source: DataSource, toasts: StoreApi<Toasts
         const initial = list.data.find((worktree) => worktree.base && worktree.changeCount > 0);
         const worktree = initial ?? list.data[0];
         if (worktree) await get().selectWorktree(worktree);
+      },
+
+      loadSecurity: async (repoId, refresh = false) => {
+        await loadSecurityOf(repoId, refresh);
+      },
+
+      trustFilters: async (repo, fingerprint) => {
+        const result = await resolveState(() =>
+          source.trustRepositoryFilters(repo.id, fingerprint),
+        );
+        if (result.status !== "ok") {
+          notifyError(`Could not trust ${repo.name}'s filter programs`, result.error);
+          void loadSecurityOf(repo.id, true); // what the user saw is out of date
+          return result;
+        }
+        securityQueries.supersede([repo.id]);
+        set({ security: new Map(get().security).set(repo.id, result) });
+        await rereadAfterTrustChange(repo.id);
+        notify(
+          `Trusted the filter programs of ${repo.name}`,
+          "WHY will now run exactly these while reading it. You can revoke this from its menu.",
+        );
+        return result;
+      },
+
+      revokeFilters: async (repo) => {
+        const result = await resolveState(() => source.revokeRepositoryFilters(repo.id));
+        if (result.status !== "ok") {
+          notifyError(`Could not revoke trust for ${repo.name}`, result.error);
+          return result;
+        }
+        // `ok` means trust IS forgotten, whether or not the re-check worked, so
+        // everything read under the old decision is stale either way.
+        securityQueries.supersede([repo.id]);
+        const { security, rescanError } = result.data;
+        if (security) set({ security: new Map(get().security).set(repo.id, { status: "ok", data: security }) });
+        else securityQueries.invalidate([repo.id]);
+        await rereadAfterTrustChange(repo.id);
+        if (rescanError) {
+          notifyError(`Stopped trusting ${repo.name}, but could not re-check it`, rescanError);
+        } else {
+          notify(`Stopped trusting ${repo.name}'s filter programs`);
+        }
+        return result;
       },
 
       retryWorktrees: async (repoId) => {

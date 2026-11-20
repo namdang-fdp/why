@@ -227,6 +227,73 @@ pub fn test_runner() -> why_lib::git::GitRunner {
     why_lib::git::GitRunner::new().with_isolated_config()
 }
 
+/// The filter guard's permit for `dir` with nothing trusted: what production
+/// code obtains before reading a worktree. Panics if the guard refuses, so a
+/// test that is not about the guard fails loudly if its fixture has a
+/// repository-local filter driver.
+pub async fn permit(
+    runner: &why_lib::git::GitRunner,
+    dir: &Path,
+) -> Result<why_lib::git::ReadPermit, why_lib::git::GitError> {
+    why_lib::git::guard_working_tree(runner, dir, &std::collections::HashSet::new()).await
+}
+
+/// A filter-driver program that records every invocation in `marker` and
+/// passes the file through unchanged (an identity clean filter). Shell scripts,
+/// so Unix only, like the other script fixtures.
+#[cfg(unix)]
+pub struct Marked {
+    pub marker: PathBuf,
+    pub script: PathBuf,
+}
+
+#[cfg(unix)]
+impl Marked {
+    pub fn new(repo: &TestRepo) -> Self {
+        // Outside the worktree: the marker must not itself show up as a change.
+        let marker = repo.root.path().join("marker.log");
+        let script = repo.root.path().join("driver.sh");
+        write_executable_script(
+            &script,
+            &format!("echo \"$@\" >> '{}'\ncat\n", marker.display()),
+        );
+        Marked { marker, script }
+    }
+
+    pub fn ran(&self) -> bool {
+        self.marker.exists()
+    }
+
+    pub fn reset(&self) {
+        let _ = std::fs::remove_file(&self.marker);
+    }
+
+    /// The value for `filter.<name>.clean` / `.process`.
+    pub fn command(&self, arg: &str) -> String {
+        format!("'{}' {arg}", self.script.display())
+    }
+}
+
+/// Make `a.txt` and `README.md` stat-dirty in the way that forces git to HASH
+/// them (and so run a clean filter): rewrite them with different bytes of the
+/// SAME LENGTH. A size change would not do: when the size differs git already
+/// knows the file changed and never reads it for `status` (measured), so no
+/// filter runs. With the same size git must compare content, whether the mtime
+/// moved or the index entry is still "racily clean" (same second).
+pub fn dirty(dir: &Path) {
+    write_in(dir, "a.txt", b"b\n"); // was "a\n"
+    write_in(dir, "README.md", b"world\n"); // was "hello\n"
+}
+
+/// `read_status` the way production does it: guard first, then read.
+pub async fn status_of(
+    runner: &why_lib::git::GitRunner,
+    dir: &Path,
+) -> Result<why_lib::git::StatusSnapshot, why_lib::git::GitError> {
+    let permit = permit(runner, dir).await?;
+    why_lib::git::read_status(runner, &permit).await
+}
+
 /// Write an executable `/bin/sh` script that is safe to run right away.
 ///
 /// # The race this avoids (ETXTBSY, "Text file busy")

@@ -9,6 +9,7 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
+use super::filters::FilterDriver;
 use super::version::GitVersion;
 
 /// Git printed output that does not match the documented format.
@@ -64,6 +65,12 @@ pub enum GitError {
     /// Any other I/O failure around the child process.
     #[error("I/O error while running git: {0}")]
     Io(#[from] std::io::Error),
+
+    /// WHY refused to read the working tree because the repository configures
+    /// filter drivers (programs git would run while reading files) that the
+    /// user has not trusted. Nothing was run. See `git::filters`.
+    #[error("untrusted git filter drivers: {}", drivers.iter().map(|d| d.name.as_str()).collect::<Vec<_>>().join(", "))]
+    UntrustedFilters { drivers: Vec<FilterDriver> },
 
     /// Git succeeded but its output was not in the expected format.
     #[error("unexpected git output: {0}")]

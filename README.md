@@ -6,7 +6,7 @@
 
 [![CI](https://github.com/namdang-fdp/why/actions/workflows/ci.yml/badge.svg)](https://github.com/namdang-fdp/why/actions/workflows/ci.yml)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
-![Status: early, v0.1 in progress](https://img.shields.io/badge/status-early%20%C2%B7%20v0.1%20in%20progress-orange)
+![Status: early, v0.1.0 first release](https://img.shields.io/badge/status-early%20%C2%B7%20v0.1.0%20first%20release-orange)
 ![Platform: Linux first](https://img.shields.io/badge/platform-Linux%20first-lightgrey)
 
 WHY is a local-first desktop app (Tauri 2 + Rust, React + TypeScript) for humans who review code
@@ -15,12 +15,12 @@ worktrees. It watches the repos your agents are working in and shows you the liv
 goal of attaching the reason behind each change and telling you where to look first.
 
 > [!WARNING]
-> **WHY is early and not usable end to end yet.** v0.1 is in progress, there is no release to
-> download, and Linux is the only platform the author develops and tests on. The sections below
-> separate what exists today from what is planned.
+> **WHY is early software.** v0.1.0 is the first release: a read-only, live diff viewer for many
+> repositories and worktrees. The "why" itself (session context, provenance, attention signals) is
+> planned for v0.2 and later and is not in the app yet. Builds are Linux only, and Linux is the only
+> platform the author develops and tests on. See [Known limitations](#known-limitations).
 
-<!-- TODO(screenshots): add a screenshot of the shell (repo rail, diff, inspector) once the UI is
-     wired to the real core (WHY-9), then a short GIF of a live diff update. -->
+<p align="center"><img src="assets/screenshots/why-v0.1.png" alt="WHY showing the repository and worktree rail on the left and a split Monaco diff of the selected file in the middle (demo data)" width="900"></p>
 
 ## The problem
 
@@ -38,38 +38,96 @@ It never replaces reading the code, and the human always owns the approval.
 
 ## Status: what exists today and what is planned
 
-Only the first list below exists. Everything in the table is a plan, not a promise. The detailed
-roadmap is in [`why-brain/04 - MVP and Validation.md`](<why-brain/04 - MVP and Validation.md>).
+**v0.1.0 is the first release.** It is the workspace and live-diff slice of the roadmap below;
+everything from v0.2 on is a plan, not a promise. The detailed roadmap is in
+[`why-brain/04 - MVP and Validation.md`](<why-brain/04 - MVP and Validation.md>), and every change
+is listed in the [changelog](CHANGELOG.md).
 
-**Built and merged on `main` today:**
-
-- Project scaffold: Tauri 2 shell, Rust core, React 19 UI, lint and test scripts.
-- IPC contracts between the Rust core and the UI, with TypeScript types generated from Rust.
-- Git core: one shared git runner, repository registration, worktree discovery, and status
-  snapshots (all read-only).
-- UI shell: the three-pane layout (repo rail, review area, inspector), keyboard shortcuts and a
-  command palette, running on fixture data.
-
-**Not yet usable:** the UI is not connected to the real core yet, so you cannot review a real
-repository in the app today.
-
-| Version | Theme                 | What it is meant to deliver                                                                                                      | State       |
-| ------- | --------------------- | -------------------------------------------------------------------------------------------------------------------------------- | ----------- |
-| v0.1    | Workspace + live diff | Register repos, discover worktrees, diff against the base branch including untracked files, live updates, a Monaco diff view     | In progress |
-| v0.2    | Session context       | An event store, a fail-open hook and collector, Claude Code and Codex adapters, a per-session timeline in the inspector          | Planned     |
-| v0.3    | Line provenance       | A deterministic replay engine that attributes lines to the edits that produced them, with an accuracy benchmark                  | Planned     |
-| v0.4    | Attention             | Signals (unknown origin, churn, untested, large deletion, scope drift), an attention-ordered review queue, per-hunk review state | Planned     |
-| v0.5    | Close the loop        | Anchored comments, feedback back to the originating agent, a portable provenance format, first external users                    | Planned     |
+| Version | Theme                 | What it is meant to deliver                                                                                                      | State                 |
+| ------- | --------------------- | -------------------------------------------------------------------------------------------------------------------------------- | --------------------- |
+| v0.1    | Workspace + live diff | Register repos, discover worktrees, diff against the base branch including untracked files, live updates, a Monaco diff view     | v0.1.0, first release |
+| v0.2    | Session context       | An event store, a fail-open hook and collector, Claude Code and Codex adapters, a per-session timeline in the inspector          | Planned               |
+| v0.3    | Line provenance       | A deterministic replay engine that attributes lines to the edits that produced them, with an accuracy benchmark                  | Planned               |
+| v0.4    | Attention             | Signals (unknown origin, churn, untested, large deletion, scope drift), an attention-ordered review queue, per-hunk review state | Planned               |
+| v0.5    | Close the loop        | Anchored comments, feedback back to the originating agent, a portable provenance format, first external users                    | Planned               |
 
 The provenance model labels every piece of evidence **Observed**, **Declared**, **Inferred** or
 **Unknown**, and never presents a guess as fact. That model is design work for v0.2 and v0.3; none
 of it is implemented yet.
 
+### What you can do with v0.1
+
+- **Add repositories** with the native folder picker. WHY lists every linked git worktree of each
+  one, and picks up worktrees your agents create or remove while it is running.
+- **See what changed** in each worktree in three modes: _Vs base_ (since the branch left its base
+  branch), _Uncommitted_, and _Staged_. Untracked files are included.
+- **Get the base right.** WHY detects the base branch for you and lets you override it per
+  worktree.
+- **Read the diff in Monaco**, split or unified, and move through files and hunks from the
+  keyboard.
+- **Watch it update live** while an agent works, without losing your place in the diff.
+- **Jump around fast** with the command palette (`Ctrl+K`) and single-key shortcuts (`?` lists them).
+- **Make it comfortable:** font, size, line height, ligatures, whitespace and theme are all
+  settings.
+- **Pick up where you left off:** repositories, base overrides and panel layout are remembered
+  between launches.
+- **Stay safe:** WHY only reads. See the [safety model](#safety-model-a-passive-observer).
+
+### Known limitations
+
+- **Linux only.** Releases ship an AppImage and a `.deb`. macOS and Windows are untested and have
+  no builds.
+- **Needs Git 2.45.1 or newer.** Older versions are refused with an error, and some current
+  distributions ship an older git (for example Ubuntu 22.04 and 24.04, and Debian 12).
+- **The "Why" inspector is a placeholder.** Session context and provenance arrive in v0.2 and
+  later; v0.1 is the live diff only.
+- **The filter-driver guard has limits** (a config-write race, and trust covers the command string
+  only). They are listed in [`SECURITY.md`](SECURITY.md).
+- **Unsigned builds, no auto-update.** Check downloads against the published `SHA256SUMS`.
+
 ## Install
 
-There is no release yet, so build from source (see [Development](#development)). The release
-workflow in [`.github/workflows/release.yml`](.github/workflows/release.yml) is a draft that will
-publish Linux AppImage and `.deb` bundles once the author starts tagging releases.
+WHY v0.1.0 ships as a Linux AppImage and a `.deb`. Download one from the
+[latest release](https://github.com/namdang-fdp/why/releases/latest); the file names are
+`WHY_0.1.0_amd64.AppImage` and `WHY_0.1.0_amd64.deb`.
+
+**Requirements:**
+
+- **Git 2.45.1 or newer** on your `PATH` (check with `git --version`). WHY runs it to read your
+  repositories.
+- **webkit2gtk 4.1 and GTK 3.** The `.deb` installs `libwebkit2gtk-4.1-0` and `libgtk-3-0` for you.
+  The AppImage bundles its own copy.
+
+**Check the download** (optional, recommended). Download `SHA256SUMS` from the same release, then
+run this next to the files:
+
+```bash
+sha256sum --check --ignore-missing SHA256SUMS
+```
+
+**AppImage** (any distribution, nothing is installed):
+
+```bash
+chmod +x WHY_0.1.0_amd64.AppImage
+./WHY_0.1.0_amd64.AppImage
+```
+
+If it fails with a FUSE error, install `libfuse2` (`libfuse2t64` on Ubuntu 24.04) or run it with
+`./WHY_0.1.0_amd64.AppImage --appimage-extract-and-run`.
+
+**Debian, Ubuntu and derivatives:**
+
+```bash
+sudo apt install ./WHY_0.1.0_amd64.deb
+```
+
+Then start WHY from your application menu, or run `why`. To remove it: `sudo apt remove why`.
+
+WHY keeps its small database of registered repositories in
+`~/.local/share/io.github.namdang-fdp.why/`. Removing the app does not delete it, and it never
+modifies your repositories.
+
+To build from source instead, see [Development](#development).
 
 ## Safety model: a passive observer
 
@@ -89,8 +147,14 @@ them.
   repo-local setting can name a program that git would execute during `git status`. Diff commands
   must also pass `--no-ext-diff --no-textconv`.
 
-One residual risk is known: git filter drivers selected by `.gitattributes` can still run during
-`status`. It is described in [`SECURITY.md`](SECURITY.md), which also explains how to report a
+- **Git filter programs need your OK.** A repository's own config can define _filter drivers_
+  (`filter.<name>.clean` / `process`, picked by `.gitattributes`) that git runs while it reads
+  files, so merely reading a repository could run a program that an agent wrote there. WHY checks
+  before every read and refuses (the repository is shown as blocked, with the programs listed) until
+  you choose "Trust and continue". Drivers from your own git config, such as git-lfs, are allowed
+  without asking. Details and limits are in [`SECURITY.md`](SECURITY.md).
+
+Known limits are listed in [`SECURITY.md`](SECURITY.md), which also explains how to report a
 vulnerability.
 
 ## Architecture at a glance
@@ -136,6 +200,9 @@ pnpm dev               # Vite + Tauri window with hot reload
 | `pnpm fmt`   | `cargo fmt` + `prettier --write`                                             |
 
 Layout: `src-tauri/` is the Rust core, `ui/` is the React frontend (Vite root).
+
+Maintainers: the steps for cutting a release are in
+[`docs/release-checklist.md`](docs/release-checklist.md).
 
 **Async rule (Rust):** Tauri already owns a tokio runtime. Don't add `#[tokio::main]` or create a
 second runtime; spawn with `tauri::async_runtime::spawn` and use the `tokio` crate only for its

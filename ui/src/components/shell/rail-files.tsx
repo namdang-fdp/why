@@ -98,9 +98,13 @@ export function ChangedFiles({ expanded, onToggle }: { expanded: boolean; onTogg
       <div className="rail-scroll">
         {changes.status === "idle" && <p className="rail-note">Select a worktree.</p>}
         {changes.status === "loading" && <LoadingMessage>Loading changes…</LoadingMessage>}
-        {changes.status === "error" && (
-          <ErrorMessage error={changes.error} retry={() => void retry()} />
-        )}
+        {changes.status === "error" &&
+          (changes.error.kind === "untrustedFilters" ? (
+            // Not a failure to retry: the main pane explains it and asks.
+            <p className="rail-note">Blocked until you review this repository's filter programs.</p>
+          ) : (
+            <ErrorMessage error={changes.error} retry={() => void retry()} />
+          ))}
         {changes.status === "ok" &&
           (changes.data.length === 0 ? (
             <p className="rail-note">No changes in this mode.</p>

@@ -17,6 +17,9 @@
 //! | `get_changes(worktree_id: WorktreeId, mode: DiffMode)` | `Vec<FileChange>` | Changed-files list |
 //! | `get_file_diff(worktree_id: WorktreeId, path: String, mode: DiffMode)` | `FileDiff` | Both sides of one file |
 //! | `set_base(worktree_id: WorktreeId, base_ref: String)` | `Worktree` | Choose the base ref for `DiffMode::VsBase`; an empty string clears the override |
+//! | `get_repository_security(repo_id: RepoId)` | `RepositorySecurity` | The repository's git filter drivers and whether WHY may read its files |
+//! | `trust_repository_filters(repo_id: RepoId, fingerprint: String)` | `RepositorySecurity` | Trust the drivers the user was shown (`fingerprint` must still match) |
+//! | `revoke_repository_filters(repo_id: RepoId)` | `RevokeResult` | Forget the trust decision (always done when `Ok`; the fresh report may be missing if the rescan failed) |
 //! | `get_storage_status()` | `StorageStatus` | Whether repositories are saved or only kept for this session |
 //! | `pick_repository_folder()` | `Option<String>` | Native folder picker (`None` = cancelled) |
 //!
@@ -43,6 +46,7 @@ mod error;
 mod events;
 mod ids;
 mod repo;
+mod security;
 mod storage;
 
 pub use changes::{ChangeStatus, DiffMode, FileChange, FileDiff};
@@ -52,6 +56,9 @@ pub use events::{
 };
 pub use ids::{RepoId, WorktreeId};
 pub use repo::{BranchInfo, Repository, Worktree};
+pub use security::{
+    FilterDriverInfo, FilterGuardStatus, FilterScope, RepositorySecurity, RevokeResult,
+};
 pub use storage::StorageStatus;
 
 // `ts-rs` is a dev-dependency: the types derive `TS` only under `cfg(test)`
