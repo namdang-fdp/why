@@ -1,0 +1,2 @@
+{"hook_event":"SessionStart","hook_name":"SessionStart:startup","exit_code":0,"outcome":"success","stdout":"","stderr":""}
+{"hook_event":"SessionStart","hook_name":"SessionStart:resume","exit_code":0,"outcome":"success","stdout":"","stderr":""}

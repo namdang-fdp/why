@@ -1,0 +1,3 @@
+{"hook_event":"SessionStart","hook_name":"SessionStart:startup","exit_code":127,"outcome":"error","stdout":"","stderr":"/bin/sh: line 1: /nonexistent/why-hook: No such file or directory\n"}
+{"hook_event":"PreToolUse","hook_name":"PreToolUse:Write","exit_code":127,"outcome":"error","stdout":"","stderr":"/bin/sh: line 1: /nonexistent/why-hook: No such file or directory\n"}
+{"hook_event":"Stop","hook_name":"Stop","exit_code":127,"outcome":"error","stdout":"","stderr":"/bin/sh: line 1: /nonexistent/why-hook: No such file or directory\n"}

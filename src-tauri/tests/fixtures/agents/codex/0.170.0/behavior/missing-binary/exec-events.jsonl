@@ -1,0 +1,8 @@
+{"type":"thread.started","thread_id":"01a1f815-a238-7383-8630-34eb2273581c"}
+{"type":"turn.started"}
+{"type":"item.started","item":{"id":"item_2","type":"command_execution","command":"/usr/bin/zsh -lc 'pwd && ls -a'","aggregated_output":"","exit_code":null,"status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item_2","type":"command_execution","command":"/usr/bin/zsh -lc 'pwd && ls -a'","aggregated_output":"/TMP/fixture-repo\n.\n..\n.agents\n.aws\n.codex\n.git\nREADME.md\nsrc\ntests\n","exit_code":0,"status":"completed"}}
+{"type":"item.started","item":{"id":"item_3","type":"file_change","changes":[{"path":"/TMP/fixture-repo/src/cxe.py","kind":"add"}],"status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item_3","type":"file_change","changes":[{"path":"/TMP/fixture-repo/src/cxe.py","kind":"add"}],"status":"completed"}}
+{"type":"item.completed","item":{"id":"item_4","type":"agent_message","text":"done"}}
+{"type":"turn.completed","usage":{"input_tokens":64981,"cached_input_tokens":22912,"cache_write_input_tokens":0,"output_tokens":78,"reasoning_output_tokens":0}}
