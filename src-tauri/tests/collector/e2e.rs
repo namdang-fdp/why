@@ -16,8 +16,14 @@ use super::*;
 /// workspace member's binaries before running any test, into the same target
 /// directory and profile as this test executable (whatever `CARGO_TARGET_DIR`,
 /// `--target` or `--release` the outer command used), so the binary sits next to
-/// this test's own `deps/` directory. No nested `cargo build` (that would run
-/// with the inherited environment: network, cargo home, another target dir).
+/// the profile directory (`.../debug` or `.../<triple>/debug`). No nested
+/// `cargo build` (that would run with the inherited environment: network, cargo
+/// home, another target dir).
+///
+/// Where THIS test executable lives depends on the Cargo version: older Cargo
+/// puts it in `<profile>/deps/`, newer Cargo (the `build-dir` layout) in
+/// `<profile>/build/<pkg>/<hash>/`. So walk up from it to the first ancestor
+/// that holds `why-hook` instead of assuming a fixed depth.
 ///
 /// Missing = a loud failure with the fix, never a skip: an end-to-end test that
 /// silently does not run proves nothing.
@@ -25,18 +31,19 @@ fn hook_binary() -> &'static Path {
     static PATH: OnceLock<PathBuf> = OnceLock::new();
     PATH.get_or_init(|| {
         let exe = std::env::current_exe().unwrap();
-        let bin = exe
-            .parent() // .../deps
-            .and_then(Path::parent) // .../debug (or <triple>/debug)
-            .unwrap()
-            .join("why-hook");
-        assert!(
-            bin.is_file(),
-            "the why-hook binary is not at {}. Run the tests with `cargo test --workspace` \
-             (or `pnpm test:rust`), which builds it, or `cargo build -p why-hook` first.",
-            bin.display()
-        );
-        bin
+        let found = exe
+            .ancestors()
+            .skip(1)
+            .map(|dir| dir.join("why-hook"))
+            .find(|bin| bin.is_file());
+        found.unwrap_or_else(|| {
+            panic!(
+                "no why-hook binary in any parent directory of {}. Run the tests with \
+                 `cargo test --workspace` (or `pnpm test:rust`), which builds it, or \
+                 `cargo build -p why-hook` first.",
+                exe.display()
+            )
+        })
     })
 }
 
