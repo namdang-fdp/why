@@ -6,9 +6,17 @@ import {
   repositories,
   worktreeChangedAll,
   worktrees,
+  WT_BILLING_DETACHED,
   WT_WHY_AGENT,
   WT_WHY_MAIN,
 } from "@/fixtures";
+import { SESSION_LONG } from "@/dev-fixtures/long-session";
+import {
+  SESSION_CLAUDE,
+  SESSION_CODEX,
+  SESSION_SUBAGENT,
+  sessionTimelines,
+} from "@/fixtures/sessions";
 import { FixtureDataSource, type FixtureOptions } from "./fixture-data-source";
 
 describe("FixtureDataSource", () => {
@@ -112,5 +120,86 @@ describe("FixtureDataSource", () => {
     it("is clear without drivers", async () => {
       expect((await new FixtureDataSource().getRepositorySecurity(REPO_WHY)).status).toBe("clear");
     });
+  });
+});
+
+describe("FixtureDataSource sessions", () => {
+  it("lists a worktree's sessions, most recent first, and nothing for unknown worktrees", async () => {
+    const source = new FixtureDataSource();
+    const agent = await source.listSessions(WT_WHY_AGENT);
+    expect(agent.map((session) => session.id)).toEqual([SESSION_CODEX, SESSION_CLAUDE]);
+    expect((await source.listSessions(WT_WHY_MAIN)).map((s) => s.id)).toEqual([SESSION_SUBAGENT]);
+    await expect(source.listSessions("wt-nope")).resolves.toEqual([]);
+  });
+
+  it("covers both harnesses, a subagent, and failed and unknown outcomes", async () => {
+    const source = new FixtureDataSource();
+    const all = await Promise.all(
+      [SESSION_CLAUDE, SESSION_CODEX, SESSION_SUBAGENT].map((id) => source.getSessionTimeline(id)),
+    );
+    expect(new Set(all.map((t) => t.session.harness))).toEqual(new Set(["claudeCode", "codex"]));
+    const events = all.flatMap((t) => t.turns.flatMap((turn) => turn.events));
+    expect(events.some((e) => e.agentId !== null)).toBe(true);
+    expect(events.some((e) => e.outcome === "failed")).toBe(true);
+    expect(events.some((e) => e.outcome === "unknown")).toBe(true);
+    for (const timeline of all) {
+      expect(timeline.turns.length).toBeGreaterThanOrEqual(3);
+      expect(timeline.session.turnCount).toBe(timeline.turns.length);
+      // Turns are numbered in order and events are in time order.
+      timeline.turns.forEach((turn, index) => {
+        expect(turn.index).toBe(index);
+        const times = turn.events.map((e) => e.at);
+        expect(times).toEqual([...times].sort());
+      });
+    }
+  });
+
+  it("serves a ~500-turn session for the virtualized timeline", async () => {
+    const source = new FixtureDataSource();
+    const [summary] = await source.listSessions(WT_BILLING_DETACHED);
+    expect(summary?.id).toBe(SESSION_LONG);
+    const long = await source.getSessionTimeline(SESSION_LONG);
+    expect(long.turns).toHaveLength(500);
+    expect(long.turns.at(-1)?.endedAt).toBeNull();
+  });
+
+  it("rejects an unknown session id with notFound", async () => {
+    await expect(new FixtureDataSource().getSessionTimeline("codex:nope")).rejects.toEqual({
+      kind: "notFound",
+    });
+  });
+
+  it("returns copies, so callers cannot change the fixtures", async () => {
+    const source = new FixtureDataSource();
+    const timeline = await source.getSessionTimeline(SESSION_CLAUDE);
+    timeline.turns.length = 0;
+    expect((await source.getSessionTimeline(SESSION_CLAUDE)).turns).toHaveLength(3);
+    expect(sessionTimelines[0]?.turns).toHaveLength(3);
+  });
+
+  it("announces simulated activity and unsubscribes cleanly", async () => {
+    const source = new FixtureDataSource();
+    const callback = vi.fn();
+    const stop = source.onSessionsChanged(callback);
+    expect(source.simulateSessionActivity(SESSION_CODEX, "pytest -k notes")).toBe(true);
+    expect(callback).toHaveBeenCalledWith({ worktreeId: WT_WHY_AGENT });
+    const turn = (await source.getSessionTimeline(SESSION_CODEX)).turns.at(-1);
+    expect(turn?.events.at(-1)?.summary).toBe("pytest -k notes");
+    stop();
+    source.simulateSessionActivity(SESSION_CODEX);
+    expect(callback).toHaveBeenCalledOnce();
+    expect(source.simulateSessionActivity("codex:nope")).toBe(false);
+  });
+
+  it("keeps an ended session unchanged when activity is simulated", async () => {
+    const source = new FixtureDataSource();
+    const callback = vi.fn();
+    const stop = source.onSessionsChanged(callback);
+    const before = await source.getSessionTimeline(SESSION_CLAUDE);
+
+    expect(source.simulateSessionActivity(SESSION_CLAUDE)).toBe(false);
+    expect(await source.getSessionTimeline(SESSION_CLAUDE)).toEqual(before);
+    expect(callback).not.toHaveBeenCalled();
+    stop();
   });
 });
