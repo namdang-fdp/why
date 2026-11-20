@@ -1,0 +1,18 @@
+[
+  {
+    "status": "ended",
+    "turns": [
+      {
+        "closed": true,
+        "events": [
+          "prompt - - [] observed",
+          "edit Write ok [src/wt_note.py] observed",
+          "assistantMessage - - [] declared",
+          "stop - - [] observed"
+        ],
+        "prompt": "Create the file src/wt_note.py containin",
+        "synthetic": false
+      }
+    ]
+  }
+]

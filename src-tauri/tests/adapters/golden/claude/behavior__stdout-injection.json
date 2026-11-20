@@ -1,0 +1,18 @@
+[
+  {
+    "status": "ended",
+    "turns": [
+      {
+        "closed": true,
+        "events": [
+          "prompt - - [] observed",
+          "toolCall Read ok [] observed",
+          "assistantMessage - - [] declared",
+          "stop - - [] observed"
+        ],
+        "prompt": "First use the Read tool on README.md. Th",
+        "synthetic": false
+      }
+    ]
+  }
+]

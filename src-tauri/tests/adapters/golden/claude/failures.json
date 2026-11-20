@@ -1,0 +1,24 @@
+[
+  {
+    "status": "ended",
+    "turns": [
+      {
+        "closed": true,
+        "events": [
+          "prompt - - [] observed",
+          "testRun Bash failed [] observed",
+          "assistantMessage - - [] declared",
+          "edit Edit failed [src/calc.py] observed",
+          "toolCall Read ok [] observed",
+          "edit Edit failed [src/calc.py] observed",
+          "shell Bash failed [] observed",
+          "assistantMessage - - [] declared",
+          "assistantMessage - - [] declared",
+          "stop - - [] observed"
+        ],
+        "prompt": "Call these tools exactly, one after the ",
+        "synthetic": false
+      }
+    ]
+  }
+]

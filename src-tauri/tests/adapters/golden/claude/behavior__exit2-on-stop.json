@@ -1,0 +1,62 @@
+[
+  {
+    "status": "ended",
+    "turns": [
+      {
+        "closed": true,
+        "events": [
+          "prompt - - [] observed",
+          "edit Write ok [src/e.py] observed",
+          "assistantMessage - - [] declared",
+          "stop - - [] observed",
+          "assistantMessage - - [] declared",
+          "stop - - [] observed",
+          "assistantMessage - - [] declared",
+          "stop - - [] observed",
+          "assistantMessage - - [] declared",
+          "stop - - [] observed",
+          "assistantMessage - - [] declared",
+          "stop - - [] observed",
+          "assistantMessage - - [] declared",
+          "stop - - [] observed",
+          "assistantMessage - - [] declared",
+          "stop - - [] observed",
+          "shell Bash failed [] observed",
+          "assistantMessage - - [] declared",
+          "shell Bash ok [] observed",
+          "assistantMessage - - [] declared",
+          "assistantMessage - - [] declared",
+          "stop - - [] observed",
+          "assistantMessage - - [] declared",
+          "stop - - [] observed",
+          "assistantMessage - - [] declared",
+          "stop - - [] observed",
+          "assistantMessage - - [] declared",
+          "stop - - [] observed",
+          "shell Bash ok [] observed",
+          "assistantMessage - - [] declared",
+          "assistantMessage - - [] declared",
+          "stop - - [] observed",
+          "assistantMessage - - [] declared",
+          "stop - - [] observed",
+          "assistantMessage - - [] declared",
+          "stop - - [] observed",
+          "assistantMessage - - [] declared",
+          "stop - - [] observed",
+          "assistantMessage - - [] declared",
+          "stop - - [] observed",
+          "assistantMessage - - [] declared",
+          "stop - - [] observed",
+          "assistantMessage - - [] declared",
+          "stop - - [] observed",
+          "assistantMessage - - [] declared",
+          "stop - - [] observed",
+          "assistantMessage - - [] declared",
+          "stop - - [] observed"
+        ],
+        "prompt": "Use the Write tool to create the file sr",
+        "synthetic": false
+      }
+    ]
+  }
+]
