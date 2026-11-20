@@ -1,0 +1,6 @@
+session codex:01a1f813-c4d3-7fc3-a2fe-76c635a81379 model=Some("gpt-6-luna") status=Ended turns=1
+  turn 0 id=01a1f813-c69e-72f1-96cb-c3c1a2c7f28d prompt=Some("Use apply_patch to create src/cx_wt.py containing ") ended=true
+    Prompt None tool=None agent=- evidence=Observed files=[] :: Use apply_patch to create src/cx_wt.py containing the line W = 1, then reply done.
+    Edit Some(Ok) tool=Some("apply_patch") agent=- evidence=Observed files=["/TMP/fixture-wt/src/cx_wt.py"] :: A src/cx_wt.py (+1)
+    AssistantMessage None tool=None agent=- evidence=Declared files=[] :: Done.
+    Stop None tool=None agent=- evidence=Observed files=[] :: 

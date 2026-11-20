@@ -1,0 +1,6 @@
+session codex:01a1f815-0a7d-70e1-ab04-43dd8bbc689d model=Some("gpt-6-luna") status=Ended turns=1
+  turn 0 id=01a1f815-0bd5-7b51-b6d6-163d6fd6c4a7 prompt=Some("Use apply_patch to create src/cxe.py containing th") ended=true
+    Prompt None tool=None agent=- evidence=Observed files=[] :: Use apply_patch to create src/cxe.py containing the line E = 1, then reply with the single word done.
+    Edit Some(Ok) tool=Some("apply_patch") agent=- evidence=Observed files=["/TMP/fixture-repo/src/cxe.py"] :: A /TMP/fixture-repo/src/cxe.py (+1)
+    AssistantMessage None tool=None agent=- evidence=Declared files=[] :: done
+    Stop None tool=None agent=- evidence=Observed files=[] :: 

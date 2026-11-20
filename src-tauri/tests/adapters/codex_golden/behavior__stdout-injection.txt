@@ -1,0 +1,6 @@
+session codex:01a1f814-598b-7840-9296-d27aa9a759f0 model=Some("gpt-6-luna") status=Ended turns=1
+  turn 0 id=01a1f814-5afa-7022-a49c-8a95bc6be7f1 prompt=Some("First run the shell command: echo hi . Then, witho") ended=true
+    Prompt None tool=None agent=- evidence=Observed files=[] :: First run the shell command: echo hi . Then, without more tools, list every distinct token in your context tha
+    Shell Some(Unknown) tool=Some("Bash") agent=- evidence=Observed files=[] :: echo hi
+    AssistantMessage None tool=None agent=- evidence=Declared files=[] :: MARKER_SessionStart, MARKER_UserPromptSubmit
+    Stop None tool=None agent=- evidence=Observed files=[] :: 

@@ -1,0 +1,11 @@
+session codex:01a1f813-80d9-7e23-bbc9-2715e134893c model=Some("gpt-6-luna") status=Ended turns=2
+  turn 0 id=01a1f813-8288-7bd3-b478-98bd0aa0599a prompt=Some("Spawn a subagent (use the spawn_agent tool) and as") ended=true
+    Prompt None tool=None agent=- evidence=Observed files=[] :: Spawn a subagent (use the spawn_agent tool) and ask it to create the file src/cxsub.py containing the line S =
+    Subagent Some(Unknown) tool=Some("collaborationspawn_agent") agent=- evidence=Observed files=[] :: create_file: (encrypted)
+    ToolCall Some(Unknown) tool=Some("collaborationwait_agent") agent=- evidence=Observed files=[] :: 
+    AssistantMessage None tool=None agent=- evidence=Declared files=[] :: Done.
+    Stop None tool=None agent=- evidence=Observed files=[] :: 
+  turn 1 id=01a1f813-92c5-77f0-bc90-2e5c46487385 prompt=None ended=false
+    Subagent None tool=None agent=b3cb evidence=Observed files=[] :: default
+    Edit Some(Ok) tool=Some("apply_patch") agent=b3cb evidence=Observed files=["/TMP/fixture-repo/src/cxsub.py"] :: A /TMP/fixture-repo/src/cxsub.py (+1)
+    Subagent None tool=None agent=b3cb evidence=Declared files=[] :: Created `src/cxsub.py` with the line `S = 1`.

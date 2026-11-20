@@ -1,0 +1,97 @@
+session codex:01a1f816-4f0d-75f0-9b45-4884c829c0f5 model=Some("gpt-6-luna") status=Live turns=1
+  turn 0 id=01a1f816-5051-77e0-8950-7e665366491b prompt=Some("Reply with the single word done. Use no tools.") ended=true
+    Prompt None tool=None agent=- evidence=Observed files=[] :: Reply with the single word done. Use no tools.
+    AssistantMessage None tool=None agent=- evidence=Declared files=[] :: done
+    Stop None tool=None agent=- evidence=Observed files=[] :: 
+    AssistantMessage None tool=None agent=- evidence=Declared files=[] :: done
+    Stop None tool=None agent=- evidence=Observed files=[] :: 
+    AssistantMessage None tool=None agent=- evidence=Declared files=[] :: done
+    Stop None tool=None agent=- evidence=Observed files=[] :: 
+    AssistantMessage None tool=None agent=- evidence=Declared files=[] :: done
+    Stop None tool=None agent=- evidence=Observed files=[] :: 
+    AssistantMessage None tool=None agent=- evidence=Declared files=[] :: done
+    Stop None tool=None agent=- evidence=Observed files=[] :: 
+    AssistantMessage None tool=None agent=- evidence=Declared files=[] :: done
+    Stop None tool=None agent=- evidence=Observed files=[] :: 
+    AssistantMessage None tool=None agent=- evidence=Declared files=[] :: done
+    Stop None tool=None agent=- evidence=Observed files=[] :: 
+    AssistantMessage None tool=None agent=- evidence=Declared files=[] :: done
+    Stop None tool=None agent=- evidence=Observed files=[] :: 
+    AssistantMessage None tool=None agent=- evidence=Declared files=[] :: done
+    Stop None tool=None agent=- evidence=Observed files=[] :: 
+    AssistantMessage None tool=None agent=- evidence=Declared files=[] :: done
+    Stop None tool=None agent=- evidence=Observed files=[] :: 
+    AssistantMessage None tool=None agent=- evidence=Declared files=[] :: done
+    Stop None tool=None agent=- evidence=Observed files=[] :: 
+    AssistantMessage None tool=None agent=- evidence=Declared files=[] :: done
+    Stop None tool=None agent=- evidence=Observed files=[] :: 
+    AssistantMessage None tool=None agent=- evidence=Declared files=[] :: done
+    Stop None tool=None agent=- evidence=Observed files=[] :: 
+    AssistantMessage None tool=None agent=- evidence=Declared files=[] :: done
+    Stop None tool=None agent=- evidence=Observed files=[] :: 
+    AssistantMessage None tool=None agent=- evidence=Declared files=[] :: done
+    Stop None tool=None agent=- evidence=Observed files=[] :: 
+    AssistantMessage None tool=None agent=- evidence=Declared files=[] :: done
+    Stop None tool=None agent=- evidence=Observed files=[] :: 
+    AssistantMessage None tool=None agent=- evidence=Declared files=[] :: done
+    Stop None tool=None agent=- evidence=Observed files=[] :: 
+    AssistantMessage None tool=None agent=- evidence=Declared files=[] :: done
+    Stop None tool=None agent=- evidence=Observed files=[] :: 
+    AssistantMessage None tool=None agent=- evidence=Declared files=[] :: done
+    Stop None tool=None agent=- evidence=Observed files=[] :: 
+    AssistantMessage None tool=None agent=- evidence=Declared files=[] :: done
+    Stop None tool=None agent=- evidence=Observed files=[] :: 
+    AssistantMessage None tool=None agent=- evidence=Declared files=[] :: done
+    Stop None tool=None agent=- evidence=Observed files=[] :: 
+    AssistantMessage None tool=None agent=- evidence=Declared files=[] :: done
+    Stop None tool=None agent=- evidence=Observed files=[] :: 
+    AssistantMessage None tool=None agent=- evidence=Declared files=[] :: done
+    Stop None tool=None agent=- evidence=Observed files=[] :: 
+    AssistantMessage None tool=None agent=- evidence=Declared files=[] :: done
+    Stop None tool=None agent=- evidence=Observed files=[] :: 
+    AssistantMessage None tool=None agent=- evidence=Declared files=[] :: done
+    Stop None tool=None agent=- evidence=Observed files=[] :: 
+    AssistantMessage None tool=None agent=- evidence=Declared files=[] :: done
+    Stop None tool=None agent=- evidence=Observed files=[] :: 
+    AssistantMessage None tool=None agent=- evidence=Declared files=[] :: done
+    Stop None tool=None agent=- evidence=Observed files=[] :: 
+    AssistantMessage None tool=None agent=- evidence=Declared files=[] :: done
+    Stop None tool=None agent=- evidence=Observed files=[] :: 
+    AssistantMessage None tool=None agent=- evidence=Declared files=[] :: done
+    Stop None tool=None agent=- evidence=Observed files=[] :: 
+    AssistantMessage None tool=None agent=- evidence=Declared files=[] :: done
+    Stop None tool=None agent=- evidence=Observed files=[] :: 
+    AssistantMessage None tool=None agent=- evidence=Declared files=[] :: done
+    Stop None tool=None agent=- evidence=Observed files=[] :: 
+    AssistantMessage None tool=None agent=- evidence=Declared files=[] :: done
+    Stop None tool=None agent=- evidence=Observed files=[] :: 
+    AssistantMessage None tool=None agent=- evidence=Declared files=[] :: done
+    Stop None tool=None agent=- evidence=Observed files=[] :: 
+    AssistantMessage None tool=None agent=- evidence=Declared files=[] :: done
+    Stop None tool=None agent=- evidence=Observed files=[] :: 
+    AssistantMessage None tool=None agent=- evidence=Declared files=[] :: done
+    Stop None tool=None agent=- evidence=Observed files=[] :: 
+    AssistantMessage None tool=None agent=- evidence=Declared files=[] :: done
+    Stop None tool=None agent=- evidence=Observed files=[] :: 
+    AssistantMessage None tool=None agent=- evidence=Declared files=[] :: done
+    Stop None tool=None agent=- evidence=Observed files=[] :: 
+    AssistantMessage None tool=None agent=- evidence=Declared files=[] :: done
+    Stop None tool=None agent=- evidence=Observed files=[] :: 
+    AssistantMessage None tool=None agent=- evidence=Declared files=[] :: done
+    Stop None tool=None agent=- evidence=Observed files=[] :: 
+    AssistantMessage None tool=None agent=- evidence=Declared files=[] :: done
+    Stop None tool=None agent=- evidence=Observed files=[] :: 
+    AssistantMessage None tool=None agent=- evidence=Declared files=[] :: done
+    Stop None tool=None agent=- evidence=Observed files=[] :: 
+    AssistantMessage None tool=None agent=- evidence=Declared files=[] :: done
+    Stop None tool=None agent=- evidence=Observed files=[] :: 
+    AssistantMessage None tool=None agent=- evidence=Declared files=[] :: done
+    Stop None tool=None agent=- evidence=Observed files=[] :: 
+    AssistantMessage None tool=None agent=- evidence=Declared files=[] :: done
+    Stop None tool=None agent=- evidence=Observed files=[] :: 
+    AssistantMessage None tool=None agent=- evidence=Declared files=[] :: done
+    Stop None tool=None agent=- evidence=Observed files=[] :: 
+    AssistantMessage None tool=None agent=- evidence=Declared files=[] :: done
+    Stop None tool=None agent=- evidence=Observed files=[] :: 
+    AssistantMessage None tool=None agent=- evidence=Declared files=[] :: done
+    Stop None tool=None agent=- evidence=Observed files=[] :: 
