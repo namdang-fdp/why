@@ -1,0 +1,483 @@
+.session-list-view,
+.session-scroll-frame {
+  flex: 1;
+  min-height: 0;
+}
+
+.session-list-view,
+.session-scroll {
+  overflow: auto;
+  scrollbar-gutter: stable;
+}
+
+.session-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 4px;
+  padding-left: 8px;
+  border-left: 1px solid var(--border);
+}
+
+.session-timeline-bar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 36px;
+  gap: 4px;
+  padding-inline: 12px;
+  color: var(--muted-foreground);
+}
+
+.session-timeline-bar h3 {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  color: var(--foreground);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.session-timeline-bar h3 span,
+.session-match-count {
+  color: var(--muted-foreground);
+  font: 11px var(--font-mono);
+  white-space: nowrap;
+}
+
+.session-timeline-actions,
+.session-card-badges,
+.session-card-meta,
+.session-turn-head,
+.session-event-head,
+.session-subagent {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+}
+
+.session-list {
+  display: grid;
+  gap: 6px;
+  padding: 0 10px 12px;
+}
+
+.session-card {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  gap: 7px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--shell-chrome);
+  text-align: left;
+}
+
+.session-card:hover,
+.session-icon-button:hover,
+.session-tool-toggle:hover,
+.session-file:not([data-external]):hover {
+  background: var(--shell-hover);
+}
+
+.session-card:active,
+.session-new:hover {
+  background: var(--shell-selected);
+}
+
+.session-card-task,
+.session-prompt[data-expanded="false"] {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.session-card-task,
+.session-prompt,
+.session-event-summary {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.session-card-task {
+  line-height: 1.45;
+  font-weight: 550;
+}
+
+.session-harness,
+.session-evidence,
+.session-outcome {
+  flex: none;
+  padding: 1px 5px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 10px;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.session-harness {
+  background: var(--shell-hover);
+  font-weight: 600;
+}
+
+.session-status,
+.session-card-meta,
+.session-task-times,
+.session-event-time,
+.session-turn-head time,
+.session-muted {
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+
+.session-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.session-status > span {
+  width: 5px;
+  height: 5px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+}
+
+.session-status[data-status="live"] {
+  color: var(--git-added);
+}
+
+.session-status[data-status="live"] > span {
+  background: currentColor;
+  animation: session-live-pulse 2.8s ease-in-out infinite;
+}
+
+@keyframes session-live-pulse {
+  50% {
+    opacity: 0.4;
+  }
+}
+
+.session-card-meta {
+  flex-wrap: wrap;
+}
+
+.session-card-meta > svg {
+  flex: none;
+  margin-left: auto;
+}
+
+.session-card-meta > span + time::before,
+.session-card-meta > time + span::before {
+  margin-right: 6px;
+  content: "·";
+}
+
+.session-model {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font: 10px var(--font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-task {
+  flex: none;
+  max-height: 40%;
+  overflow: auto;
+  padding: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.session-task h3 {
+  margin: 9px 0 3px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted-foreground);
+}
+
+.session-task > .session-prompt {
+  font-weight: 550;
+}
+
+.session-task-times {
+  display: grid;
+  gap: 2px;
+  margin-top: 9px;
+}
+
+.session-task-times > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 7px;
+}
+
+.session-task-times dd {
+  color: var(--foreground);
+}
+
+.session-scroll-frame {
+  position: relative;
+}
+
+.session-scroll {
+  height: 100%;
+  overflow-anchor: none;
+  scroll-behavior: auto;
+}
+
+.session-window {
+  position: relative;
+}
+
+.session-turn {
+  position: absolute;
+  top: 0;
+  inset-inline: 0;
+  padding: 0 10px 8px;
+}
+
+.session-turn-body {
+  padding: 9px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--shell-chrome);
+}
+
+.session-turn-body[data-file-match="true"],
+.session-turn-body[data-selected="true"],
+.rail-row.file-row[data-turn-match="true"] {
+  border-color: var(--ring);
+}
+
+.session-turn-body[data-selected="true"],
+.rail-row.file-row[data-turn-match="true"] {
+  background: var(--shell-hover);
+}
+
+.session-turn-select {
+  color: var(--foreground);
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.session-turn-select:hover,
+.session-text-button:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.session-turn-head {
+  margin-bottom: 6px;
+}
+
+.session-turn-head time {
+  white-space: nowrap;
+}
+
+.session-turn-head .session-evidence,
+.session-event-head .session-evidence {
+  margin-left: auto;
+}
+
+.session-prompt,
+.session-event-summary {
+  white-space: pre-wrap;
+}
+
+.session-prompt {
+  line-height: 1.45;
+}
+
+.session-prompt[data-expanded="false"] {
+  -webkit-line-clamp: 3;
+}
+
+.session-text-button {
+  min-height: 24px;
+  color: var(--muted-foreground);
+  border-radius: 3px;
+  font-size: 11px;
+}
+
+.session-synthetic {
+  margin-bottom: 4px;
+  color: var(--git-modified);
+  font-size: 11px;
+}
+
+.session-event-group {
+  margin-top: 7px;
+}
+
+.session-event-group[data-subagent] {
+  margin-left: 6px;
+  padding-left: 7px;
+  border-left: 1px solid var(--ring);
+}
+
+.session-subagent {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.session-subagent svg,
+.session-event-head > svg {
+  flex: none;
+}
+
+.session-event {
+  padding: 6px 4px;
+  border-top: 1px solid var(--border);
+  color: var(--muted-foreground);
+}
+
+.session-event[data-file-match="true"] {
+  background: var(--shell-selected);
+  box-shadow: inset 2px 0 var(--ring);
+}
+
+.session-event-head {
+  gap: 4px;
+}
+
+.session-event-name,
+.session-tool-toggle {
+  min-width: 0;
+  color: var(--foreground);
+  font-size: 11px;
+}
+
+.session-event-name,
+.session-tool-toggle span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-tool-toggle {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  gap: 3px;
+  border-radius: 3px;
+  text-align: left;
+}
+
+.session-tool-toggle > svg {
+  flex: none;
+}
+
+.session-tool-toggle[aria-expanded="true"] > svg {
+  transform: rotate(180deg);
+}
+
+.session-event-summary {
+  margin-top: 3px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.session-event-summary[data-clamped="true"] {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-evidence[data-evidence="unknown"],
+.session-outcome[data-outcome="unknown"] {
+  border-style: dashed;
+  color: var(--git-modified);
+}
+
+.session-outcome[data-outcome="ok"] {
+  color: var(--git-added);
+}
+.session-outcome[data-outcome="failed"] {
+  color: var(--git-deleted);
+}
+
+.session-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 5px;
+}
+
+.session-files > li {
+  min-width: 0;
+}
+
+.session-file {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  padding: 3px 5px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--foreground);
+  font: 10px var(--font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-file[data-file-match="true"] {
+  border-color: var(--ring);
+}
+
+.session-file[data-external] {
+  color: var(--shell-path);
+  border-style: dashed;
+}
+
+.session-icon-button,
+.session-new {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  min-height: 24px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.session-arrivals {
+  position: absolute;
+  bottom: 10px;
+  inset-inline: 0;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.session-scroll:has(+ .session-arrivals button) {
+  scroll-padding-bottom: 44px;
+}
+
+.session-new {
+  gap: 5px;
+  padding: 3px 10px;
+  border-color: var(--ring);
+  border-radius: 999px;
+  background: var(--shell-chrome);
+  font-size: 12px;
+  pointer-events: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .session-status[data-status="live"] > span {
+    animation: none !important;
+  }
+}
