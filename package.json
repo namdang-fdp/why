@@ -10,13 +10,13 @@
     "build": "tauri build",
     "build:ui": "tsc -b ui && vite build --config ui/vite.config.ts",
     "test": "pnpm test:rust && pnpm test:ui",
-    "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
+    "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml --workspace",
     "test:ui": "vitest run --config ui/vite.config.ts",
     "lint": "pnpm lint:rust && pnpm lint:ui",
-    "lint:rust": "cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings && cargo fmt --manifest-path src-tauri/Cargo.toml --check",
+    "lint:rust": "cargo clippy --manifest-path src-tauri/Cargo.toml --workspace --all-targets -- -D warnings && cargo fmt --manifest-path src-tauri/Cargo.toml --all --check",
     "lint:ui": "eslint . && tsc -b ui",
-    "fmt": "cargo fmt --manifest-path src-tauri/Cargo.toml && prettier --write ui eslint.config.js scripts",
-    "gen:contracts": "cargo test --manifest-path src-tauri/Cargo.toml contracts::export::regenerate_bindings -- --ignored",
+    "fmt": "cargo fmt --manifest-path src-tauri/Cargo.toml --all && prettier --write ui eslint.config.js scripts",
+    "gen:contracts": "cargo test --manifest-path src-tauri/Cargo.toml -p why --lib contracts::export::regenerate_bindings -- --ignored",
     "tauri": "tauri"
   },
   "dependencies": {

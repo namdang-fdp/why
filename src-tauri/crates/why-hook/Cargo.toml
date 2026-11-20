@@ -1,0 +1,21 @@
+[package]
+name = "why-hook"
+version = "0.1.0"
+description = "Fail-open hook that forwards Claude Code / Codex hook payloads to WHY"
+edition = "2024"
+rust-version = "1.90"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[[bin]]
+name = "why-hook"
+path = "src/main.rs"
+
+# No tauri, no tokio: the harness spawns this binary once per agent event and
+# waits for it, so start-up cost is added to every tool call the agent makes.
+[dependencies]
+why-wire = { path = "../why-wire" }
+serde_json = "1.0"
+
+[dev-dependencies]
+tempfile = "3"
