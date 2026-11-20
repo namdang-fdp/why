@@ -349,6 +349,7 @@ const subagentTurns = [
         at: at(20, 58),
         toolName: "Bash",
         summary: "python -m unittest tests.test_helper -v",
+        files: ["/tmp/why-agent/test-helper.log"],
         // Pre seen, no result delivered.
         outcome: "unknown",
       }),

@@ -480,16 +480,42 @@ export class FixtureDataSource implements DataSource {
 
   /**
    * Plays an agent working in a live session: appends a shell call to the
-   * session's last turn and announces it like the collector would. Returns
-   * `false` if there is no open turn.
+   * session's last turn and announces it like the collector would. Supply a
+   * prompt to simulate starting the next turn first.
    */
-  simulateSessionActivity(sessionId: SessionId, summary = "pytest -q") {
+  simulateSessionActivity(sessionId: SessionId, summary = "pytest -q", newPrompt?: string) {
     const timeline = this.sessions().get(sessionId);
-    const turn = timeline?.turns.at(-1);
+    let turn = timeline?.turns.at(-1);
     if (!timeline || !turn || turn.endedAt !== null || timeline.session.status === "ended") {
       return false;
     }
     const now = new Date().toISOString();
+    if (newPrompt !== undefined) {
+      turn.endedAt = now;
+      const id = `${sessionId}-sim-${timeline.turns.length}`;
+      turn = {
+        id,
+        index: timeline.turns.length,
+        prompt: newPrompt,
+        startedAt: now,
+        endedAt: null,
+        events: [
+          {
+            id: `${id}-prompt`,
+            kind: "prompt",
+            at: now,
+            toolName: null,
+            summary: newPrompt,
+            files: [],
+            evidence: "observed",
+            outcome: null,
+            agentId: null,
+          },
+        ],
+      };
+      timeline.turns.push(turn);
+      timeline.session.turnCount = timeline.turns.length;
+    }
     turn.events.push({
       id: `${turn.id}-sim-${turn.events.length}`,
       kind: "shell",

@@ -24,6 +24,7 @@ import { toastStore, type Toasts } from "./toasts";
 import { sortWorktrees, worktreeLabels } from "@/components/shell/rail-model";
 import { beginFileSwitch } from "@/lib/perf";
 import { createDiffCache } from "./diff-cache";
+import { createSessionsStore } from "./sessions";
 import { sameFileChange, sameFileChanges, sameFileDiff, sameJson } from "./same";
 
 type Queries<T> = ReadonlyMap<string, AsyncState<T>>;
@@ -32,6 +33,7 @@ export type DiffLayout = "split" | "unified";
 type NavigateHunk = (direction: HunkDirection) => HunkResult;
 
 type WorkspaceStore = {
+  sessions: ReturnType<typeof createSessionsStore>;
   repositories: AsyncState<Repository[]>;
   storage: AsyncState<StorageStatus>;
   worktrees: Queries<Worktree[]>;
@@ -85,6 +87,8 @@ type WorkspaceStore = {
   setDiffMode: (mode: DiffMode) => Promise<void>;
   retryChanges: () => Promise<void>;
   toggleInspector: () => void;
+  showInspector: () => void;
+  openSessionFile: (path: string) => Promise<void>;
   setPaletteOpen: (open: boolean) => void;
   loadPaletteFiles: (worktree: Worktree, mode: DiffMode) => Promise<AsyncState<FileChange[]>>;
   watchWorktrees: () => () => void;
@@ -235,6 +239,7 @@ export const diffModes = [
 ] as const satisfies ReadonlyArray<{ mode: DiffMode; label: string; key: string }>;
 
 export function createWorkspaceStore(source: DataSource, toasts: StoreApi<Toasts> = toastStore) {
+  const sessions = createSessionsStore(source);
   return createStore<WorkspaceStore>((set, get) => {
     const worktreeQueries = createQueryLoader(
       () => get().worktrees,
@@ -270,6 +275,7 @@ export function createWorkspaceStore(source: DataSource, toasts: StoreApi<Toasts
       toasts.getState().push({ tone: "error", title, detail: describeError(error) });
 
     let navigationVersion = 0;
+    let sessionFileVersion = 0;
     let diffRefreshVersion = 0;
     let flashVersion = 0;
     // A live update that hit the open file while its diff was still loading.
@@ -732,6 +738,7 @@ export function createWorkspaceStore(source: DataSource, toasts: StoreApi<Toasts
     }
 
     return {
+      sessions,
       repositories: idle,
       storage: idle,
       worktrees: new Map(),
@@ -1011,6 +1018,54 @@ export function createWorkspaceStore(source: DataSource, toasts: StoreApi<Toasts
         if (worktree) await syncChanges(worktree);
       },
       toggleInspector: () => set((state) => ({ inspectorOpen: !state.inspectorOpen })),
+      showInspector: () => set({ inspectorOpen: true }),
+      openSessionFile: async (path) => {
+        const state = get();
+        const worktree = selectWorktree(state);
+        if (!worktree) return;
+        const findPath = (result: AsyncState<FileChange[]>) =>
+          result.status === "ok"
+            ? result.data.find((file) => file.path === path || file.oldPath === path)?.path
+            : undefined;
+        const lookup = ++sessionFileVersion;
+        const changes = selectChanges(state);
+        const current = findPath(changes);
+        if (current) {
+          await state.selectFile(current);
+          return;
+        }
+
+        // A session can mention a file changed in another mode, renamed since
+        // the event, or no longer changed at all.
+        const version = navigationVersion;
+        const sessionId = sessions.getState().sessionId;
+        const modes = diffModes
+          .map(({ mode }) => mode)
+          .filter(
+            (mode) =>
+              (mode !== selectDiffMode(state) || changes.status !== "ok") &&
+              (mode !== "vsBase" || worktree.base),
+          );
+        const lists = await Promise.all(modes.map((mode) => loadChanges(worktree.id, mode)));
+        if (
+          get().worktreeId !== worktree.id ||
+          version !== navigationVersion ||
+          lookup !== sessionFileVersion ||
+          sessions.getState().sessionId !== sessionId
+        )
+          return;
+        for (const [index, mode] of modes.entries()) {
+          const result = lists[index];
+          const match = result && findPath(result);
+          if (match) {
+            await state.jumpToFile(worktree, match, [mode]);
+            return;
+          }
+        }
+        const failure = lists.find((result) => result.status === "error");
+        if (failure?.status === "error") notifyError("Could not open file diff", failure.error);
+        else notify("No current diff for this file", path);
+      },
       setPaletteOpen: (paletteOpen) => set({ paletteOpen }),
       loadPaletteFiles: (worktree, mode) => loadChanges(worktree.id, mode),
       watchWorktrees: () => {

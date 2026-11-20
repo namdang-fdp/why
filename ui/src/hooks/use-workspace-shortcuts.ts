@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { focusInspector } from "@/components/sessions/session-controls";
 import { diffModes } from "@/stores/workspace";
 import type { Workspace } from "@/stores/workspace-context";
 
@@ -25,6 +26,16 @@ export const shortcutGroups = [
       ...diffModes.map(({ label, key }) => ({ label, keys: [key] })),
       { label: "Toggle unified/split", keys: ["u"] },
       { label: "Focus file list from editor", keys: ["Esc"] },
+    ],
+  },
+  {
+    title: "Why inspector",
+    shortcuts: [
+      { label: "Focus Why inspector", keys: ["Shift", "i"] },
+      { label: "Next / previous session or turn", keys: ["j", "k"] },
+      { label: "First / last session or turn", keys: ["Home", "End"] },
+      { label: "Next / previous turn touching this file", keys: ["n", "p"] },
+      { label: "Back to sessions", keys: ["Esc"] },
     ],
   },
   {
@@ -75,6 +86,11 @@ export function useWorkspaceShortcuts(store: Workspace, helpOpen: boolean, openH
       }
 
       const key = event.key;
+      if (event.shiftKey && key.toLowerCase() === "i") {
+        event.preventDefault();
+        if (!event.repeat) focusInspector(store);
+        return;
+      }
       const mode = diffModes.find((item) => item.key === key)?.mode;
       if (mode) {
         event.preventDefault();

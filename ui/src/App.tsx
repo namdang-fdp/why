@@ -19,9 +19,21 @@ export function App({ store = workspaceStore }: { store?: Workspace }) {
   useEffect(() => {
     const workspace = store.getState();
     const unsubscribe = workspace.watchWorktrees();
+    const sessions = workspace.sessions.getState();
+    const stopSessions = sessions.watch();
+    const syncSessions = (worktreeId: string | null) => void sessions.selectWorktree(worktreeId);
+    const stopSync = store.subscribe((state, previous) => {
+      if (state.worktreeId !== previous.worktreeId) syncSessions(state.worktreeId);
+    });
+    syncSessions(workspace.worktreeId);
     void workspace.loadStorageStatus();
     void workspace.loadRepositories();
-    return unsubscribe;
+    return () => {
+      unsubscribe();
+      stopSync();
+      stopSessions();
+      syncSessions(null);
+    };
   }, [store]);
 
   return (

@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useContext, useEffect, useLayoutEffect, useRef } from "react";
 import {
   ChevronDown,
   ChevronUp,
@@ -6,6 +6,7 @@ import {
   FileDiff,
   FolderGit2,
   GitBranch,
+  History,
   Palette,
   PanelRight,
   Plus,
@@ -32,7 +33,9 @@ import {
 } from "@/stores/workspace";
 import { useStore } from "zustand";
 import { editorSettingsStore, themeLabels, type EditorTheme } from "@/stores/editor-settings";
-import { useWorkspace } from "@/stores/workspace-context";
+import { WorkspaceContext, useSessions, useWorkspace } from "@/stores/workspace-context";
+import { focusInspector, moveTurn } from "@/components/sessions/session-controls";
+import { filesInTurn, matchesFile } from "@/components/sessions/timeline-model";
 import { ErrorMessage, LoadingMessage } from "./async-message";
 import { branchLabel, displayPath, worktreeName } from "./change-labels";
 
@@ -62,12 +65,26 @@ function validModes(worktree: Worktree) {
   return diffModes.filter(({ mode }) => mode !== "vsBase" || worktree.base);
 }
 
-function PaletteContents({ close }: { close: () => void }) {
+function PaletteContents({
+  close,
+  afterClose,
+}: {
+  close: () => void;
+  afterClose: (action: () => void) => void;
+}) {
+  const workspace = useContext(WorkspaceContext);
   const repositories = useWorkspace((state) => state.repositories);
   const worktrees = useWorkspace((state) => state.worktrees);
   const changes = useWorkspace((state) => state.changes);
   const activeWorktree = useWorkspace(selectWorktree);
   const activeFile = useWorkspace(selectActiveFile);
+  const hasMatchingTurn = useSessions(
+    (state) =>
+      !!activeFile &&
+      state.worktreeId === activeWorktree?.id &&
+      state.timeline.status === "ok" &&
+      state.timeline.data.turns.some((turn) => matchesFile(filesInTurn(turn), activeFile)),
+  );
   const activeChanges = useWorkspace(selectChanges);
   const inspectorOpen = useWorkspace((state) => state.inspectorOpen);
   const selectRepo = useWorkspace((state) => state.selectRepository);
@@ -157,6 +174,31 @@ function PaletteContents({ close }: { close: () => void }) {
         ))}
         {!loading && <CommandEmpty>No matching commands or files.</CommandEmpty>}
         <CommandGroup heading="Actions">
+          <CommandItem
+            value="action-show-sessions"
+            keywords={["Show sessions", "Why inspector", "agent timeline"]}
+            disabled={!activeWorktree}
+            onSelect={() =>
+              afterClose(() => {
+                void workspace.getState().sessions.getState().selectSession(null);
+                focusInspector(workspace);
+              })
+            }
+          >
+            <History aria-hidden />
+            Show sessions
+          </CommandItem>
+          <CommandItem
+            value="action-next-matching-turn"
+            keywords={["Next turn touching this file", "Why inspector", "session timeline"]}
+            disabled={!hasMatchingTurn}
+            onSelect={() =>
+              afterClose(() => focusInspector(workspace, () => moveTurn(workspace, 1, true)))
+            }
+          >
+            <ChevronDown aria-hidden />
+            Next turn touching this file
+          </CommandItem>
           {diffModes.map(({ mode, label, key }) => (
             <CommandItem
               key={mode}
@@ -343,6 +385,10 @@ export function CommandPalette() {
   const open = useWorkspace((state) => state.paletteOpen);
   const setOpen = useWorkspace((state) => state.setPaletteOpen);
   const focus = useDialogFocus("shell-command");
+  const pending = useRef<(() => void) | null>(null);
+  useLayoutEffect(() => {
+    if (open) pending.current = null;
+  }, [open]);
   return (
     <CommandDialog
       title="Command palette"
@@ -352,9 +398,27 @@ export function CommandPalette() {
       showCloseButton={false}
       open={open}
       onOpenChange={setOpen}
-      {...focus}
+      onOpenAutoFocus={focus.onOpenAutoFocus}
+      onCloseAutoFocus={(event) => {
+        const action = pending.current;
+        pending.current = null;
+        if (!action) {
+          focus.onCloseAutoFocus(event);
+          return;
+        }
+        event.preventDefault();
+        action();
+      }}
     >
-      {open && <PaletteContents close={() => setOpen(false)} />}
+      {open && (
+        <PaletteContents
+          close={() => setOpen(false)}
+          afterClose={(action) => {
+            pending.current = action;
+            setOpen(false);
+          }}
+        />
+      )}
     </CommandDialog>
   );
 }
