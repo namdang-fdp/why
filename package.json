@@ -7,7 +7,8 @@
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "dev:ui": "vite --config ui/vite.config.ts",
-    "build": "tauri build",
+    "stage:hook": "node scripts/stage-hook.mjs",
+    "build": "node scripts/stage-hook.mjs && tauri build --config src-tauri/tauri.bundle-hook.conf.json",
     "build:ui": "tsc -b ui && vite build --config ui/vite.config.ts",
     "test": "pnpm test:rust && pnpm test:ui",
     "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml --workspace",
