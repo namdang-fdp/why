@@ -24,3 +24,15 @@ Up: [[00 - WHY]]
 16. **The webview gets no dialog powers.** The folder picker runs from the core (`pick_repository_folder`); `dialog:allow-open` cannot be narrowed.
 17. **v0.1.0 shipped as an official release, no RC** (2026-11-20): Linux AppImage + .deb + SHA256SUMS, unsigned, no auto-update. Screenshots use fixture data only.
 18. **Working agreement written down** in [[07 - Working Agreement]] so a new coordinator session can continue v0.2 with the same rules.
+
+## 2026-11-20 — v0.2 plan (Session context)
+19. **Capture real payloads before designing the schema** (WHY-45 spike). Hook fields, worktree settings lookup and Codex's transcript source (rollout JSONL vs thread-history SQLite in 0.170) are verified on golden fixtures, not assumed.
+20. **Wiring task again** (WHY-46): Cargo workspace (`crates/why-hook`, `crates/why-wire`), `EventStore` trait, contracts and stubs before WHY-12/13/17 run in parallel. Contracts keep the no-`u64` rule: timestamps are RFC 3339 strings, ids opaque strings.
+21. **Hooks are installed at user level** (`~/.claude/settings.json`, `~/.codex/hooks.json`), never into repositories: a file in the worktree would show up in the diff (`.claude/settings.local.json` is not gitignored) and agents could commit it. Installers merge beside existing user hooks and restore the file byte-identical.
+22. **Capture only registered repositories.** `why-hook` reads an allowlist written by the app and drops everything else, even when the app is down. Excerpts ≤ ~8 KB, best-effort secret redaction, spool `0600`, 30-day retention.
+23. **v0.2 edits come from harness payloads only**; no pre-read before/after snapshots. Full snapshots arrive with shell-write capture (WHY-24, v0.3).
+24. **Events live in their own `events.db`** (WAL, single writer), separate from the repository registry `why.db`.
+25. **`why-hook` is a separate tiny binary** (no Tauri), shipped as `externalBin` and copied to `~/.local/share/why/bin` so hook configs point at a stable path (an AppImage mounts somewhere new every run).
+26. **Dev instances never share the installed build's collector socket or data dir.** WHY-19 dogfoods a locally built v0.2.0 bundle; v0.2.0 is released after that checkpoint.
+27. **Review bandwidth caps parallelism**: at most 2 Claude workers + 1 Codex UI task at once.
+28. **glib 0.18 alert dismissed as tolerable risk**: pinned by Tauri 2.12's GTK3 stack, `VariantStrIter` unused; revisit when Tauri moves to gtk-rs ≥ 0.20. DOMPurify is forced to a patched version with a pnpm override (WHY-47).
