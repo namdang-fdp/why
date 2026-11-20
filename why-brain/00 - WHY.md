@@ -32,6 +32,7 @@ Agent vendors (Anthropic, OpenAI, Cursor) own transcripts and can cheaply show "
 - [[04 - MVP and Validation]] — first implementation plan and success criteria.
 - [[05 - Research]] — relevant projects and evidence.
 - [[06 - Decisions]] — dated decision log.
+- [[07 - Working Agreement]] — how the owner and the coordinator run tasks, reviews and releases.
 
 ## Principles
 Local-first · harness-agnostic · evidence-first · passive-first · beautiful & fast.
