@@ -1,0 +1,1 @@
+{"result":"UserPromptSubmit operation blocked by hook:\n[/REPO/scripts/agents-capture/log-hook.sh claude]: No stderr output\n\nOriginal prompt: Use the Write tool to create the file src/e.py containing the line E = 1. Then reply with the single word done.","session_id":"bd300bff-c9f5-4b1e-9acb-4d707ffda7a8","duration_ms":104,"num_turns":0,"is_error":false}

@@ -1,0 +1,6 @@
+{"hook_event":"SessionStart","hook_name":"SessionStart:startup","exit_code":1,"outcome":"cancelled","stdout":"","stderr":""}
+{"hook_event":"UserPromptSubmit","hook_name":"UserPromptSubmit","exit_code":1,"outcome":"cancelled","stdout":"","stderr":""}
+{"hook_event":"PreToolUse","hook_name":"PreToolUse:Write","exit_code":1,"outcome":"cancelled","stdout":"","stderr":""}
+{"hook_event":"PostToolUse","hook_name":"PostToolUse:Write","exit_code":1,"outcome":"cancelled","stdout":"","stderr":""}
+{"hook_event":"PostToolBatch","hook_name":"PostToolBatch","exit_code":1,"outcome":"cancelled","stdout":"","stderr":""}
+{"hook_event":"Stop","hook_name":"Stop","exit_code":1,"outcome":"cancelled","stdout":"","stderr":""}

@@ -1,0 +1,2 @@
+{"hook_event":"SessionStart","hook_name":"SessionStart:startup","exit_code":0,"outcome":"success","stdout":"","stderr":""}
+{"hook_event":"UserPromptSubmit","hook_name":"UserPromptSubmit","exit_code":2,"outcome":"error","stdout":"","stderr":""}
