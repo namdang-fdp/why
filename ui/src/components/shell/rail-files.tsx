@@ -1,9 +1,10 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { Binary, FileWarning } from "lucide-react";
 import type { FileChange } from "@/contracts";
 import { useSlidingHighlight } from "@/hooks/use-sliding-highlight";
 import { selectActiveWorktreeTitle, selectChanges } from "@/stores/workspace";
-import { useWorkspace } from "@/stores/workspace-context";
+import { useSessions, useWorkspace } from "@/stores/workspace-context";
+import { filesInTurn, matchesFile } from "@/components/sessions/timeline-model";
 import { ErrorMessage, LoadingMessage } from "./async-message";
 import { ChangeStatusBadge, LineCounts, displayPath } from "./change-labels";
 import { RailSectionHeader } from "./rail-section";
@@ -20,7 +21,15 @@ function PathPart({ path }: { path: string }) {
   );
 }
 
-function FileRow({ file, selected }: { file: FileChange; selected: boolean }) {
+function FileRow({
+  file,
+  selected,
+  touched,
+}: {
+  file: FileChange;
+  selected: boolean;
+  touched: boolean;
+}) {
   const selectFile = useWorkspace((state) => state.selectFile);
   // Set by a live update that touched this file; the number changes each time,
   // so the overlay (keyed by it) remounts and its fade restarts.
@@ -30,10 +39,12 @@ function FileRow({ file, selected }: { file: FileChange; selected: boolean }) {
       type="button"
       className="rail-row file-row"
       aria-current={selected || undefined}
+      data-turn-match={touched || undefined}
       title={displayPath(file)}
       onClick={() => void selectFile(file.path)}
     >
       <ChangeStatusBadge status={file.status} />
+      {touched && <span className="sr-only">Touched in selected turn</span>}
       <span className="file-path">
         {file.oldPath && (
           <span className="file-old-path">
@@ -55,6 +66,13 @@ function FileRow({ file, selected }: { file: FileChange; selected: boolean }) {
 export function ChangedFiles({ expanded, onToggle }: { expanded: boolean; onToggle: () => void }) {
   const changes = useWorkspace(selectChanges);
   const selectedPath = useWorkspace((state) => state.filePath);
+  const worktreeId = useWorkspace((state) => state.worktreeId);
+  const turn = useSessions((state) =>
+    state.worktreeId === worktreeId && state.timeline.status === "ok" && state.turnId !== null
+      ? state.timeline.data.turns.find(({ id }) => id === state.turnId)
+      : undefined,
+  );
+  const touched = useMemo(() => turn && filesInTurn(turn), [turn]);
   const retry = useWorkspace((state) => state.retryChanges);
   const filter = useWorkspace((state) => state.railFilter);
   const worktreeTitle = useWorkspace(selectActiveWorktreeTitle);
@@ -113,7 +131,11 @@ export function ChangedFiles({ expanded, onToggle }: { expanded: boolean; onTogg
               <li className="slide-highlight" aria-hidden="true" ref={bar} />
               {files.map((file) => (
                 <li key={file.path}>
-                  <FileRow file={file} selected={file.path === selectedPath} />
+                  <FileRow
+                    file={file}
+                    selected={file.path === selectedPath}
+                    touched={!!touched && matchesFile(touched, file)}
+                  />
                 </li>
               ))}
             </ul>

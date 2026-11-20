@@ -9,3 +9,10 @@ export function useWorkspace<T>(selector: (state: ReturnType<Workspace["getState
   const store = useContext(WorkspaceContext);
   return useStore(store, selector);
 }
+
+type SessionsState = ReturnType<ReturnType<Workspace["getState"]>["sessions"]["getState"]>;
+
+export function useSessions<T>(selector: (state: SessionsState) => T): T {
+  const store = useContext(WorkspaceContext);
+  return useStore(store.getState().sessions, selector);
+}
