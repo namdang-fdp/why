@@ -3,6 +3,8 @@ use thiserror::Error;
 #[cfg(test)]
 use ts_rs::TS;
 
+use super::security::FilterDriverInfo;
+
 /// Error returned by every IPC command, shaped so the UI can `switch (err.kind)`.
 ///
 /// Internally tagged: each value is an object with a `kind` discriminator, plus
@@ -30,6 +32,12 @@ pub enum IpcError {
     /// The caller passed a value the core rejects, for example an empty ref name.
     #[error("invalid input: {message}")]
     InvalidInput { message: String },
+    /// WHY did not read the working tree because the repository configures git
+    /// filter drivers (programs git would run while reading files) that the user
+    /// has not trusted. Nothing was run. The UI explains this and offers
+    /// `trust_repository_filters`.
+    #[error("the repository configures untrusted git filter programs")]
+    UntrustedFilters { drivers: Vec<FilterDriverInfo> },
     /// A failure inside WHY itself (for example the storage backend), not caused
     /// by git or by the caller. `message` is short and generic; the details are in
     /// the core's log.

@@ -317,3 +317,62 @@ fn repository_changed_wire_format() {
         json!({ "repoId": "r1" }),
     );
 }
+
+fn sample_driver() -> FilterDriverInfo {
+    FilterDriverInfo {
+        name: "evil".into(),
+        clean: Some("./x clean".into()),
+        smudge: None,
+        process: None,
+        scope: FilterScope::Local,
+        origin: ".git/config".into(),
+        needs_trust: true,
+        trusted: false,
+        referenced: true,
+        fingerprint: "abc".into(),
+    }
+}
+
+#[test]
+fn untrusted_filters_error_wire_format() {
+    assert_wire(
+        &IpcError::UntrustedFilters {
+            drivers: vec![sample_driver()],
+        },
+        json!({
+            "kind": "untrustedFilters",
+            "drivers": [{
+                "name": "evil",
+                "clean": "./x clean",
+                "smudge": null,
+                "process": null,
+                "scope": "local",
+                "origin": ".git/config",
+                "needsTrust": true,
+                "trusted": false,
+                "referenced": true,
+                "fingerprint": "abc"
+            }]
+        }),
+    );
+}
+
+#[test]
+fn repository_security_wire_format() {
+    assert_wire(
+        &RepositorySecurity {
+            repo_id: RepoId("r1".into()),
+            status: FilterGuardStatus::Blocked,
+            fingerprint: "f".into(),
+            drivers: vec![],
+        },
+        json!({ "repoId": "r1", "status": "blocked", "fingerprint": "f", "drivers": [] }),
+    );
+    for (status, wire) in [
+        (FilterGuardStatus::Clear, "clear"),
+        (FilterGuardStatus::Info, "info"),
+        (FilterGuardStatus::Trusted, "trusted"),
+    ] {
+        assert_eq!(serde_json::to_value(status).unwrap(), json!(wire));
+    }
+}
