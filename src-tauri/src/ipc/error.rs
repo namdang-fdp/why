@@ -12,6 +12,7 @@
 
 use crate::contracts::IpcError;
 use crate::git::GitError;
+use crate::ipc::security::driver_info;
 use crate::store::StoreError;
 
 impl From<GitError> for IpcError {
@@ -34,6 +35,15 @@ impl From<GitError> for IpcError {
                 } else {
                     stderr
                 },
+            },
+            // The guard refused to read: tell the UI which drivers blocked it.
+            // (Nothing is trusted here by definition, and `referenced` is only
+            // known to the full security report.)
+            GitError::UntrustedFilters { drivers } => IpcError::UntrustedFilters {
+                drivers: drivers
+                    .iter()
+                    .map(|d| driver_info(d, &Default::default(), false))
+                    .collect(),
             },
             GitError::Timeout { .. } => IpcError::Timeout,
             GitError::Io(_) => IpcError::GitFailed {
@@ -164,6 +174,21 @@ mod tests {
                 message: "internal storage error".into()
             }
         );
+    }
+
+    #[test]
+    fn untrusted_filters_carry_their_drivers_to_the_ui() {
+        use crate::git::parse_filter_config;
+        let out = b"local\0file:.git/config\0filter.evil.clean\n./x clean\0";
+        let drivers = parse_filter_config(out).unwrap();
+        let IpcError::UntrustedFilters { drivers } = map(GitError::UntrustedFilters { drivers })
+        else {
+            panic!("wrong variant");
+        };
+        assert_eq!(drivers.len(), 1);
+        assert_eq!(drivers[0].name, "evil");
+        assert_eq!(drivers[0].clean.as_deref(), Some("./x clean"));
+        assert!(drivers[0].needs_trust && !drivers[0].trusted);
     }
 
     #[test]

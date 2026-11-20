@@ -34,9 +34,10 @@
 //! as the path.
 
 use std::borrow::Cow;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use super::error::{GitError, ParseError};
+use super::filters::ReadPermit;
 use super::oid::{Oid, path_from_bytes};
 use super::runner::GitRunner;
 
@@ -177,7 +178,11 @@ pub enum ConflictKind {
     BothModified,
 }
 
-/// Run `git status` in `worktree` and parse it.
+/// Run `git status` in the permitted worktree and parse it.
+///
+/// `status` reads (and may hash) tracked files, which is exactly what can run a
+/// repository's filter drivers, so it needs a [`ReadPermit`] from the filter
+/// guard (`git::filters`).
 ///
 /// Flags: `--branch` for the header block, `--untracked-files=all` so a new
 /// directory is reported file by file (not as a single `dir/` entry the
@@ -186,14 +191,17 @@ pub enum ConflictKind {
 ///
 /// `--ignore-submodules=dirty`: without it `status` starts a nested `git status`
 /// inside every submodule to look for edits, and that nested git reads the
-/// *submodule's own* config (`.git/modules/<name>/config`), which nothing here
-/// has vetted: a `filter.<name>.clean` defined only there ran on an outer
-/// `git status` (measured on git 2.56). With `dirty` the submodule is compared
-/// by commit id only, which is also what `git diff` does in `diff.rs`.
-pub async fn read_status(runner: &GitRunner, worktree: &Path) -> Result<StatusSnapshot, GitError> {
+/// *submodule's own* config (`.git/modules/<name>/config`), which the guard has
+/// not scanned. Measured: a clean filter configured only in a submodule ran on
+/// an outer `git status`. With `dirty` the submodule is compared by commit id
+/// only, which is also what `git diff` does in `diff.rs`.
+pub async fn read_status(
+    runner: &GitRunner,
+    permit: &ReadPermit,
+) -> Result<StatusSnapshot, GitError> {
     let out = runner
         .run(
-            worktree,
+            permit.worktree(),
             [
                 "status",
                 "--porcelain=v2",
@@ -405,6 +413,7 @@ fn bad_record(rec: &[u8]) -> ParseError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::Path;
 
     const H: &str = "49b4b03d7dd07d73f8b334a20f142f4f8c913376";
     const Z: &str = "0000000000000000000000000000000000000000";

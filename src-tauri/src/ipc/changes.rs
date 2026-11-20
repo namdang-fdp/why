@@ -20,6 +20,7 @@ use crate::contracts::{
 use crate::git::{
     self, BaseInfo, Change, ChangeKind, ChangeSet, GitError, OldSide, Side, Target, WorktreeEntry,
 };
+use crate::ipc::security;
 use crate::state::AppState;
 use crate::store::RepoRecord;
 
@@ -303,7 +304,7 @@ fn resolved_from(repo: &RepoRecord, entry: WorktreeEntry) -> Resolved {
 
 /// `list_worktrees` needs a `RepoInfo` but only reads `common_dir`; the store
 /// kept exactly that, so rebuild the rest of the struct from it.
-fn repo_info(repo: &RepoRecord) -> git::RepoInfo {
+pub(crate) fn repo_info(repo: &RepoRecord) -> git::RepoInfo {
     git::RepoInfo {
         toplevel: Some(repo.root_path.clone()),
         common_dir: repo.common_dir.clone(),
@@ -364,7 +365,9 @@ pub(crate) async fn build_worktree(
     let target = Target::WorkingTree {
         include_untracked: true,
     };
-    let set = git::read_changes(&state.git, &entry.path, &old, target).await?;
+    // The filter guard: asked last, right before the read it protects.
+    let permit = security::permit_for(state, &wt.repo.id, &entry.path).await?;
+    let set = git::read_changes(&state.git, &permit, &old, target).await?;
     let change_count = u32::try_from(set.changes.len()).unwrap_or(u32::MAX);
     let activity = last_activity(&entry.path, &set.changes).await;
     Ok(worktree_view(wt, base, change_count, None, activity))
@@ -523,29 +526,31 @@ async fn changes_for_mode(
     mode: DiffMode,
 ) -> Result<ChangeSet, IpcError> {
     let path = &wt.entry.path;
-    let set = match mode {
-        DiffMode::Staged => {
-            git::read_changes(&state.git, path, &OldSide::Head, Target::Index).await?
-        }
-        DiffMode::Uncommitted => {
-            let target = Target::WorkingTree {
+    let (old, target) = match mode {
+        DiffMode::Staged => (OldSide::Head, Target::Index),
+        DiffMode::Uncommitted => (
+            OldSide::Head,
+            Target::WorkingTree {
                 include_untracked: true,
-            };
-            git::read_changes(&state.git, path, &OldSide::Head, target).await?
-        }
+            },
+        ),
         DiffMode::VsBase => {
             let stored = state.repos.base_override(&wt.id)?;
             let base = base_for(state, wt, stored)
                 .await?
                 .ok_or_else(|| invalid("worktree has no base; use uncommitted"))?;
-            let target = Target::WorkingTree {
-                include_untracked: true,
-            };
-            let old = OldSide::Commit(base.merge_base);
-            git::read_changes(&state.git, path, &old, target).await?
+            (
+                OldSide::Commit(base.merge_base),
+                Target::WorkingTree {
+                    include_untracked: true,
+                },
+            )
         }
     };
-    Ok(set)
+    // The filter guard: asked last, right before the read it protects (even the
+    // staged list runs `git status`, which reads the working tree).
+    let permit = security::permit_for(state, &wt.repo.id, path).await?;
+    Ok(git::read_changes(&state.git, &permit, &old, target).await?)
 }
 
 // ---------------------------------------------------------------------------

@@ -45,6 +45,11 @@
 //!   every submodule just to list files.
 //! * `--end-of-options` before the revision, and `--` after it (the revision is
 //!   never a path).
+//! * Filter drivers: `git diff` against the working tree (and `git status`) run a
+//!   repository's `filter.<name>.clean|process` programs on files whose stat data
+//!   changed, and no `-c` switch disables that. So [`read_changes`] requires a
+//!   [`ReadPermit`] from the filter guard (`git::filters`), which only exists if
+//!   the repository's drivers are the user's own or were explicitly trusted.
 
 use std::collections::{HashMap, HashSet};
 use std::ffi::OsString;
@@ -54,6 +59,7 @@ use std::path::{Component, Path, PathBuf};
 use tokio::io::AsyncReadExt;
 
 use super::error::{GitError, ParseError};
+use super::filters::ReadPermit;
 use super::oid::{Oid, path_bytes, path_from_bytes};
 use super::runner::GitRunner;
 use super::status::{FileState, StatusKind, StatusSnapshot, read_status};
@@ -174,23 +180,27 @@ pub struct ChangeSet {
 // Listing changes
 // ---------------------------------------------------------------------------
 
-/// List the changed files of `worktree` ("enumerate"; no line counts for
-/// untracked files, see [`count_untracked_lines`] for those).
+/// List the changed files of the permitted worktree ("enumerate"; no line
+/// counts for untracked files, see [`count_untracked_lines`] for those).
 ///
 /// Runs `git status` (flags, untracked files, conflicts) and `git diff`
-/// (statuses, line counts) and merges the two answers.
+/// (statuses, line counts) and merges the two answers. Both read the working
+/// tree, which can run a repository's filter drivers, so the caller must hold a
+/// [`ReadPermit`] from the filter guard (`git::filters`); the worktree is the
+/// one the permit was issued for.
 pub async fn read_changes(
     runner: &GitRunner,
-    worktree: &Path,
+    permit: &ReadPermit,
     old: &OldSide,
     target: Target,
 ) -> Result<ChangeSet, GitError> {
+    let worktree = permit.worktree();
     let (old_rev, status, entries) = match old {
         OldSide::Commit(oid) => {
             // The two commands are independent: run them side by side.
             let rev = oid.to_string();
             let (status, diff) = tokio::join!(
-                read_status(runner, worktree),
+                read_status(runner, permit),
                 run_diff(runner, worktree, &rev, target)
             );
             (rev, status?, diff?)
@@ -200,7 +210,7 @@ pub async fn read_changes(
             // goes first. Pinning the diff to that commit id, instead of the
             // word `HEAD`, keeps both answers about the same commit even if an
             // agent commits in between.
-            let status = read_status(runner, worktree).await?;
+            let status = read_status(runner, permit).await?;
             let rev = match &status.branch.oid {
                 Some(oid) => oid.to_string(),
                 None => empty_tree_id(runner, worktree).await?,

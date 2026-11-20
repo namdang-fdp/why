@@ -225,13 +225,15 @@ impl GitRunner {
         //    we use yet. WHY-5 (diffs) MUST pass `--no-ext-diff --no-textconv`.
         //  * `gpg.program`: only for signature display/verification, unused.
         //  * `filter.<name>.clean|process` (selected by `.gitattributes`): NOT
-        //    covered. `git status` runs the `clean` filter on tracked files
-        //    whose stat data changed, to compare their content (verified by
-        //    hand on git 2.56: the filter ran under GIT_OPTIONAL_LOCKS=0).
-        //    There is no `-c` switch that disables every filter by name, so
-        //    this stays a RESIDUAL RISK: it needs a `filter.*` entry in the
-        //    repo's own/global config, i.e. the same trust boundary as the
-        //    user running `git status` there themselves.
+        //    covered by any `-c` switch (there is no "disable all filters", and
+        //    overriding names one by one cannot be made complete: see
+        //    `SECURITY.md`). `git status` and `git diff` against the working tree
+        //    run the `clean`/`process` program on tracked files whose stat data
+        //    changed. This is handled one layer up, not here: `git::filters`
+        //    scans the configured drivers and the functions that read the
+        //    working tree demand a `ReadPermit` that only exists when the
+        //    repository's drivers are the user's own or were explicitly trusted
+        //    (WHY-39). The runner stays a generic spawner.
         cmd.arg("-c").arg("core.fsmonitor=false");
 
         // `-C <dir>`: git changes directory itself. We deliberately do NOT call

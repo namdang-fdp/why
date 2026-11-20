@@ -17,7 +17,7 @@ use std::process::ExitCode;
 
 use why_lib::git::{
     BranchHead, FileState, GitError, GitRunner, StatusKind, StatusSnapshot, WorktreeEntry,
-    detect_base, list_worktrees, open_repo, read_status,
+    detect_base, guard_working_tree, list_worktrees, open_repo, read_status,
 };
 
 #[tokio::main]
@@ -85,7 +85,10 @@ async fn probe_worktree(runner: &GitRunner, wt: &WorktreeEntry) -> Result<(), Gi
         ),
         None => println!("     base   none"),
     }
-    let status = read_status(runner, &wt.path).await?;
+    // A probe over the user's own repositories: nothing is trusted, so a
+    // repository with local filter drivers is reported as blocked, like in the app.
+    let permit = guard_working_tree(runner, &wt.path, &Default::default()).await?;
+    let status = read_status(runner, &permit).await?;
     println!("     status {}", summarize(&status));
     Ok(())
 }

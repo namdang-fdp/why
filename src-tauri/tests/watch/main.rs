@@ -221,7 +221,7 @@ async fn our_own_git_status_does_not_trigger_events() {
     // The app reads status constantly; with GIT_OPTIONAL_LOCKS=0 git must not
     // refresh the index, so reading never looks like a change (no feedback loop).
     for _ in 0..3 {
-        git::read_status(&test_runner(), &w.repo.path)
+        common::status_of(&test_runner(), &w.repo.path)
             .await
             .unwrap();
     }
