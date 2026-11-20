@@ -108,9 +108,12 @@ export function ConfirmContent({
   confirmLabel,
   onConfirm,
   onCloseFocus,
+  children,
 }: {
   title: string;
   description: ReactNode;
+  /** Extra content between the description and the buttons (a description is a `<p>`: no lists in it). */
+  children?: ReactNode;
   cancelLabel?: string;
   confirmLabel: string;
   onConfirm: () => void;
@@ -134,6 +137,7 @@ export function ConfirmContent({
       >
         <AlertDialog.Title>{title}</AlertDialog.Title>
         <AlertDialog.Description>{description}</AlertDialog.Description>
+        {children}
         <div className="modal-actions">
           {/* Cancel is the first focusable: Radix focuses it, so Enter never destroys by accident. */}
           <AlertDialog.Cancel className={buttonVariants({ variant: "ghost", size: "sm" })}>

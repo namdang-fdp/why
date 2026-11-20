@@ -435,3 +435,199 @@ kbd {
   font-size: 11px;
   line-height: 16px;
 }
+
+/* ---- git filter programs (WHY-39) ----------------------------------------- */
+
+/* The shield on a repository row. Calm: a muted icon, amber only when blocked. */
+.repo-shield {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  color: var(--muted-foreground);
+}
+.repo-shield[data-state="blocked"] {
+  color: var(--git-modified);
+}
+.repo-shield[data-state="trusted"] {
+  color: var(--git-added);
+}
+
+.filter-notice {
+  align-items: flex-start;
+}
+.filter-notice svg {
+  margin-top: 3px;
+  color: var(--muted-foreground);
+}
+.filter-notice > span {
+  flex: 1 1 0;
+  min-width: 0;
+  line-height: 1.5;
+}
+.filter-notice [data-slot="button"] {
+  flex: none;
+}
+
+/* The explanation that replaces the diff for a blocked repository. */
+.filter-panel {
+  display: grid;
+  justify-items: start;
+  gap: 10px;
+  width: min(100%, 560px);
+  padding: 8px 20px 28px;
+  margin-inline: auto;
+  overflow-y: auto;
+  max-height: 100%;
+  animation: filter-panel-in 240ms var(--ease-out) both;
+}
+.filter-panel[data-compact] {
+  justify-items: center;
+  align-self: center;
+  margin-block: auto;
+  text-align: center;
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+.filter-panel[data-compact] svg {
+  color: var(--git-modified);
+}
+.filter-panel h3 {
+  font-size: 15px;
+  font-weight: 600;
+}
+.filter-panel-icon {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  margin-top: 6vh;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: color-mix(in oklch, var(--git-modified) 8%, var(--shell-chrome));
+  color: var(--git-modified);
+}
+.filter-panel-lead,
+.filter-panel-caution {
+  color: var(--muted-foreground);
+  font-size: 12.5px;
+  line-height: 1.65;
+}
+.filter-panel-lead strong {
+  color: var(--foreground);
+  font-weight: 550;
+}
+.filter-panel-caution {
+  font-size: 12px;
+}
+
+.filter-drivers {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+  margin-block: 4px;
+}
+.filter-driver {
+  display: grid;
+  gap: 7px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--shell-pane);
+}
+.filter-driver-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  font-size: 12.5px;
+}
+.filter-driver-head strong {
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+.filter-driver-origin {
+  color: var(--muted-foreground);
+  font-size: 11.5px;
+}
+.filter-programs {
+  display: grid;
+  gap: 4px;
+}
+.filter-programs > div {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr);
+  align-items: baseline;
+  gap: 8px;
+}
+.filter-programs dt {
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+.filter-programs code,
+.filter-driver-note code {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  overflow-wrap: anywhere;
+}
+.filter-driver-note {
+  color: var(--muted-foreground);
+  font-size: 11.5px;
+  line-height: 1.55;
+}
+
+.filter-panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+@keyframes filter-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .filter-panel {
+    animation: none;
+  }
+}
+
+/* Commands are shown exactly: whitespace kept, nothing truncated, and control or
+   invisible characters spelled out (see lib/command-text.ts). */
+.filter-command {
+  display: block;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+.filter-escape {
+  padding: 0 2px;
+  border-radius: 3px;
+  background: color-mix(in oklch, var(--git-modified) 18%, transparent);
+  color: var(--git-modified);
+}
+.filter-driver-chip {
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted-foreground);
+  font-size: 10.5px;
+}
+.filter-panel-changed {
+  padding: 8px 10px;
+  border: 1px solid color-mix(in oklch, var(--git-modified) 40%, var(--border));
+  border-radius: 8px;
+  background: color-mix(in oklch, var(--git-modified) 8%, var(--shell-chrome));
+  font-size: 12px;
+  line-height: 1.55;
+}
+/* The confirmation lists every program in full; a long list scrolls. */
+.filter-drivers-confirm {
+  max-height: min(40vh, 320px);
+  margin: 10px 0 0;
+  overflow-y: auto;
+  text-align: left;
+}

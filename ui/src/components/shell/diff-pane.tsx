@@ -7,6 +7,7 @@ import { finishFileSwitch } from "@/lib/perf";
 import { selectActiveFile, selectChanges } from "@/stores/workspace";
 import { useWorkspace } from "@/stores/workspace-context";
 import { ErrorMessage, LoadingMessage } from "./async-message";
+import { FilterNotice, FilterTrustPanel } from "./filter-trust";
 import { ChangeStatusBadge, LineCounts, displayPath } from "./change-labels";
 
 const loadMonacoDiff = () => import("@/components/diff/monaco-diff");
@@ -89,8 +90,18 @@ function DiffBody() {
     if (diff.status === "ok" && !preview) finishFileSwitch(diff.data.path);
   }, [diff, preview]);
 
+  const repo = useWorkspace((state) =>
+    state.repositories.status === "ok"
+      ? state.repositories.data.find((entry) => entry.id === state.repoId)
+      : undefined,
+  );
+  const blocked = changes.status === "error" && changes.error.kind === "untrustedFilters";
+
   let placeholder: ReactNode;
-  if (diff.status === "ok" && !preview) {
+  if (blocked && repo) {
+    // WHY refused to read this repository: explain, and ask.
+    placeholder = <FilterTrustPanel repo={repo} />;
+  } else if (diff.status === "ok" && !preview) {
     const path = displayPath(diff.data);
     if (diff.data.binary)
       placeholder = <DiffEmpty Icon={Binary} title="Binary file" detail={path} />;
@@ -158,6 +169,11 @@ export function DiffPane() {
   const layout = useWorkspace((state) => state.diffLayout);
   const setLayout = useWorkspace((state) => state.setDiffLayout);
   const pathLossy = file?.pathLossy || (diff.status === "ok" && diff.data.pathLossy);
+  const repo = useWorkspace((state) =>
+    state.repositories.status === "ok"
+      ? state.repositories.data.find((entry) => entry.id === state.repoId)
+      : undefined,
+  );
 
   return (
     <main className="diff-pane" aria-labelledby="diff-heading">
@@ -196,6 +212,7 @@ export function DiffPane() {
           </button>
         </div>
       </div>
+      {repo && <FilterNotice repo={repo} />}
       {pathLossy && (
         <p className="diff-path-notice">
           <FileWarning size={14} aria-hidden />
