@@ -22,6 +22,8 @@
 //! | `revoke_repository_filters(repo_id: RepoId)` | `RevokeResult` | Forget the trust decision (always done when `Ok`; the fresh report may be missing if the rescan failed) |
 //! | `get_storage_status()` | `StorageStatus` | Whether repositories are saved or only kept for this session |
 //! | `pick_repository_folder()` | `Option<String>` | Native folder picker (`None` = cancelled) |
+//! | `list_sessions(worktree_id: WorktreeId)` | `Vec<SessionSummary>` | Agent sessions seen in a worktree, most recent first |
+//! | `get_session_timeline(session_id: SessionId)` | `SessionTimeline` | One session's turns and events |
 //!
 //! # Event
 //!
@@ -31,6 +33,9 @@
 //! `repository-changed` ([`REPOSITORY_CHANGED_EVENT`]) carries a
 //! [`RepositoryChanged`] payload; the core emits it when a repository's set of
 //! worktrees changes (added, removed, pruned).
+//!
+//! `sessions-changed` ([`SESSIONS_CHANGED_EVENT`]) carries a [`SessionsChanged`]
+//! payload; the core emits it when hook events for a worktree's sessions arrive.
 //!
 //! # Wire format rules
 //!
@@ -47,17 +52,23 @@ mod events;
 mod ids;
 mod repo;
 mod security;
+mod sessions;
 mod storage;
 
 pub use changes::{ChangeStatus, DiffMode, FileChange, FileDiff};
 pub use error::IpcError;
 pub use events::{
-    REPOSITORY_CHANGED_EVENT, RepositoryChanged, WORKTREE_CHANGED_EVENT, WorktreeChanged,
+    REPOSITORY_CHANGED_EVENT, RepositoryChanged, SESSIONS_CHANGED_EVENT, SessionsChanged,
+    WORKTREE_CHANGED_EVENT, WorktreeChanged,
 };
 pub use ids::{RepoId, WorktreeId};
 pub use repo::{BranchInfo, Repository, Worktree};
 pub use security::{
     FilterDriverInfo, FilterGuardStatus, FilterScope, RepositorySecurity, RevokeResult,
+};
+pub use sessions::{
+    EvidenceLabel, Harness, SessionId, SessionStatus, SessionSummary, SessionTimeline,
+    TimelineEvent, TimelineEventKind, ToolOutcome, Turn,
 };
 pub use storage::StorageStatus;
 

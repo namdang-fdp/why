@@ -35,3 +35,18 @@ pub const REPOSITORY_CHANGED_EVENT: &str = "repository-changed";
 pub struct RepositoryChanged {
     pub repo_id: RepoId,
 }
+
+/// Name of the Tauri event the core emits when the sessions of a worktree
+/// changed (a session appeared, or new events arrived for one).
+pub const SESSIONS_CHANGED_EVENT: &str = "sessions-changed";
+
+/// Payload of the `sessions-changed` event. The UI reacts by re-reading
+/// `list_sessions(worktree_id)` and, if one is open, that session's timeline.
+/// Deliberately coarse (no session id or event list): the collector may batch
+/// many hook events into one notification.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[cfg_attr(test, derive(TS))]
+#[serde(rename_all = "camelCase")]
+pub struct SessionsChanged {
+    pub worktree_id: WorktreeId,
+}

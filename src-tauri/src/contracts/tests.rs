@@ -376,3 +376,132 @@ fn repository_security_wire_format() {
         assert_eq!(serde_json::to_value(status).unwrap(), json!(wire));
     }
 }
+
+#[test]
+fn session_enums_wire_format() {
+    assert_wire(&Harness::ClaudeCode, json!("claudeCode"));
+    assert_wire(&Harness::Codex, json!("codex"));
+    assert_wire(&Harness::Unknown, json!("unknown"));
+    assert_wire(&SessionStatus::Live, json!("live"));
+    assert_wire(&SessionStatus::Ended, json!("ended"));
+    assert_wire(&SessionStatus::Unknown, json!("unknown"));
+    assert_wire(&EvidenceLabel::Observed, json!("observed"));
+    assert_wire(&EvidenceLabel::Declared, json!("declared"));
+    assert_wire(&EvidenceLabel::Inferred, json!("inferred"));
+    assert_wire(&EvidenceLabel::Unknown, json!("unknown"));
+    assert_wire(&ToolOutcome::Ok, json!("ok"));
+    assert_wire(&ToolOutcome::Failed, json!("failed"));
+    assert_wire(&ToolOutcome::Unknown, json!("unknown"));
+    for (kind, text) in [
+        (TimelineEventKind::Prompt, "prompt"),
+        (TimelineEventKind::AssistantMessage, "assistantMessage"),
+        (TimelineEventKind::ToolCall, "toolCall"),
+        (TimelineEventKind::Edit, "edit"),
+        (TimelineEventKind::Shell, "shell"),
+        (TimelineEventKind::TestRun, "testRun"),
+        (TimelineEventKind::Subagent, "subagent"),
+        (TimelineEventKind::Stop, "stop"),
+    ] {
+        assert_wire(&kind, json!(text));
+    }
+}
+
+fn sample_summary() -> SessionSummary {
+    SessionSummary {
+        id: SessionId("codex:s1".into()),
+        harness: Harness::Codex,
+        model: None,
+        worktree_id: Some(WorktreeId("w1".into())),
+        cwd: "/home/me/why".into(),
+        task: None,
+        started_at: "2026-11-20T15:28:47.123Z".into(),
+        last_event_at: "2026-11-20T15:30:00.000Z".into(),
+        status: SessionStatus::Live,
+        turn_count: 2,
+    }
+}
+
+#[test]
+fn session_summary_wire_format() {
+    let summary = sample_summary();
+    assert_wire(
+        &summary,
+        json!({
+            "id": "codex:s1",
+            "harness": "codex",
+            "model": null,
+            "worktreeId": "w1",
+            "cwd": "/home/me/why",
+            "task": null,
+            "startedAt": "2026-11-20T15:28:47.123Z",
+            "lastEventAt": "2026-11-20T15:30:00.000Z",
+            "status": "live",
+            "turnCount": 2
+        }),
+    );
+    let v = serde_json::to_value(&summary).unwrap();
+    assert_null(&v, "model");
+    assert_null(&v, "task");
+}
+
+#[test]
+fn session_timeline_wire_format() {
+    let timeline = SessionTimeline {
+        session: sample_summary(),
+        turns: vec![Turn {
+            id: "t1".into(),
+            index: 0,
+            prompt: Some("add subtract".into()),
+            started_at: "2026-11-20T15:28:47.123Z".into(),
+            ended_at: None,
+            events: vec![TimelineEvent {
+                id: "e1".into(),
+                kind: TimelineEventKind::Edit,
+                at: "2026-11-20T15:28:48.000Z".into(),
+                tool_name: Some("apply_patch".into()),
+                summary: "Update src/calc.py".into(),
+                files: vec!["src/calc.py".into()],
+                evidence: EvidenceLabel::Observed,
+                outcome: Some(ToolOutcome::Unknown),
+                agent_id: None,
+            }],
+        }],
+    };
+    let v = serde_json::to_value(&timeline).unwrap();
+    assert_eq!(
+        v["turns"][0],
+        json!({
+            "id": "t1",
+            "index": 0,
+            "prompt": "add subtract",
+            "startedAt": "2026-11-20T15:28:47.123Z",
+            "endedAt": null,
+            "events": [{
+                "id": "e1",
+                "kind": "edit",
+                "at": "2026-11-20T15:28:48.000Z",
+                "toolName": "apply_patch",
+                "summary": "Update src/calc.py",
+                "files": ["src/calc.py"],
+                "evidence": "observed",
+                "outcome": "unknown",
+                "agentId": null
+            }]
+        })
+    );
+    assert_null(&v["turns"][0], "endedAt");
+    assert_null(&v["turns"][0]["events"][0], "agentId");
+    let back: SessionTimeline = serde_json::from_value(v).unwrap();
+    assert_eq!(back, timeline);
+}
+
+#[test]
+fn sessions_changed_wire_format() {
+    assert_wire(
+        &SessionsChanged {
+            worktree_id: WorktreeId("w1".into()),
+        },
+        json!({ "worktreeId": "w1" }),
+    );
+    assert_eq!(SESSIONS_CHANGED_EVENT, "sessions-changed");
+}

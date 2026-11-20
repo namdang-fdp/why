@@ -3,3 +3,4 @@
 
 export const WORKTREE_CHANGED_EVENT = "worktree-changed";
 export const REPOSITORY_CHANGED_EVENT = "repository-changed";
+export const SESSIONS_CHANGED_EVENT = "sessions-changed";

@@ -8,6 +8,7 @@
 
 use std::sync::Arc;
 
+use crate::events::{EventStore, MemoryEventStore};
 use crate::git::GitRunner;
 use crate::store::RepoStore;
 
@@ -22,10 +23,29 @@ pub struct AppState {
     /// object so the backend (memory now, SQLite later) is chosen in `lib.rs`
     /// only; see `store/mod.rs`.
     pub repos: Arc<dyn RepoStore>,
+    /// Agent sessions and their events (v0.2). Same seam as `repos`: memory
+    /// now, SQLite `events.db` after WHY-12, chosen in `lib.rs` only.
+    pub events: Arc<dyn EventStore>,
 }
 
 impl AppState {
+    /// State with an empty in-memory event store. `lib.rs` replaces it with
+    /// [`AppState::with_events`]; tests that do not care about sessions keep it.
+    ///
+    /// A builder method instead of a third `new` argument on purpose: every
+    /// existing test builds `AppState::new(git, repos)`, and those files belong
+    /// to other tasks; a new parameter would touch all of them for no gain.
     pub fn new(git: GitRunner, repos: Arc<dyn RepoStore>) -> Self {
-        Self { git, repos }
+        Self {
+            git,
+            repos,
+            events: Arc::new(MemoryEventStore::new()),
+        }
+    }
+
+    /// Use `events` as the event store.
+    pub fn with_events(mut self, events: Arc<dyn EventStore>) -> Self {
+        self.events = events;
+        self
     }
 }
