@@ -11,23 +11,46 @@
 //! * **Be fast.** The harness waits for the hook, so its run time is added to
 //!   every tool call. No Tauri, no async runtime; one bounded stdin read.
 //!
-//! WHY-46 is the stub: it reads stdin, builds an [`Envelope`] and stops there.
-//! WHY-13 adds the allowlist check, the socket send and the spool. Everything
-//! is in this library (not `main.rs`) so it can be unit tested.
+//! The flow, in this order (each step can end the run silently):
+//!
+//! 1. read stdin (bounded) and build an [`Envelope`];
+//! 2. **allowlist**: `cwd` (canonicalized) must be inside a root the app listed
+//!    in `hook-allowlist.json`; otherwise nothing is sent and nothing is spooled
+//!    (a missing or corrupt file counts as "not allowed");
+//! 3. reduce the payload if it touches an agent credential file or does not fit
+//!    one wire line (`why_wire::reduced`);
+//! 4. **send** the line to the collector's socket within a hard budget
+//!    ([`transport`]);
+//! 5. on any failure, **spool** it to disk for the app to ingest later
+//!    (`why_wire::spool`).
+//!
+//! Everything is in this library (not `main.rs`) so it can be unit tested.
+
+#[cfg(unix)]
+pub mod transport;
 
 use std::ffi::OsString;
 use std::io::{self, Read};
-use std::path::PathBuf;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::path::{Path, PathBuf};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use why_wire::{
-    Envelope, Harness, INSTANCE_ENV, Instance, InstancePaths, MAX_LINE_BYTES, PROTOCOL_VERSION,
-    PathEnv,
+    Allowlist, Envelope, Harness, INSTANCE_ENV, Instance, InstancePaths, PROTOCOL_VERSION, PathEnv,
+    Reduction, WireError, credential_paths, encode_line, mentions_credentials, reduce_payload,
+    reduce_prefix, reduction_of,
 };
 
-/// Most stdin we keep. A payload bigger than one wire line can never be sent
-/// as-is, so there is no point holding more of it in memory.
-pub const MAX_STDIN_BYTES: usize = MAX_LINE_BYTES;
+/// Total time for connect + write to the collector's socket. The agent waits
+/// for the hook, so this is added to its tool call in the worst case;
+/// payloads.md §7 asks for <= 200 ms.
+pub const SEND_BUDGET: Duration = Duration::from_millis(100);
+
+/// Most stdin we keep: 8 MiB. Bigger than one wire line (`MAX_LINE_BYTES`, 1 MiB)
+/// on purpose: a payload over the line limit is still parsed so that the hook
+/// can send a small "truncated" envelope with its ids (the timeline then shows
+/// the event), instead of silently losing it. Past 8 MiB only the first 8 MiB
+/// are kept and scanned for ids (`reduce_prefix`), never parsed whole.
+pub const MAX_STDIN_BYTES: usize = 8 * 1024 * 1024;
 
 /// How much stdin we read and throw away after [`MAX_STDIN_BYTES`]. The
 /// harness writes the whole payload into our stdin pipe; if we exited without
@@ -106,11 +129,21 @@ pub fn choose_instance(arg: Option<&str>, env_value: Option<&str>) -> Option<Ins
     }
 }
 
-/// Read stdin, keeping at most [`MAX_STDIN_BYTES`]. Returns `None` when the
-/// payload is larger than that (it is then drained, see [`DRAIN_LIMIT_BYTES`])
-/// or when reading fails. A payload cut short by the harness closing stdin
-/// early is returned as-is; it simply fails to parse later.
-pub fn read_bounded(mut input: impl Read) -> Option<Vec<u8>> {
+/// What came in on stdin.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Input {
+    /// The whole payload (at most [`MAX_STDIN_BYTES`]).
+    Whole(Vec<u8>),
+    /// More than [`MAX_STDIN_BYTES`]: the first [`MAX_STDIN_BYTES`] bytes, and
+    /// the size of the whole (a lower bound once [`DRAIN_LIMIT_BYTES`] is hit).
+    Oversized { head: Vec<u8>, total: u64 },
+}
+
+/// Read stdin, keeping at most [`MAX_STDIN_BYTES`] of it and draining the rest
+/// (see [`DRAIN_LIMIT_BYTES`]). `None` when reading fails. A payload cut short
+/// by the harness closing stdin early is returned as-is; it simply fails to
+/// parse later.
+pub fn read_input(mut input: impl Read) -> Option<Input> {
     let mut buf = Vec::new();
     // `take(N + 1)`: reading one byte past the limit is how we learn the
     // payload is too big without buffering all of it.
@@ -119,10 +152,37 @@ pub fn read_bounded(mut input: impl Read) -> Option<Vec<u8>> {
         .take(MAX_STDIN_BYTES as u64 + 1)
         .read_to_end(&mut buf);
     if buf.len() > MAX_STDIN_BYTES {
-        let _ = io::copy(&mut input.take(DRAIN_LIMIT_BYTES), &mut io::sink());
-        return None;
+        let drained = io::copy(&mut input.take(DRAIN_LIMIT_BYTES), &mut io::sink()).unwrap_or(0);
+        let total = buf.len() as u64 + drained;
+        buf.truncate(MAX_STDIN_BYTES);
+        return Some(Input::Oversized { head: buf, total });
     }
-    read.ok().map(|_| buf)
+    read.ok().map(|_| Input::Whole(buf))
+}
+
+/// The envelope for an [`Input::Oversized`] payload: ids scanned from its head,
+/// no content. Always succeeds (a head with no readable ids still yields the
+/// marker, and the event still shows up).
+pub fn build_oversized_envelope(
+    head: &[u8],
+    total: u64,
+    harness: Harness,
+    received_at_ms: u64,
+    pid: u32,
+    fallback_cwd: &str,
+) -> Envelope {
+    let payload = reduce_prefix(head, Reduction::Truncated, total);
+    let text = |key: &str| payload.get(key).and_then(|v| v.as_str()).map(str::to_owned);
+    Envelope {
+        v: PROTOCOL_VERSION,
+        harness,
+        harness_version: None,
+        event: text("hook_event_name").unwrap_or_default(),
+        received_at_ms,
+        cwd: text("cwd").unwrap_or_else(|| fallback_cwd.to_owned()),
+        pid,
+        payload,
+    }
 }
 
 /// Wrap a raw hook payload in an [`Envelope`]. `None` when it is not a JSON
@@ -203,25 +263,105 @@ pub fn run() {
         );
         return;
     };
-    let Some(input) = read_bounded(io::stdin().lock()) else {
+    let Some(input) = read_input(io::stdin().lock()) else {
         return;
     };
     let cwd = std::env::current_dir()
         .map(|p| p.to_string_lossy().into_owned())
         .unwrap_or_default();
-    let Some(envelope) = build_envelope(&input, args.harness, now_ms(), parent_pid(), &cwd) else {
-        return;
+    let (envelope, raw) = match input {
+        Input::Whole(bytes) => {
+            let Some(envelope) = build_envelope(&bytes, args.harness, now_ms(), parent_pid(), &cwd)
+            else {
+                return;
+            };
+            (envelope, bytes)
+        }
+        Input::Oversized { head, total } => {
+            let envelope =
+                build_oversized_envelope(&head, total, args.harness, now_ms(), parent_pid(), &cwd);
+            (envelope, head)
+        }
     };
 
-    // WHY-13 continues from here: check `envelope.cwd` against the allowlist at
-    // `paths.allowlist_path`, send `encode_line(&envelope)` to
-    // `paths.socket_path` with a short timeout, and append to `paths.spool_dir`
-    // when the app is not there. The stub computes both and drops them.
     let Some(paths) = args.resolve_paths(instance, &PathEnv::from_process()) else {
         return;
     };
-    let line = why_wire::encode_line(&envelope);
-    drop((paths, line));
+    // Step 2: the allowlist decides before anything touches the socket or disk.
+    if !is_allowed(&paths.allowlist_path, &envelope.cwd) {
+        return;
+    }
+    // Where THIS user's agents keep their credentials (the variables move them).
+    let credentials = credential_paths(
+        std::env::var_os("CODEX_HOME").as_deref(),
+        std::env::var_os("CLAUDE_CONFIG_DIR").as_deref(),
+        std::env::var_os("HOME").as_deref(),
+    );
+    let Some(line) = prepare_line(envelope, &raw, &credentials) else {
+        return;
+    };
+    deliver(&paths, &line, now_ms(), SEND_BUDGET);
+}
+
+/// Is `cwd` inside a root of the allowlist at `allowlist_path`?
+///
+/// Every failure answers "no" (safe default: capture nothing): no file, an
+/// unreadable or corrupt one, a version we do not know, a `cwd` that no longer
+/// exists or cannot be canonicalized. `canonicalize` resolves symlinks and
+/// `..`, so a symlink inside a repo that points elsewhere does not smuggle
+/// events in, and one pointing into a registered repo is recognised. A cwd
+/// inside a repository NESTED in a registered one (submodule, vendored clone)
+/// is refused unless that inner checkout is itself listed
+/// (`Allowlist::allows_checkout`).
+pub fn is_allowed(allowlist_path: &Path, cwd: &str) -> bool {
+    if cwd.is_empty() {
+        return false;
+    }
+    let Ok(allowlist) = Allowlist::read_from(allowlist_path) else {
+        return false;
+    };
+    match std::fs::canonicalize(cwd) {
+        Ok(canonical) => allowlist.allows_checkout(&canonical),
+        Err(_) => false,
+    }
+}
+
+/// The wire line for `envelope`, reducing its payload when it must not or
+/// cannot go as-is. `raw` is the payload as read from stdin (for its size and
+/// the credential check); `credentials` are this user's actual credential file
+/// paths (`why_wire::credential_paths`). `None` only if even the reduced
+/// envelope would not encode, which cannot happen for a well-formed one.
+pub fn prepare_line(mut envelope: Envelope, raw: &[u8], credentials: &[String]) -> Option<Vec<u8>> {
+    // Credentials first: even if it would fit, never forward it. (An oversized
+    // payload is already reduced to ids; `raw` is then only its head.)
+    if reduction_of(&envelope.payload).is_none() && mentions_credentials(raw, credentials) {
+        envelope.payload = reduce_payload(&envelope.payload, Reduction::Redacted, raw.len());
+    }
+    match encode_line(&envelope) {
+        Ok(line) => Some(line),
+        Err(WireError::TooLarge { .. }) => {
+            envelope.payload = reduce_payload(&envelope.payload, Reduction::Truncated, raw.len());
+            encode_line(&envelope).ok()
+        }
+        Err(_) => None,
+    }
+}
+
+/// Send `line` to the collector; spool it when that does not work. Never
+/// reports a failure: if the spool is also unusable (unwritable, full) the
+/// event is lost, which is the correct outcome for a passive observer.
+pub fn deliver(paths: &InstancePaths, line: &[u8], now_ms: u64, budget: Duration) {
+    #[cfg(unix)]
+    {
+        use why_wire::spool;
+        if transport::send_line(&paths.socket_path, line, budget).is_ok() {
+            return;
+        }
+        let _: Result<spool::Appended, _> =
+            spool::append_line(&paths.spool_dir, line, now_ms, spool::MAX_SPOOL_BYTES);
+    }
+    #[cfg(not(unix))]
+    let _ = (paths, line, now_ms, budget);
 }
 
 #[cfg(test)]
@@ -337,16 +477,37 @@ mod tests {
     }
 
     #[test]
-    fn read_bounded_keeps_small_input_and_refuses_big_input() {
-        assert_eq!(read_bounded(&b"{}"[..]), Some(b"{}".to_vec()));
-        assert_eq!(read_bounded(&b""[..]), Some(Vec::new()));
+    fn read_input_keeps_small_input_and_cuts_big_input() {
+        assert_eq!(read_input(&b"{}"[..]), Some(Input::Whole(b"{}".to_vec())));
+        assert_eq!(read_input(&b""[..]), Some(Input::Whole(Vec::new())));
         let exact = vec![b'x'; MAX_STDIN_BYTES];
-        assert_eq!(
-            read_bounded(&exact[..]).map(|v| v.len()),
-            Some(MAX_STDIN_BYTES)
+        assert!(
+            matches!(read_input(&exact[..]), Some(Input::Whole(v)) if v.len() == MAX_STDIN_BYTES)
         );
-        let big = vec![b'x'; MAX_STDIN_BYTES + 1];
-        assert_eq!(read_bounded(&big[..]), None);
+        let big = vec![b'x'; MAX_STDIN_BYTES + 10];
+        match read_input(&big[..]) {
+            Some(Input::Oversized { head, total }) => {
+                assert_eq!(head.len(), MAX_STDIN_BYTES);
+                assert_eq!(total, MAX_STDIN_BYTES as u64 + 10);
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn an_oversized_envelope_keeps_the_ids_from_the_head() {
+        let head = br#"{"session_id":"s1","cwd":"/r","hook_event_name":"PostToolUse","tool_input":{"content":"xxxx"#;
+        let env =
+            build_oversized_envelope(head, 20_000_000, Harness::ClaudeCode, 5, 6, "/fallback");
+        assert_eq!(
+            (env.event.as_str(), env.cwd.as_str()),
+            ("PostToolUse", "/r")
+        );
+        assert_eq!(env.payload["session_id"], "s1");
+        assert_eq!(env.payload["original_bytes"], 20_000_000);
+        let no_ids = build_oversized_envelope(b"\xff", 9, Harness::Codex, 5, 6, "/fallback");
+        assert_eq!(no_ids.cwd, "/fallback");
+        assert!(why_wire::encode_line(&no_ids).is_ok());
     }
 
     #[test]

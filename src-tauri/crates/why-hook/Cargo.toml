@@ -17,5 +17,9 @@ path = "src/main.rs"
 why-wire = { path = "../why-wire" }
 serde_json = "1.0"
 
+# Raw non-blocking socket calls (`transport.rs`): std has no connect timeout.
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 [dev-dependencies]
 tempfile = "3"
