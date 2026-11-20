@@ -205,6 +205,90 @@ async fn commit_emits_refetch_all() {
 }
 
 #[tokio::test]
+async fn a_filter_driver_written_to_config_makes_the_ui_refetch() {
+    // WHY-39: the filter guard re-scans on every read, so the only thing the
+    // watcher owes it is to make the UI read again when a driver appears.
+    let mut w = watch(TestRepo::with_initial_commit(), cfg()).await;
+    let id = w.main_id.clone();
+    w.repo.git(["config", "filter.evil.clean", "some-program"]);
+    w.wait_for(refetch_all_for(&id)).await;
+}
+
+/// WHY-39: the watcher runs git too (`ls-files -c -i` when it syncs and when an
+/// index change is reported). None of its commands may run an untrusted filter
+/// driver. The positive control is plain `git status` on the SAME fixture: it
+/// does run the driver, so the files really are stat-dirty.
+#[cfg(unix)]
+#[tokio::test]
+async fn the_watcher_never_runs_an_untrusted_filter_driver() {
+    use common::{Marked, dirty};
+
+    let repo = TestRepo::with_initial_commit();
+    repo.write("a.txt", "a\n");
+    repo.commit_all("a");
+    let driver = Marked::new(&repo);
+    repo.write(".gitattributes", "* filter=evil\n");
+    repo.git(["config", "filter.evil.clean", &driver.command("clean")]);
+    dirty(&repo.path);
+
+    common::git(&repo.path, ["-c", "core.fsmonitor=false", "status"]);
+    assert!(driver.ran(), "control: plain git runs the driver here");
+    driver.reset();
+
+    // The watcher's own git call, as `watch/hub.rs::tracked_ignored` makes it
+    // (keep in step with it): it must not run the driver.
+    test_runner()
+        .run(
+            &repo.path,
+            ["ls-files", "-z", "-c", "-i", "--exclude-standard"],
+        )
+        .await
+        .unwrap();
+    assert!(!driver.ran(), "ls-files -c -i ran the driver");
+
+    // Now through the hub: first sync, file edits, an index event (which makes
+    // the hub re-list tracked-but-ignored files), a config and an attributes
+    // change, and an explicit reconcile.
+    let mut w = watch(repo, cfg()).await;
+    w.repo.write("a.txt", "c\n");
+    let index = w.repo.path.join(".git/index");
+    std::fs::File::options()
+        .write(true)
+        .open(&index)
+        .unwrap()
+        .set_modified(std::time::SystemTime::now())
+        .unwrap();
+    w.repo.git(["config", "filter.other.clean", "unused"]);
+    std::fs::create_dir_all(w.repo.path.join(".git/info")).unwrap();
+    std::fs::write(
+        w.repo.path.join(".git/info/attributes"),
+        "*.rs filter=other\n",
+    )
+    .unwrap();
+    w.hub.refresh().await;
+    w.drain().await;
+    assert!(!driver.ran(), "the watcher ran an untrusted filter driver");
+}
+
+#[tokio::test]
+async fn a_filter_attribute_added_to_info_attributes_makes_the_ui_refetch() {
+    let mut w = watch(TestRepo::with_initial_commit(), cfg()).await;
+    let id = w.main_id.clone();
+    let info = w.repo.path.join(".git/info");
+    std::fs::create_dir_all(&info).unwrap();
+    w.drain().await;
+    std::fs::write(info.join("attributes"), "* filter=evil\n").unwrap();
+    w.wait_for(refetch_all_for(&id)).await;
+}
+
+#[tokio::test]
+async fn a_gitattributes_edit_is_reported_like_any_file() {
+    let mut w = watch(TestRepo::with_initial_commit(), cfg()).await;
+    w.repo.write(".gitattributes", "* filter=evil\n");
+    assert_eq!(w.next().await.paths, vec![".gitattributes".to_string()]);
+}
+
+#[tokio::test]
 async fn branch_switch_emits_refetch_all() {
     let mut w = watch(TestRepo::with_initial_commit(), cfg()).await;
     w.repo.git(["switch", "-q", "-c", "other"]);

@@ -15,7 +15,11 @@
 //!      every worktree of the repository is told);
 //!    * `worktrees/` or `worktrees/<name>` appearing or disappearing: a
 //!      worktree was added or removed, so the worktree list is re-read;
-//!    * `info/exclude`: the repository-wide ignore rules changed.
+//!    * `info/exclude`: the repository-wide ignore rules changed;
+//!    * `config`, `config.worktree`, `worktrees/<name>/config.worktree`,
+//!      `info/attributes`: git filter drivers live here (WHY-39). The affected
+//!      worktrees are refetched, and every read re-runs the filter guard, so a
+//!      driver added behind WHY's back turns the repository "blocked" at once.
 //!
 //!    Checked first because the main worktree's git dir (`.git/`) usually sits
 //!    *inside* its root.
@@ -201,7 +205,16 @@ impl Registry {
             ["info", "exclude"] | ["info"] => of_repo()
                 .map(|w| Routed::RebuildIgnore(w.id.clone()))
                 .collect(),
-            // objects/, logs/, config, FETCH_HEAD, ...: not interesting.
+            // Filter drivers are defined in config and selected by attributes.
+            // `config` and `info/attributes` are shared by the whole repository;
+            // `config.worktree` is private to one worktree (the main one when it
+            // sits directly in the common dir).
+            ["config"] | ["info", "attributes"] => of_repo().map(refetch).collect(),
+            ["config.worktree"] => head_or_index(&repo.common_dir, false),
+            ["worktrees", _, "config.worktree"] => {
+                head_or_index(&repo.common_dir.join(rel.parent()?), false)
+            }
+            // objects/, logs/, FETCH_HEAD, ...: not interesting.
             _ => Vec::new(),
         };
         Some(out)
@@ -407,6 +420,26 @@ mod tests {
             r("/c/app/.git/info/exclude"),
             ["rebuild:main", "rebuild:feat", "rebuild:nested"]
         );
+    }
+
+    #[test]
+    fn config_and_attribute_changes_refetch_so_the_filter_guard_runs_again() {
+        // Shared by every worktree of the repository.
+        assert_eq!(r("/c/app/.git/config"), ["main:*", "feat:*", "nested:*"]);
+        assert_eq!(
+            r("/c/app/.git/info/attributes"),
+            ["main:*", "feat:*", "nested:*"]
+        );
+        // `config.worktree` belongs to one worktree only.
+        assert_eq!(r("/c/app/.git/config.worktree"), ["main:*"]);
+        assert_eq!(
+            r("/c/app/.git/worktrees/app-feat/config.worktree"),
+            ["feat:*"]
+        );
+        // A submodule's own config is its own repository's.
+        assert_eq!(r("/c/app/.git/modules/sub/config"), ["sub:*"]);
+        // The lock file git writes first is noise, like for refs and the index.
+        assert!(r("/c/app/.git/config.lock").is_empty());
     }
 
     #[test]
