@@ -19,7 +19,7 @@ use tauri::Manager;
 use tracing_subscriber::EnvFilter;
 use why_wire::{InstancePaths, PathEnv};
 
-use crate::events::{EventStore, MemoryEventStore};
+use crate::events::{Clock, EventStore, open_event_store};
 use crate::git::GitRunner;
 use crate::state::AppState;
 use crate::store::{MemoryRepoStore, RepoStore, SqliteRepoStore, StorageMode};
@@ -60,8 +60,11 @@ pub fn run() {
             // Commands see the store through the notifying decorator, so adding
             // or removing a repository resyncs the watcher immediately.
             let repos: Arc<dyn RepoStore> = Arc::new(NotifyingRepoStore::new(store, resync));
-            // In memory until WHY-12 opens `events.db` in `paths.data_dir`.
-            let events: Arc<dyn EventStore> = Arc::new(MemoryEventStore::new());
+            // `<data dir>/events.db`, or an in-memory store if it cannot be opened.
+            let events: Arc<dyn EventStore> = open_event_store(
+                paths.as_ref().map(|p| p.data_dir.as_path()),
+                Clock::system(),
+            );
             if let Ok(paths) = paths {
                 let collector = collector::start(
                     app.handle(),

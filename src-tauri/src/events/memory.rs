@@ -4,6 +4,7 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::{Mutex, MutexGuard};
 
+use super::clock::Clock;
 use super::model::{EventKey, NormalizedEvent, SessionKey};
 use super::timeline::{build_summary, build_timeline};
 use super::{AppendOutcome, EventStore};
@@ -25,11 +26,26 @@ struct Inner {
 #[derive(Debug, Default)]
 pub struct MemoryEventStore {
     inner: Mutex<Inner>,
+    /// For the stale-session rule. `None` (what [`MemoryEventStore::new`]
+    /// builds) never applies it, so tests with made-up timestamps stay `live`.
+    clock: Option<Clock>,
 }
 
 impl MemoryEventStore {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// A store that demotes stale `live` sessions, judged by `clock`.
+    pub fn with_clock(clock: Clock) -> Self {
+        Self {
+            inner: Mutex::default(),
+            clock: Some(clock),
+        }
+    }
+
+    fn now_ms(&self) -> Option<u64> {
+        self.clock.as_ref().map(Clock::now_ms)
     }
 
     fn lock(&self) -> Result<MutexGuard<'_, Inner>, StoreError> {
@@ -73,13 +89,14 @@ impl EventStore for MemoryEventStore {
 
     fn sessions_for_worktree(&self, wt: &WorktreeId) -> Result<Vec<SessionSummary>, StoreError> {
         let inner = self.lock()?;
+        let now = self.now_ms();
         let mut found: Vec<(u64, SessionSummary)> = inner
             .sessions
             .iter()
             .filter(|(_, events)| events.iter().any(|e| e.worktree_id.as_ref() == Some(wt)))
             .filter_map(|(key, events)| {
                 let last = events.iter().map(|e| e.at_ms).max()?;
-                Some((last, build_summary(key, events)?))
+                Some((last, build_summary(key, events, now)?))
             })
             .collect();
         // Most recent first; the id breaks ties so the order is deterministic
@@ -93,7 +110,7 @@ impl EventStore for MemoryEventStore {
         Ok(inner
             .sessions
             .get(session)
-            .and_then(|events| build_timeline(session, events)))
+            .and_then(|events| build_timeline(session, events, self.now_ms())))
     }
 
     fn prune_older_than(&self, cutoff_ms: u64) -> Result<usize, StoreError> {

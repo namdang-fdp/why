@@ -14,6 +14,10 @@
 //! - Lifecycle events (`SessionStart`/`SessionEnd`) set the status and are not
 //!   shown in turns. The last one in time wins: start/resume → `live`, end →
 //!   `ended`; none at all → `unknown`.
+//! - Stale sessions: a crashed agent never sends `SessionEnd`, so `live` would
+//!   last forever. A `live` session whose last event is more than
+//!   [`STALE_AFTER_MS`] before "now" is shown as `unknown` ([`effective_status`]).
+//!   "Now" is an argument: this module never reads the clock.
 //! - Turns are keyed by `turn_id` and ordered by their first event. Events with
 //!   no turn id (none seen in the WHY-45 fixtures except lifecycle ones) go to a
 //!   turn with an empty id.
@@ -44,6 +48,23 @@ pub fn harness_to_contract(h: why_wire::Harness) -> ContractHarness {
         why_wire::Harness::ClaudeCode => ContractHarness::ClaudeCode,
         why_wire::Harness::Codex => ContractHarness::Codex,
         why_wire::Harness::Unknown => ContractHarness::Unknown,
+    }
+}
+
+/// A session with no `SessionEnd` and no event for this long is no longer
+/// called `live`: its agent most likely crashed or was killed.
+pub const STALE_AFTER_MS: u64 = 30 * 60 * 1000;
+
+/// The status to show: `status` (from the lifecycle events), except that `live`
+/// becomes `unknown` once `last_event_ms` is more than [`STALE_AFTER_MS`] before
+/// `now_ms`. Only `live` is demoted: `ended` is a fact the harness told us, and
+/// `unknown` cannot get less certain. `saturating_sub`: an event stamped in the
+/// future (clock skew) is "just now", never stale.
+pub fn effective_status(status: SessionStatus, last_event_ms: u64, now_ms: u64) -> SessionStatus {
+    if status == SessionStatus::Live && now_ms.saturating_sub(last_event_ms) > STALE_AFTER_MS {
+        SessionStatus::Unknown
+    } else {
+        status
     }
 }
 
@@ -99,8 +120,13 @@ fn merge_files(files: &mut Vec<String>, extra: &[String]) {
 }
 
 /// Build a session's timeline from its events (in arrival order). `None` when
-/// there are no events.
-pub fn build_timeline(key: &SessionKey, events: &[NormalizedEvent]) -> Option<SessionTimeline> {
+/// there are no events. `now_ms` is the current time for the stale-session rule;
+/// `None` skips the rule (a store built without a clock).
+pub fn build_timeline(
+    key: &SessionKey,
+    events: &[NormalizedEvent],
+    now_ms: Option<u64>,
+) -> Option<SessionTimeline> {
     if events.is_empty() {
         return None;
     }
@@ -228,7 +254,10 @@ pub fn build_timeline(key: &SessionKey, events: &[NormalizedEvent]) -> Option<Se
             .and_then(|(_, e)| e.text.clone()),
         started_at: rfc3339_from_ms(first.at_ms),
         last_event_at: rfc3339_from_ms(last.at_ms),
-        status,
+        status: match now_ms {
+            Some(now) => effective_status(status, last.at_ms, now),
+            None => status,
+        },
         turn_count: u32::try_from(turns.len()).unwrap_or(u32::MAX),
     };
     Some(SessionTimeline { session, turns })
@@ -237,6 +266,45 @@ pub fn build_timeline(key: &SessionKey, events: &[NormalizedEvent]) -> Option<Se
 /// The summary alone. Builds the whole timeline (fine for the memory store; a
 /// database backend may compute summaries with a query instead, as long as it
 /// gives the same result: the tests below are the reference).
-pub fn build_summary(key: &SessionKey, events: &[NormalizedEvent]) -> Option<SessionSummary> {
-    build_timeline(key, events).map(|t| t.session)
+pub fn build_summary(
+    key: &SessionKey,
+    events: &[NormalizedEvent],
+    now_ms: Option<u64>,
+) -> Option<SessionSummary> {
+    build_timeline(key, events, now_ms).map(|t| t.session)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const MIN: u64 = 60 * 1000;
+
+    #[test]
+    fn only_live_sessions_go_stale_and_only_past_the_limit() {
+        let last = 1_000 * MIN;
+        let at = |age: u64| effective_status(SessionStatus::Live, last, last + age);
+        assert_eq!(at(0), SessionStatus::Live);
+        assert_eq!(
+            at(STALE_AFTER_MS),
+            SessionStatus::Live,
+            "exactly N is not older"
+        );
+        assert_eq!(at(STALE_AFTER_MS + 1), SessionStatus::Unknown);
+        // Ended is a fact, unknown stays unknown, however old.
+        let old = last + 100 * STALE_AFTER_MS;
+        assert_eq!(
+            effective_status(SessionStatus::Ended, last, old),
+            SessionStatus::Ended
+        );
+        assert_eq!(
+            effective_status(SessionStatus::Unknown, last, old),
+            SessionStatus::Unknown
+        );
+        // An event "from the future" is never stale (and never underflows).
+        assert_eq!(
+            effective_status(SessionStatus::Live, last, 0),
+            SessionStatus::Live
+        );
+    }
 }
