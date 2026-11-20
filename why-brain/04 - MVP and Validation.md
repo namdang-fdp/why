@@ -9,7 +9,7 @@ Up: [[00 - WHY]]
 ## Roadmap: vertical slices, usable from the first one
 Turn/file-level "why" (v0.2) answers most questions cheaply; line-level replay (v0.3) is the precision/moat layer. Task state lives in Kaneo (project WHY), not here.
 - **v0.1 Workspace + live diff:** repo registration, worktree discovery, diff vs base incl. untracked, live updates, Monaco diff. **Released 2026-11-20 as v0.1.0** (Linux AppImage + .deb), incl. the git filter-driver guard.
-- **v0.2 Session context:** event store, fail-open `why-hook` + collector, Claude Code and Codex adapters, worktree↔session↔task correlation, session timeline in inspector.
+- **v0.2 Session context:** payload-capture spike, wiring, event store (`events.db`), fail-open `why-hook` + collector (user-level hooks, registered-repo allowlist), Claude Code and Codex adapters, worktree↔session↔task correlation, session timeline in inspector, hook setup UI. Plan approved 2026-11-20 (decisions 19–28).
 - **v0.3 Line provenance:** ground-truth fixtures, replay engine, alignment + stable anchors, shell-write capture, gutter origins, accuracy benchmark. This is the former "technical spike". Target: >90% correct coverage of supported direct-edit lines, zero known false attribution on fixtures, overall diff coverage reported separately, overhead measured with parallel sessions.
 - **v0.4 Attention:** signal engine (Unknown, churn, untested, big deletion, scope drift), attention-ordered review queue, per-hunk review state, decision view.
 - **v0.5 Close the loop:** anchored comments, feedback export to originating agent, Antigravity feasibility spike, portable provenance export design, external users.
