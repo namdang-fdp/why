@@ -4566,6 +4566,7 @@ name = "why"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "chrono",
  "futures-util",
  "ignore",
  "libc",
@@ -4583,6 +4584,25 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "ts-rs",
+ "why-wire",
+]
+
+[[package]]
+name = "why-hook"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "tempfile",
+ "why-wire",
+]
+
+[[package]]
+name = "why-wire"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
 ]
 
 [[package]]

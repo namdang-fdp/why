@@ -7,6 +7,10 @@ import type {
   RepositoryChanged,
   RepositorySecurity,
   RevokeResult,
+  SessionId,
+  SessionsChanged,
+  SessionSummary,
+  SessionTimeline,
   StorageStatus,
   Worktree,
   WorktreeChanged,
@@ -48,4 +52,10 @@ export interface DataSource {
   onWorktreeChanged(callback: (event: WorktreeChanged) => void): () => void;
   /** Subscribe to a repository gaining or losing worktrees; returns the unsubscribe. */
   onRepositoryChanged(callback: (event: RepositoryChanged) => void): () => void;
+  /** Agent sessions seen in a worktree, most recently active first (empty when none). */
+  listSessions(worktreeId: WorktreeId): Promise<SessionSummary[]>;
+  /** One session's turns and events; rejects with `notFound` for an unknown id. */
+  getSessionTimeline(sessionId: SessionId): Promise<SessionTimeline>;
+  /** Subscribe to new hook events for a worktree's sessions; returns the unsubscribe. */
+  onSessionsChanged(callback: (event: SessionsChanged) => void): () => void;
 }

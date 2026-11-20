@@ -6,6 +6,16 @@ edition = "2024"
 rust-version = "1.90"
 license = "MIT OR Apache-2.0"
 
+# A Cargo workspace rooted at the app package. The root stays the `why` app (so
+# `Cargo.lock` and `target/` stay in `src-tauri/`, where CI, the release workflow
+# and `scripts/check-versions.mjs` expect them); the members are small crates that
+# share that lockfile and build directory:
+#   - `why-wire`: the wire protocol shared by the hook and the app,
+#   - `why-hook`: the fail-open binary the agents' hooks run.
+# Profiles (below) are workspace-wide: Cargo ignores `[profile]` in members.
+[workspace]
+members = ["crates/why-wire", "crates/why-hook"]
+
 # Named `why_lib` (not `why`) so the library and the binary don't clash on Windows.
 [lib]
 name = "why_lib"
@@ -14,6 +24,8 @@ name = "why_lib"
 tauri-build = { version = "2.7", features = [] }
 
 [dependencies]
+# The hook <-> app protocol (envelope, framing, socket/spool paths).
+why-wire = { path = "crates/why-wire" }
 tauri = { version = "2.12", features = [] }
 # Async runtime for the later git/watch/store work. Only the features we use.
 tokio = { version = "1.54", features = ["rt-multi-thread", "macros", "sync", "time", "process", "fs"] }
@@ -29,6 +41,10 @@ sha2 = "0.11"
 # `join_all`: run the per-worktree git work concurrently without spawning tasks
 # (so the futures may borrow `AppState`). Already in the tree through Tauri.
 futures-util = { version = "0.3", default-features = false, features = ["alloc"] }
+# RFC 3339 timestamps for the session contracts (they cannot carry a u64 of
+# milliseconds, see `contracts/sessions.rs`). Already in the tree through Tauri;
+# no clock or timezone features, only formatting.
+chrono = { version = "0.4", default-features = false, features = ["alloc"] }
 
 # SQLite for the repository store. `bundled` compiles SQLite into the binary, so
 # the app does not depend on (or vary with) the system's libsqlite3.
@@ -63,6 +79,9 @@ tokio = { version = "1.54", features = ["test-util", "macros", "rt"] }
 opt-level = 2
 
 # Release builds: smaller, faster binary at the cost of longer compile times.
+# NEVER add `panic = "abort"` here: this profile also builds `why-hook`, whose
+# "always exit 0, print nothing" guarantee relies on `catch_unwind`, which only
+# works with the default `panic = "unwind"`.
 [profile.release]
 lto = "thin"
 codegen-units = 1

@@ -32,6 +32,7 @@
 //!   `revoke_repository_filters`).
 //! * [`storage`]: `get_storage_status` (are repositories saved?).
 //! * [`dialog`]: `pick_repository_folder` (native folder picker, opened by the core).
+//! * [`sessions`]: agent sessions (`list_sessions`, `get_session_timeline`).
 //! * [`error`]: the one place errors become `IpcError`.
 
 pub mod changes;
@@ -39,6 +40,7 @@ pub mod dialog;
 mod error;
 pub mod repos;
 pub mod security;
+pub mod sessions;
 pub mod storage;
 
 // Commands are not re-exported here. `#[tauri::command]` also generates helper

@@ -123,3 +123,24 @@ describe("TauriDataSource commands", () => {
     await expect(source.listRepositories()).rejects.toMatchObject({ kind: "internal" });
   });
 });
+
+describe("TauriDataSource session commands", () => {
+  const source = new TauriDataSource();
+
+  it("calls list_sessions and get_session_timeline with camelCase ids", async () => {
+    const calls = ipc((cmd) => (cmd === "list_sessions" ? [] : null));
+    await expect(source.listSessions("w1")).resolves.toEqual([]);
+    await source.getSessionTimeline("codex:s1");
+    expect(calls).toEqual([
+      { cmd: "list_sessions", args: { worktreeId: "w1" } },
+      { cmd: "get_session_timeline", args: { sessionId: "codex:s1" } },
+    ]);
+  });
+
+  it("passes the core's notFound through for an unknown session", async () => {
+    ipc(() => {
+      throw { kind: "notFound" } satisfies IpcError;
+    });
+    await expect(source.getSessionTimeline("codex:gone")).rejects.toEqual({ kind: "notFound" });
+  });
+});

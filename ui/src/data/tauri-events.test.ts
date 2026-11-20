@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   REPOSITORY_CHANGED_EVENT,
+  SESSIONS_CHANGED_EVENT,
   WORKTREE_CHANGED_EVENT,
   type RepositoryChanged,
+  type SessionsChanged,
   type WorktreeChanged,
 } from "@/contracts";
 import { TauriDataSource } from "./tauri-data-source";
@@ -27,7 +29,7 @@ function deferredListen() {
   });
   return {
     unlisten,
-    deliver: (payload: WorktreeChanged | RepositoryChanged) =>
+    deliver: (payload: WorktreeChanged | RepositoryChanged | SessionsChanged) =>
       handler({ payload: payload as never }),
     register: async () => {
       finish(unlisten);
@@ -123,5 +125,23 @@ describe("TauriDataSource.onRepositoryChanged", () => {
     expect(fake.unlisten).toHaveBeenCalledTimes(1);
     fake.deliver({ repoId: "r1" });
     expect(callback).not.toHaveBeenCalled();
+  });
+});
+
+describe("TauriDataSource.onSessionsChanged", () => {
+  beforeEach(() => {
+    listen.mockReset();
+  });
+
+  it("listens to sessions-changed and hands the payload to the callback", async () => {
+    const fake = deferredListen();
+    const callback = vi.fn();
+    const stop = new TauriDataSource().onSessionsChanged(callback);
+    await fake.register();
+    expect(listen).toHaveBeenCalledWith(SESSIONS_CHANGED_EVENT, expect.any(Function));
+    fake.deliver({ worktreeId: "w1" });
+    expect(callback).toHaveBeenCalledWith({ worktreeId: "w1" });
+    stop();
+    expect(fake.unlisten).toHaveBeenCalledOnce();
   });
 });

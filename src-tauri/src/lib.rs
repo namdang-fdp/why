@@ -1,18 +1,25 @@
 //! WHY core. Everything lives in this library so `main.rs` stays a thin
 //! launcher and the code is testable without starting a window.
 
+pub mod adapters;
+pub mod collector;
 pub mod contracts;
+pub mod events;
 pub mod git;
+pub mod instance;
 pub mod ipc;
 pub mod state;
 pub mod store;
 pub mod watch;
 
+use std::path::Path;
 use std::sync::Arc;
 
 use tauri::Manager;
 use tracing_subscriber::EnvFilter;
+use why_wire::{InstancePaths, PathEnv};
 
+use crate::events::{EventStore, MemoryEventStore};
 use crate::git::GitRunner;
 use crate::state::AppState;
 use crate::store::{MemoryRepoStore, RepoStore, SqliteRepoStore, StorageMode};
@@ -40,7 +47,9 @@ pub fn run() {
         // `setup` runs once the app (and its path API) exists, before any
         // window loads, so commands never see the state missing.
         .setup(|app| {
-            let (store, storage) = open_repo_store(app.handle());
+            // Which instance we are (installed or dev) decides every path below.
+            let paths = resolve_instance_paths(app.handle());
+            let (store, storage) = open_repo_store(paths.as_ref().map(|p| p.data_dir.as_path()));
             // Managed on its own (not inside `AppState`) so `get_storage_status`
             // can read it; `Temporary` means changes are lost at exit.
             app.manage(storage);
@@ -51,9 +60,26 @@ pub fn run() {
             // Commands see the store through the notifying decorator, so adding
             // or removing a repository resyncs the watcher immediately.
             let repos: Arc<dyn RepoStore> = Arc::new(NotifyingRepoStore::new(store, resync));
-            app.manage(AppState::new(git, repos));
+            // In memory until WHY-12 opens `events.db` in `paths.data_dir`.
+            let events: Arc<dyn EventStore> = Arc::new(MemoryEventStore::new());
+            if let Ok(paths) = paths {
+                let collector = collector::start(
+                    app.handle(),
+                    &paths,
+                    git.clone(),
+                    Arc::clone(&repos),
+                    Arc::clone(&events),
+                );
+                // Managed so it lives as long as the app (dropping it stops it).
+                app.manage(collector);
+                // The hook installer can get the exact paths the collector uses.
+                app.manage(paths);
+            }
+            app.manage(AppState::new(git, repos).with_events(events));
             #[cfg(debug_assertions)]
-            dev_register_from_env(app.handle());
+            if tauri::is_dev() {
+                dev_register_from_env(app.handle());
+            }
             Ok(())
         })
         // Every command the webview may `invoke` must be registered here.
@@ -71,31 +97,50 @@ pub fn run() {
             ipc::changes::get_file_diff,
             ipc::storage::get_storage_status,
             ipc::dialog::pick_repository_folder,
+            ipc::sessions::list_sessions,
+            ipc::sessions::get_session_timeline,
         ])
         .run(tauri::generate_context!())
         .expect("error while running WHY");
 }
 
-/// Open the SQLite store at `<app data dir>/why.db`, creating the directory.
+/// This instance's paths (see `instance.rs`): installed apps use Tauri's
+/// `app_data_dir` as before, Tauri dev runs use `<app_data_dir>-dev` and the
+/// `WHY_DEV_PORT` socket. `Err` only when Tauri knows no data dir at all.
+fn resolve_instance_paths(app: &tauri::AppHandle) -> Result<InstancePaths, String> {
+    let tauri_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("no app data dir: {e}"))?;
+    let dev_port = std::env::var("WHY_DEV_PORT").ok();
+    let instance = instance::choose_instance(tauri::is_dev(), dev_port.as_deref());
+    let env = PathEnv::from_process();
+    let paths = instance::instance_paths(instance, &tauri_dir, &env);
+    tracing::info!(
+        instance = %paths.instance,
+        data_dir = %paths.data_dir.display(),
+        socket = %paths.socket_path.display(),
+        "instance paths"
+    );
+    Ok(paths)
+}
+
+/// Open the SQLite store at `<data dir>/why.db`, creating the directory.
 ///
 /// On failure (unwritable data dir, corrupt file, a database from a newer WHY)
 /// the app still starts, with an in-memory store and a loud error in the log:
 /// the user can keep reviewing, and nothing on disk is touched or overwritten.
 /// The cost is that repositories added in this session are forgotten on exit.
 /// Crashing at startup would be worse: the user could not even see the error.
-fn open_repo_store(app: &tauri::AppHandle) -> (Arc<dyn RepoStore>, StorageMode) {
-    let opened = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| format!("no app data dir: {e}"))
-        .and_then(|dir| {
-            std::fs::create_dir_all(&dir)
-                .map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
-            let path = dir.join("why.db");
-            let store = SqliteRepoStore::open(&path).map_err(|e| e.to_string())?;
-            tracing::info!(path = %path.display(), "opened repository store");
-            Ok((store, path))
-        });
+fn open_repo_store(data_dir: Result<&Path, &String>) -> (Arc<dyn RepoStore>, StorageMode) {
+    let opened = data_dir.map_err(|e| e.clone()).and_then(|dir| {
+        std::fs::create_dir_all(dir)
+            .map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
+        let path = dir.join("why.db");
+        let store = SqliteRepoStore::open(&path).map_err(|e| e.to_string())?;
+        tracing::info!(path = %path.display(), "opened repository store");
+        Ok((store, path))
+    });
     match opened {
         Ok((store, path)) => (Arc::new(store), StorageMode::Persistent(path)),
         Err(e) => {

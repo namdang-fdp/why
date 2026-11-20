@@ -11,21 +11,27 @@ import type {
   RepositoryChanged,
   RepositorySecurity,
   RevokeResult,
+  SessionId,
+  SessionsChanged,
+  SessionTimeline,
   StorageStatus,
   Worktree,
   WorktreeChanged,
   WorktreeId,
 } from "@/contracts";
 import { supplementaryDiffs } from "@/dev-fixtures/file-diffs";
+import { buildLongSession } from "@/dev-fixtures/long-session";
 import { buildManyWorktrees, manyDiff } from "@/dev-fixtures/many-worktrees";
 import {
   changesByWorktree,
   fileDiffs,
   repositories,
   storagePersistent,
+  WT_BILLING_DETACHED,
   WT_WHY_MAIN,
   worktrees,
 } from "@/fixtures";
+import { sessionTimelines } from "@/fixtures/sessions";
 import type { DataSource } from "./data-source";
 
 const extraDiffs: Readonly<Partial<Record<string, FileDiff[]>>> = supplementaryDiffs;
@@ -97,6 +103,9 @@ export type FixtureOptions = {
 export class FixtureDataSource implements DataSource {
   private readonly listeners = new Set<(event: WorktreeChanged) => void>();
   private readonly repoListeners = new Set<(event: RepositoryChanged) => void>();
+  private readonly sessionListeners = new Set<(event: SessionsChanged) => void>();
+  /** Session timelines by id; the long one is generated on first use. */
+  private sessionsById: Map<SessionId, SessionTimeline> | undefined;
   private repos: Repository[];
   private worktreeList: Worktree[];
   private readonly changes: Record<string, FileChange[]>;
@@ -425,6 +434,79 @@ export class FixtureDataSource implements DataSource {
     if (!worktree) return;
     this.worktreeList = this.worktreeList.filter((entry) => entry.id !== worktreeId);
     this.emitRepositoryChanged({ repoId: worktree.repoId });
+  }
+
+  // ---- agent sessions (v0.2) -------------------------------------------------
+
+  private sessions(): Map<SessionId, SessionTimeline> {
+    if (!this.sessionsById) {
+      // The ~500-turn session sits on the detached billing checkout, so the
+      // everyday worktrees stay light while the virtualized list has real load.
+      const all = [...structuredClone(sessionTimelines), buildLongSession(WT_BILLING_DETACHED)];
+      this.sessionsById = new Map(all.map((timeline) => [timeline.session.id, timeline]));
+    }
+    return this.sessionsById;
+  }
+
+  async listSessions(worktreeId: WorktreeId) {
+    await this.delay();
+    // Like the core: an unknown worktree simply has no sessions.
+    return structuredClone(
+      [...this.sessions().values()]
+        .map((timeline) => timeline.session)
+        .filter((session) => session.worktreeId === worktreeId)
+        .sort((a, b) => b.lastEventAt.localeCompare(a.lastEventAt)),
+    );
+  }
+
+  async getSessionTimeline(sessionId: SessionId) {
+    await this.delay();
+    const timeline = this.sessions().get(sessionId);
+    if (!timeline) throw { kind: "notFound" } satisfies IpcError;
+    return structuredClone(timeline);
+  }
+
+  onSessionsChanged(callback: (event: SessionsChanged) => void) {
+    this.sessionListeners.add(callback);
+    return () => {
+      this.sessionListeners.delete(callback);
+    };
+  }
+
+  emitSessionsChanged(event: SessionsChanged) {
+    if (!import.meta.env.DEV) return;
+    for (const callback of this.sessionListeners) callback(event);
+  }
+
+  /**
+   * Plays an agent working in a live session: appends a shell call to the
+   * session's last turn and announces it like the collector would. Returns
+   * `false` if there is no open turn.
+   */
+  simulateSessionActivity(sessionId: SessionId, summary = "pytest -q") {
+    const timeline = this.sessions().get(sessionId);
+    const turn = timeline?.turns.at(-1);
+    if (!timeline || !turn || turn.endedAt !== null || timeline.session.status === "ended") {
+      return false;
+    }
+    const now = new Date().toISOString();
+    turn.events.push({
+      id: `${turn.id}-sim-${turn.events.length}`,
+      kind: "shell",
+      at: now,
+      toolName: "Bash",
+      summary,
+      files: [],
+      evidence: "observed",
+      outcome: "ok",
+      agentId: null,
+    });
+    timeline.session.lastEventAt = now;
+    timeline.session.status = "live";
+    if (timeline.session.worktreeId) {
+      this.emitSessionsChanged({ worktreeId: timeline.session.worktreeId });
+    }
+    return true;
   }
 
   emitWorktreeChanged(event: WorktreeChanged) {

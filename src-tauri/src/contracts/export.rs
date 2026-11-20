@@ -18,7 +18,8 @@ use ts_rs::{Config, TS};
 
 use super::{
     DiffMode, FileChange, FileDiff, IpcError, REPOSITORY_CHANGED_EVENT, Repository,
-    RepositoryChanged, RepositorySecurity, RevokeResult, StorageStatus, WORKTREE_CHANGED_EVENT,
+    RepositoryChanged, RepositorySecurity, RevokeResult, SESSIONS_CHANGED_EVENT, SessionId,
+    SessionSummary, SessionTimeline, SessionsChanged, StorageStatus, WORKTREE_CHANGED_EVENT,
     Worktree, WorktreeChanged,
 };
 
@@ -44,13 +45,17 @@ fn export_all(dir: &Path) -> Result<()> {
     StorageStatus::export_all(&cfg)?;
     RepositorySecurity::export_all(&cfg)?;
     RevokeResult::export_all(&cfg)?;
+    SessionId::export_all(&cfg)?;
+    SessionSummary::export_all(&cfg)?;
+    SessionTimeline::export_all(&cfg)?;
+    SessionsChanged::export_all(&cfg)?;
 
     const NOTE: &str = "// This file was generated from the Rust contracts in src-tauri/src/contracts. Do not edit it manually.\n// Regenerate with `pnpm gen:contracts`.\n";
 
     fs::write(
         dir.join("events.ts"),
         format!(
-            "{NOTE}\nexport const WORKTREE_CHANGED_EVENT = \"{WORKTREE_CHANGED_EVENT}\";\nexport const REPOSITORY_CHANGED_EVENT = \"{REPOSITORY_CHANGED_EVENT}\";\n"
+            "{NOTE}\nexport const WORKTREE_CHANGED_EVENT = \"{WORKTREE_CHANGED_EVENT}\";\nexport const REPOSITORY_CHANGED_EVENT = \"{REPOSITORY_CHANGED_EVENT}\";\nexport const SESSIONS_CHANGED_EVENT = \"{SESSIONS_CHANGED_EVENT}\";\n"
         ),
     )?;
 

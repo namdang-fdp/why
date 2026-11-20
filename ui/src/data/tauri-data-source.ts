@@ -9,12 +9,20 @@ import type {
   RepositoryChanged,
   RepositorySecurity,
   RevokeResult,
+  SessionId,
+  SessionsChanged,
+  SessionSummary,
+  SessionTimeline,
   StorageStatus,
   Worktree,
   WorktreeChanged,
   WorktreeId,
 } from "@/contracts";
-import { REPOSITORY_CHANGED_EVENT, WORKTREE_CHANGED_EVENT } from "@/contracts";
+import {
+  REPOSITORY_CHANGED_EVENT,
+  SESSIONS_CHANGED_EVENT,
+  WORKTREE_CHANGED_EVENT,
+} from "@/contracts";
 import { toIpcError } from "./async-state";
 import type { DataSource } from "./data-source";
 
@@ -95,6 +103,18 @@ export class TauriDataSource implements DataSource {
 
   onRepositoryChanged(callback: (event: RepositoryChanged) => void) {
     return subscribe(REPOSITORY_CHANGED_EVENT, callback);
+  }
+
+  listSessions(worktreeId: WorktreeId) {
+    return this.call<SessionSummary[]>("list_sessions", { worktreeId });
+  }
+
+  getSessionTimeline(sessionId: SessionId) {
+    return this.call<SessionTimeline>("get_session_timeline", { sessionId });
+  }
+
+  onSessionsChanged(callback: (event: SessionsChanged) => void) {
+    return subscribe(SESSIONS_CHANGED_EVENT, callback);
   }
 }
 
