@@ -21,6 +21,7 @@
 pub mod memory;
 pub mod sqlite;
 
+use std::collections::HashSet;
 use std::path::PathBuf;
 
 use crate::contracts::{RepoId, Repository, WorktreeId};
@@ -112,6 +113,11 @@ pub trait RepoStore: Send + Sync {
     /// that does not say which repository it belongs to, so a backend cannot
     /// cascade-delete them here unless it records that link itself. Orphaned
     /// overrides are harmless: nothing looks them up once the repository is gone.
+    ///
+    /// Filter trust IS keyed by repository, so it is deleted here. This matters:
+    /// a repository id is derived from its path, so a repository re-added later
+    /// (or a different one cloned to the same path) would otherwise inherit a
+    /// trust decision the user made about something else.
     fn remove(&self, id: &RepoId) -> Result<bool, StoreError>;
 
     /// The base ref the user picked for a worktree (e.g. `origin/main`), if any.
@@ -120,4 +126,29 @@ pub trait RepoStore: Send + Sync {
 
     /// Set (`Some`) or clear (`None`) the base override of a worktree.
     fn set_base_override(&self, wt: &WorktreeId, base: Option<String>) -> Result<(), StoreError>;
+
+    /// Fingerprints of the git filter drivers the user chose to trust for this
+    /// repository (see `git::filters`). Empty when nothing is trusted.
+    ///
+    /// A fingerprint covers a driver's whole configuration, so a driver that is
+    /// new or whose command changed is simply absent from the set, which is what
+    /// makes the guard ask again.
+    fn trusted_filters(&self, repo: &RepoId) -> Result<HashSet<String>, StoreError>;
+
+    /// REPLACE the repository's trusted fingerprints with `fingerprints` (an
+    /// empty slice revokes all trust). Replacing instead of adding means the
+    /// stored set is always exactly what the user last confirmed.
+    ///
+    /// Conditional on the repository still being registered: returns `false`
+    /// and writes NOTHING when it is not. The check and the write happen under
+    /// one lock (memory) or in one transaction (SQLite). Why it matters: the
+    /// trust command scans the repository (slow) and only then writes; if the
+    /// user removed the repository meanwhile, `remove` already forgot its trust,
+    /// and an unconditional write would bring a late approval back for the next
+    /// registration of the same path (ids are path-derived).
+    fn set_trusted_filters(
+        &self,
+        repo: &RepoId,
+        fingerprints: &[String],
+    ) -> Result<bool, StoreError>;
 }

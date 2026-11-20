@@ -8,6 +8,7 @@
 //! waiting up to 30 s for the periodic reconcile. (Decorator pattern: same
 //! interface, extra behaviour, inner object unchanged.)
 
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use super::hub::ResyncHandle;
@@ -57,6 +58,20 @@ impl RepoStore for NotifyingRepoStore {
 
     fn set_base_override(&self, wt: &WorktreeId, base: Option<String>) -> Result<(), StoreError> {
         self.inner.set_base_override(wt, base)
+    }
+
+    fn trusted_filters(&self, repo: &RepoId) -> Result<HashSet<String>, StoreError> {
+        self.inner.trusted_filters(repo)
+    }
+
+    // Trust changes need no watcher signal: the UI calls the trust command and
+    // then re-reads, and the guard consults the store on every read.
+    fn set_trusted_filters(
+        &self,
+        repo: &RepoId,
+        fingerprints: &[String],
+    ) -> Result<bool, StoreError> {
+        self.inner.set_trusted_filters(repo, fingerprints)
     }
 }
 
