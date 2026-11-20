@@ -38,6 +38,11 @@ jobs:
           node-version: 24
           cache: pnpm
 
+      # package.json, Cargo.toml, Cargo.lock and tauri.conf.json must carry the same version, or a
+      # release would be built with file names that disagree with its tag.
+      - name: Check that all version strings agree
+        run: node scripts/check-versions.mjs
+
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
