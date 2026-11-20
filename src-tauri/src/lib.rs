@@ -60,6 +60,12 @@ pub fn run() {
             // Commands see the store through the notifying decorator, so adding
             // or removing a repository resyncs the watcher immediately.
             let repos: Arc<dyn RepoStore> = Arc::new(NotifyingRepoStore::new(store, resync));
+            // And the hook's allowlist file follows them SYNCHRONOUSLY: a removal
+            // is on disk before `remove_repository` returns (decision 22).
+            let (repos, allowlist) = collector::allowlist_sync::wrap_store(
+                repos,
+                paths.as_ref().ok().map(|p| p.allowlist_path.clone()),
+            );
             // `<data dir>/events.db`, or an in-memory store if it cannot be opened.
             let events: Arc<dyn EventStore> = open_event_store(
                 paths.as_ref().map(|p| p.data_dir.as_path()),
@@ -71,6 +77,7 @@ pub fn run() {
                     &paths,
                     git.clone(),
                     Arc::clone(&repos),
+                    allowlist,
                     Arc::clone(&events),
                 );
                 // Managed so it lives as long as the app (dropping it stops it).
@@ -103,8 +110,17 @@ pub fn run() {
             ipc::sessions::list_sessions,
             ipc::sessions::get_session_timeline,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running WHY");
+        .build(tauri::generate_context!())
+        .expect("error while building WHY")
+        .run(|app, event| {
+            // Managed state is not dropped when the process exits, so the
+            // collector must be told to remove its socket file explicitly.
+            if let tauri::RunEvent::Exit = event
+                && let Some(collector) = app.try_state::<collector::CollectorHandle>()
+            {
+                collector.shutdown();
+            }
+        });
 }
 
 /// This instance's paths (see `instance.rs`): installed apps use Tauri's
