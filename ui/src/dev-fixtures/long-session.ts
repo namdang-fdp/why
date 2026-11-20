@@ -13,7 +13,7 @@ import type {
 export const SESSION_LONG = "codex:01a1f900-long-0000-0000-000000000500";
 
 const START_MS = Date.UTC(2026, 10, 19, 8, 0, 0);
-const FILES = ["src/calc.py", "src/notes.py", "src/helper.py", "tests/test_calc.py", "README.md"];
+const FILES = ["src/billing.ts", "data/seed.json"];
 
 function iso(ms: number): string {
   return new Date(ms).toISOString();
@@ -25,14 +25,18 @@ export function buildLongSession(worktreeId: WorktreeId, turns = 500): SessionTi
   // Each turn takes 40 s, spaced one minute apart.
   for (let i = 0; i < turns; i++) {
     const startMs = START_MS + i * 60_000;
-    const file = FILES[i % FILES.length] ?? "src/calc.py";
+    const file = FILES[i % FILES.length] ?? "src/billing.ts";
+    const prompt =
+      i === 1
+        ? "Step 2: adjust data/seed.json. Add an invoice with a zero balance so we can verify that it stays settled when the billing summary is recomputed. Keep the existing sample accounts and their amounts."
+        : `Step ${i + 1}: adjust ${file}`;
     const events: TimelineEvent[] = [
       {
         id: `long-${i}-prompt`,
         kind: "prompt",
         at: iso(startMs),
         toolName: null,
-        summary: `Step ${i + 1}: adjust ${file}`,
+        summary: prompt,
         files: [],
         evidence: "observed",
         outcome: null,
@@ -51,7 +55,12 @@ export function buildLongSession(worktreeId: WorktreeId, turns = 500): SessionTi
         at: iso(startMs + (t + 1) * 7_000),
         toolName: kind === "edit" ? "apply_patch" : kind === "toolCall" ? "Read" : "Bash",
         summary: kind === "edit" ? `Update File: ${file}` : `command ${t + 1} of turn ${i + 1}`,
-        files: kind === "edit" || kind === "toolCall" ? [file] : [],
+        files:
+          kind === "edit" || kind === "toolCall"
+            ? i === 0
+              ? [file, "data/seed.json"]
+              : [file]
+            : [],
         evidence: "observed",
         outcome: outcomes[(i * 3 + t) % outcomes.length] ?? "ok",
         agentId: null,
@@ -74,7 +83,7 @@ export function buildLongSession(worktreeId: WorktreeId, turns = 500): SessionTi
     list.push({
       id: `long-turn-${i}`,
       index: i,
-      prompt: `Step ${i + 1}: adjust ${file}`,
+      prompt,
       startedAt: iso(startMs),
       // The last turn is still running.
       endedAt: last ? null : iso(startMs + 40_000),
@@ -89,7 +98,7 @@ export function buildLongSession(worktreeId: WorktreeId, turns = 500): SessionTi
       model: "gpt-6-luna",
       worktreeId,
       cwd: "/home/dev/code/billing-api",
-      task: "Step 1: adjust src/calc.py",
+      task: "Step 1: adjust src/billing.ts",
       startedAt: iso(START_MS),
       lastEventAt: lastEvent?.at ?? iso(START_MS),
       status: "live",

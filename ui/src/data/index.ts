@@ -34,6 +34,7 @@ declare global {
   interface Window {
     whyFixtures?: {
       emitWorktreeChanged: (event: WorktreeChanged) => void;
+      simulateSessionActivity: (sessionId: string, summary?: string, newPrompt?: string) => boolean;
       simulateEdit: (worktreeId: string, path: string) => void;
       simulateWorktreeAdded: (repoId: string) => void;
       simulateWorktreeRemoved: (worktreeId: string) => void;
@@ -42,14 +43,16 @@ declare global {
 }
 
 function createDataSource(): DataSource {
-  // Inside the Tauri webview the real core answers; in a plain browser
-  // (`pnpm dev:ui`, design work) there is no core, so fixtures stand in.
-  if (isTauri()) return new TauriDataSource();
+  // Opt into fixtures in Tauri dev to review the UI before the collector is ready.
+  const preview = import.meta.env.DEV && import.meta.env.VITE_WHY_FIXTURES === "1";
+  if (isTauri() && !preview) return new TauriDataSource();
 
   const fixtures = new FixtureDataSource(fixtureOptionsFromUrl());
   if (import.meta.env.DEV && typeof window !== "undefined") {
     window.whyFixtures = {
       emitWorktreeChanged: (event) => fixtures.emitWorktreeChanged(event),
+      simulateSessionActivity: (sessionId, summary, newPrompt) =>
+        fixtures.simulateSessionActivity(sessionId, summary, newPrompt),
       simulateEdit: (worktreeId, path) => fixtures.simulateEdit(worktreeId, path),
       simulateWorktreeAdded: (repoId) => void fixtures.simulateWorktreeAdded(repoId),
       simulateWorktreeRemoved: (worktreeId) => fixtures.simulateWorktreeRemoved(worktreeId),
