@@ -263,9 +263,21 @@ impl GitRunner {
         // Since Git 2.45.1, the fetch path itself honors this setting.
         cmd.env("GIT_NO_LAZY_FETCH", "1");
 
+        // `GIT_CONFIG` (the legacy variable, NOT `GIT_CONFIG_GLOBAL`/`_SYSTEM`) is
+        // honoured by `git config` only; `status`, `diff` and friends ignore it.
+        // The filter guard (`git/filters.rs`) learns the repository's drivers by
+        // running `git config`, so a value left in WHY's environment could make
+        // the scan read a different (e.g. empty) file than the one the real read
+        // uses, and mint a permit for a repository that does have a driver.
+        // Removing it makes every command see the same configuration. (The
+        // `GIT_CONFIG_COUNT/KEY_n/VALUE_n` and `GIT_CONFIG_PARAMETERS` variables
+        // are different: they apply to ALL commands alike, so scan and read agree.
+        // They are classified by the guard instead: scope `command`, untrusted.)
+        //
         // These variables, if inherited (e.g. WHY launched from a git hook),
         // override `-C` and make git operate on a different repository.
         for var in [
+            "GIT_CONFIG",
             "GIT_DIR",
             "GIT_WORK_TREE",
             "GIT_INDEX_FILE",
@@ -370,6 +382,17 @@ mod tests {
         assert_eq!(env_of(&r, "GIT_NO_LAZY_FETCH"), Some(Some("1".into())));
         // Removed (`None`), not set.
         assert_eq!(env_of(&r, "GIT_DIR"), Some(None));
+        // The legacy `GIT_CONFIG` would make `git config` (the filter scan) read
+        // a different file than `status` does: always removed, never settable.
+        let r = r.with_env("GIT_CONFIG", "/somewhere/else");
+        assert_eq!(env_of(&r, "GIT_CONFIG"), Some(None));
+        // ... while the variables that choose WHERE config is read from are
+        // still the caller's to set (tests rely on it).
+        let r = r.with_env("GIT_CONFIG_GLOBAL", "/dev/null");
+        assert_eq!(
+            env_of(&r, "GIT_CONFIG_GLOBAL"),
+            Some(Some("/dev/null".into()))
+        );
     }
 
     #[test]
