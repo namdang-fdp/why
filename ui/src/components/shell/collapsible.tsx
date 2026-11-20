@@ -22,6 +22,11 @@ export function Collapsible({ open, children }: { open: boolean; children: React
     setAnimate(true);
     if (open) setMounted(true);
   }
+  // A close timer's setState can already be queued when an open lands (a click within a few ms
+  // of it firing, or a slow main thread) and then apply AFTER the `setMounted(true)` above;
+  // clearTimeout cannot recall an update that is already queued. So repair `mounted` whenever
+  // it disagrees with `open`, not only on the render where `open` changed.
+  if (open && !mounted) setMounted(true);
 
   useEffect(() => {
     if (open) return;
@@ -29,7 +34,8 @@ export function Collapsible({ open, children }: { open: boolean; children: React
     return () => clearTimeout(timer);
   }, [open]);
 
-  if (!mounted) return null;
+  // `open` alone must be enough to render: a stale `mounted=false` must never hide an open body.
+  if (!open && !mounted) return null;
   return (
     <div
       className="collapsible"
