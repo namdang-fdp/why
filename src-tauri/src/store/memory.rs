@@ -1,7 +1,7 @@
 //! In-memory [`RepoStore`]: the backend used until the SQLite store lands, and
 //! the fake that tests plug in. Nothing survives a restart.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Mutex, MutexGuard};
 
 use super::{InsertOutcome, RepoRecord, RepoStore, StoreError};
@@ -11,6 +11,8 @@ use crate::contracts::{RepoId, WorktreeId};
 struct Inner {
     repos: HashMap<RepoId, RepoRecord>,
     base_overrides: HashMap<WorktreeId, String>,
+    /// Trusted filter-driver fingerprints per repository.
+    trusted_filters: HashMap<RepoId, HashSet<String>>,
 }
 
 /// A [`RepoStore`] kept in two hash maps behind one lock.
@@ -63,7 +65,10 @@ impl RepoStore for MemoryRepoStore {
     }
 
     fn remove(&self, id: &RepoId) -> Result<bool, StoreError> {
-        Ok(self.lock()?.repos.remove(id).is_some())
+        let mut inner = self.lock()?;
+        // Trust must not outlive the registration (see `RepoStore::remove`).
+        inner.trusted_filters.remove(id);
+        Ok(inner.repos.remove(id).is_some())
     }
 
     fn base_override(&self, wt: &WorktreeId) -> Result<Option<String>, StoreError> {
@@ -81,6 +86,35 @@ impl RepoStore for MemoryRepoStore {
             }
         }
         Ok(())
+    }
+
+    fn trusted_filters(&self, repo: &RepoId) -> Result<HashSet<String>, StoreError> {
+        Ok(self
+            .lock()?
+            .trusted_filters
+            .get(repo)
+            .cloned()
+            .unwrap_or_default())
+    }
+
+    fn set_trusted_filters(
+        &self,
+        repo: &RepoId,
+        fingerprints: &[String],
+    ) -> Result<bool, StoreError> {
+        let mut inner = self.lock()?;
+        // Same lock for the check and the write: see the trait docs.
+        if !inner.repos.contains_key(repo) {
+            return Ok(false);
+        }
+        if fingerprints.is_empty() {
+            inner.trusted_filters.remove(repo);
+        } else {
+            inner
+                .trusted_filters
+                .insert(repo.clone(), fingerprints.iter().cloned().collect());
+        }
+        Ok(true)
     }
 }
 
@@ -172,6 +206,54 @@ mod tests {
         assert_eq!(store.base_override(&wt).unwrap(), None);
         // Overrides are per worktree.
         assert_eq!(store.base_override(&WorktreeId("w2".into())).unwrap(), None);
+    }
+
+    #[test]
+    fn filter_trust_is_replaced_per_repo_and_dies_with_the_registration() {
+        let store = MemoryRepoStore::new();
+        let (a, b) = (RepoId("a".into()), RepoId("b".into()));
+        store.insert(rec("a", "a", "/a")).unwrap();
+        store.insert(rec("b", "b", "/b")).unwrap();
+        assert!(store.trusted_filters(&a).unwrap().is_empty());
+
+        store
+            .set_trusted_filters(&a, &["f1".into(), "f2".into()])
+            .unwrap();
+        store.set_trusted_filters(&b, &["x".into()]).unwrap();
+        assert_eq!(store.trusted_filters(&a).unwrap().len(), 2);
+
+        // Replace, not add.
+        store.set_trusted_filters(&a, &["f3".into()]).unwrap();
+        let set = store.trusted_filters(&a).unwrap();
+        assert!(set.contains("f3") && !set.contains("f1"));
+        assert!(store.trusted_filters(&b).unwrap().contains("x"));
+
+        // Removing the repository drops its trust: a re-add starts untrusted.
+        assert!(store.remove(&a).unwrap());
+        assert!(store.trusted_filters(&a).unwrap().is_empty());
+
+        store.set_trusted_filters(&b, &[]).unwrap();
+        assert!(store.trusted_filters(&b).unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_late_trust_write_for_a_removed_repository_is_refused() {
+        // The trust command scans first and writes later; the user may have
+        // removed the repository in between.
+        let store = MemoryRepoStore::new();
+        let a = RepoId("a".into());
+        // Never registered: nothing is written.
+        assert!(!store.set_trusted_filters(&a, &["late".into()]).unwrap());
+        assert!(store.trusted_filters(&a).unwrap().is_empty());
+
+        store.insert(rec("a", "a", "/a")).unwrap();
+        assert!(store.set_trusted_filters(&a, &["f".into()]).unwrap());
+        assert!(store.remove(&a).unwrap());
+        // The "in-flight" write lands after the removal: refused, and a
+        // re-registration of the same path (same id) starts untrusted.
+        assert!(!store.set_trusted_filters(&a, &["late".into()]).unwrap());
+        store.insert(rec("a", "a", "/a")).unwrap();
+        assert!(store.trusted_filters(&a).unwrap().is_empty());
     }
 
     #[test]

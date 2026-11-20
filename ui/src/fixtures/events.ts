@@ -21,5 +21,22 @@ export const ipcErrors = [
   { kind: "timeout" },
   { kind: "notFound" },
   { kind: "invalidInput", message: "base ref must not be empty" },
+  {
+    kind: "untrustedFilters",
+    drivers: [
+      {
+        name: "secrets-scan",
+        clean: "./scripts/scan-secrets.sh %f",
+        smudge: null,
+        process: null,
+        scope: "local",
+        origin: ".git/config",
+        needsTrust: true,
+        trusted: false,
+        referenced: true,
+        fingerprint: "fp:secrets-scan",
+      },
+    ],
+  },
   { kind: "internal", message: "internal storage error" },
 ] satisfies IpcError[];

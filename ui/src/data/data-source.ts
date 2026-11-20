@@ -5,6 +5,8 @@ import type {
   RepoId,
   Repository,
   RepositoryChanged,
+  RepositorySecurity,
+  RevokeResult,
   StorageStatus,
   Worktree,
   WorktreeChanged,
@@ -33,6 +35,15 @@ export interface DataSource {
   /** The native folder picker. `null` means the user cancelled. */
   pickRepositoryFolder(): Promise<string | null>;
   getStorageStatus(): Promise<StorageStatus>;
+  /** The git filter programs a repository configures, and whether WHY may read it (see SECURITY.md). */
+  getRepositorySecurity(repoId: RepoId): Promise<RepositorySecurity>;
+  /** Trust the filter programs the user was shown; `fingerprint` must still match what the core finds. */
+  trustRepositoryFilters(repoId: RepoId, fingerprint: string): Promise<RepositorySecurity>;
+  /**
+   * Forget a trust decision. Resolving means trust IS forgotten; the fresh report
+   * is missing (with `rescanError` set) when re-checking the repository failed.
+   */
+  revokeRepositoryFilters(repoId: RepoId): Promise<RevokeResult>;
   /** Subscribe to file-system changes; returns the function that unsubscribes. */
   onWorktreeChanged(callback: (event: WorktreeChanged) => void): () => void;
   /** Subscribe to a repository gaining or losing worktrees; returns the unsubscribe. */

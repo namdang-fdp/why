@@ -18,7 +18,8 @@ use ts_rs::{Config, TS};
 
 use super::{
     DiffMode, FileChange, FileDiff, IpcError, REPOSITORY_CHANGED_EVENT, Repository,
-    RepositoryChanged, StorageStatus, WORKTREE_CHANGED_EVENT, Worktree, WorktreeChanged,
+    RepositoryChanged, RepositorySecurity, RevokeResult, StorageStatus, WORKTREE_CHANGED_EVENT,
+    Worktree, WorktreeChanged,
 };
 
 /// Where the committed bindings live, relative to this crate (`src-tauri/`).
@@ -41,6 +42,8 @@ fn export_all(dir: &Path) -> Result<()> {
     RepositoryChanged::export_all(&cfg)?;
     IpcError::export_all(&cfg)?;
     StorageStatus::export_all(&cfg)?;
+    RepositorySecurity::export_all(&cfg)?;
+    RevokeResult::export_all(&cfg)?;
 
     const NOTE: &str = "// This file was generated from the Rust contracts in src-tauri/src/contracts. Do not edit it manually.\n// Regenerate with `pnpm gen:contracts`.\n";
 

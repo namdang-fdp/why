@@ -5,6 +5,7 @@
 //! [`SqliteRepoStore::open`] for the pragmas and on [`MIGRATIONS`] for how the
 //! schema evolves.
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -45,6 +46,19 @@ const MIGRATIONS: &[&str] = &[
          worktree_id TEXT PRIMARY KEY NOT NULL,
          base_ref    TEXT NOT NULL,
          updated_at  INTEGER NOT NULL
+     );",
+    // v2 (WHY-39): which git filter drivers the user trusted, per repository.
+    //
+    // One row per trusted driver fingerprint (see `git::filters`): a new or
+    // changed driver has a different fingerprint, so it has no row and the guard
+    // asks again. Unlike `base_overrides` this table is keyed by the repository
+    // id, so `remove` deletes the rows itself (no foreign key: ids are strings
+    // derived from the path, and a row must never outlive its repository).
+    "CREATE TABLE filter_trust (
+         repo_id     TEXT NOT NULL,
+         fingerprint TEXT NOT NULL,
+         trusted_at  INTEGER NOT NULL,
+         PRIMARY KEY (repo_id, fingerprint)
      );",
 ];
 
@@ -358,10 +372,18 @@ impl RepoStore for SqliteRepoStore {
     }
 
     fn remove(&self, id: &RepoId) -> Result<bool, StoreError> {
-        let changed = self
-            .lock()?
+        let mut conn = self.lock()?;
+        // One transaction: either the repository and its trust both go, or
+        // neither does.
+        let tx = conn
+            .transaction()
+            .map_err(backend("cannot start transaction"))?;
+        tx.execute("DELETE FROM filter_trust WHERE repo_id = ?1", [&id.0])
+            .map_err(backend("cannot remove filter trust"))?;
+        let changed = tx
             .execute("DELETE FROM repositories WHERE id = ?1", [&id.0])
             .map_err(backend("cannot remove repository"))?;
+        tx.commit().map_err(backend("cannot commit removal"))?;
         Ok(changed > 0)
     }
 
@@ -391,6 +413,54 @@ impl RepoStore for SqliteRepoStore {
         }
         .map_err(backend("cannot write base override"))?;
         Ok(())
+    }
+
+    fn trusted_filters(&self, repo: &RepoId) -> Result<HashSet<String>, StoreError> {
+        let conn = self.lock()?;
+        let mut stmt = conn
+            .prepare_cached("SELECT fingerprint FROM filter_trust WHERE repo_id = ?1")
+            .map_err(backend("cannot read filter trust"))?;
+        stmt.query_map([&repo.0], |row| row.get::<_, String>(0))
+            .map_err(backend("cannot read filter trust"))?
+            .collect::<Result<HashSet<_>, _>>()
+            .map_err(backend("cannot read filter trust row"))
+    }
+
+    fn set_trusted_filters(
+        &self,
+        repo: &RepoId,
+        fingerprints: &[String],
+    ) -> Result<bool, StoreError> {
+        let mut conn = self.lock()?;
+        // Replace the whole set atomically: a crash must not leave half of it.
+        // IMMEDIATE: take the write lock before the existence check, so no other
+        // connection can remove the repository between the check and the write.
+        let tx = conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(backend("cannot start transaction"))?;
+        let registered: bool = tx
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM repositories WHERE id = ?1)",
+                [&repo.0],
+                |row| row.get(0),
+            )
+            .map_err(backend("cannot check the repository"))?;
+        if !registered {
+            return Ok(false); // dropping `tx` rolls back; nothing was written
+        }
+        tx.execute("DELETE FROM filter_trust WHERE repo_id = ?1", [&repo.0])
+            .map_err(backend("cannot clear filter trust"))?;
+        let now = now_unix();
+        for fingerprint in fingerprints {
+            tx.execute(
+                "INSERT OR IGNORE INTO filter_trust (repo_id, fingerprint, trusted_at)
+                 VALUES (?1, ?2, ?3)",
+                params![repo.0, fingerprint, now],
+            )
+            .map_err(backend("cannot write filter trust"))?;
+        }
+        tx.commit().map_err(backend("cannot commit filter trust"))?;
+        Ok(true)
     }
 }
 
@@ -466,6 +536,55 @@ mod tests {
         assert_eq!(store.base_override(&wt).unwrap(), None);
         // Clearing an absent override is fine.
         store.set_base_override(&wt, None).unwrap();
+    }
+
+    #[test]
+    fn filter_trust_is_replaced_per_repo_and_dies_with_the_registration() {
+        let store = SqliteRepoStore::open_in_memory().unwrap();
+        let (a, b) = (RepoId("a".into()), RepoId("b".into()));
+        store.insert(rec("a", "a", "/a")).unwrap();
+        store.insert(rec("b", "b", "/b")).unwrap();
+        assert!(store.trusted_filters(&a).unwrap().is_empty());
+
+        store
+            .set_trusted_filters(&a, &["f1".into(), "f2".into(), "f2".into()])
+            .unwrap();
+        store.set_trusted_filters(&b, &["x".into()]).unwrap();
+        assert_eq!(store.trusted_filters(&a).unwrap().len(), 2);
+
+        // Replace, not add.
+        store.set_trusted_filters(&a, &["f3".into()]).unwrap();
+        let set = store.trusted_filters(&a).unwrap();
+        assert!(set.contains("f3") && !set.contains("f1"));
+        assert!(store.trusted_filters(&b).unwrap().contains("x"));
+
+        // Removing the repository drops its trust (the id is derived from the
+        // path, so a re-add must not inherit it).
+        assert!(store.remove(&a).unwrap());
+        assert!(store.trusted_filters(&a).unwrap().is_empty());
+
+        store.set_trusted_filters(&b, &[]).unwrap();
+        assert!(store.trusted_filters(&b).unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_late_trust_write_for_a_removed_repository_is_refused() {
+        // The trust command scans first and writes later; the user may have
+        // removed the repository in between.
+        let store = SqliteRepoStore::open_in_memory().unwrap();
+        let a = RepoId("a".into());
+        // Never registered: nothing is written.
+        assert!(!store.set_trusted_filters(&a, &["late".into()]).unwrap());
+        assert!(store.trusted_filters(&a).unwrap().is_empty());
+
+        store.insert(rec("a", "a", "/a")).unwrap();
+        assert!(store.set_trusted_filters(&a, &["f".into()]).unwrap());
+        assert!(store.remove(&a).unwrap());
+        // The "in-flight" write lands after the removal: refused, and a
+        // re-registration of the same path (same id) starts untrusted.
+        assert!(!store.set_trusted_filters(&a, &["late".into()]).unwrap());
+        store.insert(rec("a", "a", "/a")).unwrap();
+        assert!(store.trusted_filters(&a).unwrap().is_empty());
     }
 
     #[test]

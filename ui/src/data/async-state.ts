@@ -21,6 +21,16 @@ function withMessage<Kind extends KindWithMessage>(kind: Kind) {
       : undefined;
 }
 
+/** `untrustedFilters` carries the drivers that blocked the read; they are display data, passed through. */
+function untrustedFilters(error: object) {
+  return "drivers" in error && Array.isArray(error.drivers)
+    ? ({ kind: "untrustedFilters", drivers: error.drivers } as Extract<
+        IpcError,
+        { kind: "untrustedFilters" }
+      >)
+    : undefined;
+}
+
 const readIpcError = {
   notARepo: () => ({ kind: "notARepo" }),
   gitMissing: () => ({ kind: "gitMissing" }),
@@ -28,6 +38,7 @@ const readIpcError = {
   timeout: () => ({ kind: "timeout" }),
   notFound: () => ({ kind: "notFound" }),
   invalidInput: withMessage("invalidInput"),
+  untrustedFilters,
   internal: withMessage("internal"),
 } satisfies {
   [Kind in IpcErrorKind]: (error: object) => Extract<IpcError, { kind: Kind }> | undefined;

@@ -7,6 +7,7 @@ import {
   Lock,
   MoreHorizontal,
   Plus,
+  ShieldOff,
   SquareDashed,
   Trash2,
   TriangleAlert,
@@ -29,6 +30,7 @@ import { useWorkspace } from "@/stores/workspace-context";
 import { ErrorMessage, LoadingMessage } from "./async-message";
 import { BranchDivergence } from "./change-labels";
 import { Collapsible } from "./collapsible";
+import { FilterMarker } from "./filter-trust";
 import {
   activityOf,
   formatRelative,
@@ -222,6 +224,8 @@ export function Repositories({ expanded, onToggle }: { expanded: boolean; onTogg
   const loadRepositories = useWorkspace((state) => state.loadRepositories);
   const openAdd = useWorkspace((state) => state.setAddRepositoryOpen);
   const removeRepository = useWorkspace((state) => state.removeRepository);
+  const revokeFilters = useWorkspace((state) => state.revokeFilters);
+  const security = useWorkspace((state) => state.security);
   const [collapsedRepos, setCollapsedRepos] = useState(readCollapsedRepos);
   const [menuFor, setMenuFor] = useState<RepoId | null>(null);
   const [confirming, setConfirming] = useState(false);
@@ -315,6 +319,12 @@ export function Repositories({ expanded, onToggle }: { expanded: boolean; onTogg
                 const active = repo.id === activeRepo;
                 // A filter opens every repository that has a match.
                 const open = filtering || !collapsedRepos.has(repo.id);
+                const guard = security.get(repo.id);
+                // Offered while ANY approval remains: a repository that was trusted and then
+                // gained one more (untrusted) driver is "blocked" as a whole, but the
+                // old approval still lets WHY run the driver that was trusted.
+                const filtersTrusted =
+                  guard?.status === "ok" && guard.data.drivers.some((driver) => driver.trusted);
                 return (
                   <li key={repo.id}>
                     <div
@@ -337,6 +347,7 @@ export function Repositories({ expanded, onToggle }: { expanded: boolean; onTogg
                         <ChevronRight size={13} className="disclosure" aria-hidden />
                         <FolderGit2 size={15} aria-hidden />
                         <span className="truncate">{repo.name}</span>
+                        <FilterMarker repoId={repo.id} />
                         {list?.status === "ok" && (
                           <span className="repo-count" aria-hidden="true">
                             {all.length}
@@ -358,6 +369,12 @@ export function Repositories({ expanded, onToggle }: { expanded: boolean; onTogg
                           </button>
                         </MenuTrigger>
                         <MenuContent>
+                          {filtersTrusted && (
+                            <MenuItem onSelect={() => void revokeFilters(repo)}>
+                              <ShieldOff size={14} aria-hidden />
+                              Stop trusting filter programs
+                            </MenuItem>
+                          )}
                           <MenuItem danger onSelect={() => askToRemove(repo)}>
                             <Trash2 size={14} aria-hidden />
                             Remove from WHY…

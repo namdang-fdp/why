@@ -6,6 +6,9 @@
 
 mod base;
 mod common;
+// The filter-driver fixtures are shell scripts, like the fsmonitor ones in `runner.rs`.
+#[cfg(unix)]
+mod filters;
 mod repo;
 mod runner;
 mod status;

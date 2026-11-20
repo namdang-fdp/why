@@ -42,6 +42,9 @@ describe("TauriDataSource commands", () => {
     await source.setBase("w1", "origin/main");
     await source.pickRepositoryFolder();
     await source.getStorageStatus();
+    await source.getRepositorySecurity("r1");
+    await source.trustRepositoryFilters("r1", "fp");
+    await source.revokeRepositoryFilters("r1");
 
     expect(calls).toEqual([
       { cmd: "list_repositories", args: {} },
@@ -53,6 +56,9 @@ describe("TauriDataSource commands", () => {
       { cmd: "set_base", args: { worktreeId: "w1", baseRef: "origin/main" } },
       { cmd: "pick_repository_folder", args: {} },
       { cmd: "get_storage_status", args: {} },
+      { cmd: "get_repository_security", args: { repoId: "r1" } },
+      { cmd: "trust_repository_filters", args: { repoId: "r1", fingerprint: "fp" } },
+      { cmd: "revoke_repository_filters", args: { repoId: "r1" } },
     ]);
   });
 
@@ -69,6 +75,23 @@ describe("TauriDataSource commands", () => {
     { kind: "notFound" },
     { kind: "gitFailed", message: "fatal: bad revision" },
     { kind: "invalidInput", message: "bare repositories are not supported" },
+    {
+      kind: "untrustedFilters",
+      drivers: [
+        {
+          name: "evil",
+          clean: "./x",
+          smudge: null,
+          process: null,
+          scope: "local",
+          origin: ".git/config",
+          needsTrust: true,
+          trusted: false,
+          referenced: true,
+          fingerprint: "fp",
+        },
+      ],
+    },
     { kind: "internal", message: "database is locked" },
   ] satisfies IpcError[])("rejects with the core's $kind error as an IpcError", async (error) => {
     ipc(() => {

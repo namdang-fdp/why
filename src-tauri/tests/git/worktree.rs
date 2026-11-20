@@ -174,7 +174,7 @@ async fn a_locked_worktree_with_a_deleted_directory_is_not_prunable() {
     assert!(!entry.path.exists());
 
     // Running git in it fails cleanly (exit 128), it does not hang or panic.
-    let err = why_lib::git::read_status(&runner, &entry.path)
+    let err = crate::common::status_of(&runner, &entry.path)
         .await
         .unwrap_err();
     assert!(

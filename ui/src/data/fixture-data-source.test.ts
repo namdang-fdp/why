@@ -9,7 +9,7 @@ import {
   WT_WHY_AGENT,
   WT_WHY_MAIN,
 } from "@/fixtures";
-import { FixtureDataSource } from "./fixture-data-source";
+import { FixtureDataSource, type FixtureOptions } from "./fixture-data-source";
 
 describe("FixtureDataSource", () => {
   const source = new FixtureDataSource();
@@ -67,5 +67,50 @@ describe("FixtureDataSource", () => {
     unsubscribe();
     source.emitWorktreeChanged(worktreeChangedAll);
     expect(listener).toHaveBeenCalledExactlyOnceWith(worktreeChangedAll);
+  });
+
+  describe("git filter programs", () => {
+    const filters = {
+      why: [{ name: "evil", clean: "./x %f", scope: "local", origin: ".git/config" }],
+    } satisfies FixtureOptions["filters"];
+
+    it("blocks a repository with a local driver, like the core does", async () => {
+      const source = new FixtureDataSource({ filters });
+      const security = await source.getRepositorySecurity(REPO_WHY);
+      expect(security.status).toBe("blocked");
+      expect(security.drivers[0]).toMatchObject({ name: "evil", needsTrust: true, trusted: false });
+
+      const list = await source.listWorktrees(REPO_WHY);
+      expect(list.every((w) => w.loadError?.kind === "untrustedFilters")).toBe(true);
+      await expect(source.getChanges(list[0]?.id ?? "", "uncommitted")).rejects.toMatchObject({
+        kind: "untrustedFilters",
+      });
+    });
+
+    it("trusts only the fingerprint it showed, and revoking blocks again", async () => {
+      const source = new FixtureDataSource({ filters });
+      await expect(source.trustRepositoryFilters(REPO_WHY, "stale")).rejects.toMatchObject({
+        kind: "invalidInput",
+      });
+      const { fingerprint } = await source.getRepositorySecurity(REPO_WHY);
+      expect((await source.trustRepositoryFilters(REPO_WHY, fingerprint)).status).toBe("trusted");
+      const list = await source.listWorktrees(REPO_WHY);
+      expect(list.every((w) => w.loadError === null)).toBe(true);
+      expect((await source.revokeRepositoryFilters(REPO_WHY)).security?.status).toBe("blocked");
+    });
+
+    it("lets the user's own (global) drivers through as info", async () => {
+      const source = new FixtureDataSource({
+        filters: {
+          why: [{ name: "lfs", clean: "git-lfs clean", scope: "global", origin: "~/.gitconfig" }],
+        },
+      });
+      expect((await source.getRepositorySecurity(REPO_WHY)).status).toBe("info");
+      await expect(source.listWorktrees(REPO_WHY)).resolves.toBeTruthy();
+    });
+
+    it("is clear without drivers", async () => {
+      expect((await new FixtureDataSource().getRepositorySecurity(REPO_WHY)).status).toBe("clear");
+    });
   });
 });

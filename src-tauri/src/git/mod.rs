@@ -20,6 +20,7 @@
 pub mod base;
 pub mod diff;
 pub mod error;
+pub mod filters;
 pub mod oid;
 pub mod repo;
 pub mod runner;
@@ -33,6 +34,10 @@ pub use diff::{
     parse_diff, read_changes,
 };
 pub use error::{GitError, ParseError};
+pub use filters::{
+    ConfigScope, FilterDriver, FilterSetting, ReadPermit, attributes_reference, guard_working_tree,
+    parse_filter_config, scan_filter_drivers, set_fingerprint,
+};
 pub use oid::Oid;
 pub use repo::{RepoInfo, open_repo};
 pub use runner::GitRunner;

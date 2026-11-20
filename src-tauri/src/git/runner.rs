@@ -225,13 +225,15 @@ impl GitRunner {
         //    we use yet. WHY-5 (diffs) MUST pass `--no-ext-diff --no-textconv`.
         //  * `gpg.program`: only for signature display/verification, unused.
         //  * `filter.<name>.clean|process` (selected by `.gitattributes`): NOT
-        //    covered. `git status` runs the `clean` filter on tracked files
-        //    whose stat data changed, to compare their content (verified by
-        //    hand on git 2.56: the filter ran under GIT_OPTIONAL_LOCKS=0).
-        //    There is no `-c` switch that disables every filter by name, so
-        //    this stays a RESIDUAL RISK: it needs a `filter.*` entry in the
-        //    repo's own/global config, i.e. the same trust boundary as the
-        //    user running `git status` there themselves.
+        //    covered by any `-c` switch (there is no "disable all filters", and
+        //    overriding names one by one cannot be made complete: see
+        //    `SECURITY.md`). `git status` and `git diff` against the working tree
+        //    run the `clean`/`process` program on tracked files whose stat data
+        //    changed. This is handled one layer up, not here: `git::filters`
+        //    scans the configured drivers and the functions that read the
+        //    working tree demand a `ReadPermit` that only exists when the
+        //    repository's drivers are the user's own or were explicitly trusted
+        //    (WHY-39). The runner stays a generic spawner.
         cmd.arg("-c").arg("core.fsmonitor=false");
 
         // `-C <dir>`: git changes directory itself. We deliberately do NOT call
@@ -263,9 +265,21 @@ impl GitRunner {
         // Since Git 2.45.1, the fetch path itself honors this setting.
         cmd.env("GIT_NO_LAZY_FETCH", "1");
 
+        // `GIT_CONFIG` (the legacy variable, NOT `GIT_CONFIG_GLOBAL`/`_SYSTEM`) is
+        // honoured by `git config` only; `status`, `diff` and friends ignore it.
+        // The filter guard (`git/filters.rs`) learns the repository's drivers by
+        // running `git config`, so a value left in WHY's environment could make
+        // the scan read a different (e.g. empty) file than the one the real read
+        // uses, and mint a permit for a repository that does have a driver.
+        // Removing it makes every command see the same configuration. (The
+        // `GIT_CONFIG_COUNT/KEY_n/VALUE_n` and `GIT_CONFIG_PARAMETERS` variables
+        // are different: they apply to ALL commands alike, so scan and read agree.
+        // They are classified by the guard instead: scope `command`, untrusted.)
+        //
         // These variables, if inherited (e.g. WHY launched from a git hook),
         // override `-C` and make git operate on a different repository.
         for var in [
+            "GIT_CONFIG",
             "GIT_DIR",
             "GIT_WORK_TREE",
             "GIT_INDEX_FILE",
@@ -370,6 +384,17 @@ mod tests {
         assert_eq!(env_of(&r, "GIT_NO_LAZY_FETCH"), Some(Some("1".into())));
         // Removed (`None`), not set.
         assert_eq!(env_of(&r, "GIT_DIR"), Some(None));
+        // The legacy `GIT_CONFIG` would make `git config` (the filter scan) read
+        // a different file than `status` does: always removed, never settable.
+        let r = r.with_env("GIT_CONFIG", "/somewhere/else");
+        assert_eq!(env_of(&r, "GIT_CONFIG"), Some(None));
+        // ... while the variables that choose WHERE config is read from are
+        // still the caller's to set (tests rely on it).
+        let r = r.with_env("GIT_CONFIG_GLOBAL", "/dev/null");
+        assert_eq!(
+            env_of(&r, "GIT_CONFIG_GLOBAL"),
+            Some(Some("/dev/null".into()))
+        );
     }
 
     #[test]

@@ -11,3 +11,5 @@ mod common;
 
 mod changes;
 mod repos;
+#[cfg(unix)]
+mod security;

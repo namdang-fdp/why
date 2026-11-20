@@ -7,6 +7,8 @@ import type {
   RepoId,
   Repository,
   RepositoryChanged,
+  RepositorySecurity,
+  RevokeResult,
   StorageStatus,
   Worktree,
   WorktreeChanged,
@@ -73,6 +75,18 @@ export class TauriDataSource implements DataSource {
 
   getStorageStatus() {
     return this.call<StorageStatus>("get_storage_status");
+  }
+
+  getRepositorySecurity(repoId: RepoId) {
+    return this.call<RepositorySecurity>("get_repository_security", { repoId });
+  }
+
+  trustRepositoryFilters(repoId: RepoId, fingerprint: string) {
+    return this.call<RepositorySecurity>("trust_repository_filters", { repoId, fingerprint });
+  }
+
+  revokeRepositoryFilters(repoId: RepoId) {
+    return this.call<RevokeResult>("revoke_repository_filters", { repoId });
   }
 
   onWorktreeChanged(callback: (event: WorktreeChanged) => void) {

@@ -3,10 +3,14 @@ import type {
   DiffMode,
   FileChange,
   FileDiff,
+  FilterDriverInfo,
+  FilterGuardStatus,
   IpcError,
   RepoId,
   Repository,
   RepositoryChanged,
+  RepositorySecurity,
+  RevokeResult,
   StorageStatus,
   Worktree,
   WorktreeChanged,
@@ -37,7 +41,42 @@ const sampleMain = findSampleMain();
 /** Refs `setBase` accepts, so the base popover has something real to validate. */
 const knownRefs = ["main", "origin/main", "develop", "origin/develop"];
 
+/**
+ * A git filter driver as the fixture core pretends to find it. `scope` decides
+ * trust like the real guard: `local` / `worktree` drivers need the user's OK,
+ * `global` ones (git-lfs) are the user's own.
+ */
+export type FixtureDriver = Pick<FilterDriverInfo, "name" | "scope" | "origin"> & {
+  clean?: string;
+  process?: string;
+  referenced?: boolean;
+};
+
+/** For `?filters=1` in the dev server and for tests: one blocked repository, one with only git-lfs. */
+export const sampleFilters: Record<string, FixtureDriver[]> = {
+  why: [
+    {
+      name: "secrets-scan",
+      clean: "./scripts/scan-secrets.sh %f",
+      scope: "local",
+      origin: ".git/config",
+      referenced: true,
+    },
+  ],
+  "billing-api": [
+    {
+      name: "lfs",
+      clean: "git-lfs clean -- %f",
+      process: "git-lfs filter-process",
+      scope: "global",
+      origin: "/home/dev/.gitconfig",
+    },
+  ],
+};
+
 export type FixtureOptions = {
+  /** Filter drivers per repository NAME (`why`, `billing-api`, ...). */
+  filters?: Record<string, FixtureDriver[]>;
   /** Artificial delay for every call, to look at loading states. */
   latencyMs?: number;
   /** Start with no repositories (the onboarding screen). */
@@ -63,10 +102,15 @@ export class FixtureDataSource implements DataSource {
   private readonly changes: Record<string, FileChange[]>;
   private readonly editedDiffs = new Map<string, FileDiff>();
   private readonly options: FixtureOptions;
+  /** Filter drivers per repository name; a copy, so `setFilters` never touches the caller's object. */
+  private readonly filters: Record<string, FixtureDriver[]>;
   private edits = 0;
+  /** Per repository, the fingerprints of the drivers the user trusted this session. */
+  private readonly trusted = new Map<RepoId, Set<string>>();
 
   constructor(options: FixtureOptions = {}) {
     this.options = options;
+    this.filters = structuredClone(options.filters ?? {});
     this.repos = options.empty ? [] : structuredClone(repositories);
     this.worktreeList = options.empty ? [] : structuredClone(worktrees);
     this.changes = structuredClone(changesByWorktree);
@@ -93,7 +137,103 @@ export class FixtureDataSource implements DataSource {
     if (!this.repos.some((repo) => repo.id === repoId)) {
       throw { kind: "notFound" } satisfies IpcError;
     }
-    return structuredClone(this.worktreeList.filter((worktree) => worktree.repoId === repoId));
+    return structuredClone(
+      this.worktreeList
+        .filter((worktree) => worktree.repoId === repoId)
+        .map((worktree) => this.withGuard(worktree)),
+    );
+  }
+
+  // ---- git filter drivers (WHY-39) -----------------------------------------
+
+  private driversOf(repoId: RepoId): FilterDriverInfo[] {
+    const name = this.repos.find((repo) => repo.id === repoId)?.name ?? "";
+    const trusted = this.trusted.get(repoId) ?? new Set<string>();
+    return (this.filters[name] ?? []).map((driver) => {
+      const needsTrust = driver.scope === "local" || driver.scope === "worktree";
+      const fingerprint = `fp:${driver.name}:${driver.clean ?? ""}:${driver.process ?? ""}`;
+      return {
+        name: driver.name,
+        clean: driver.clean ?? null,
+        smudge: null,
+        process: driver.process ?? null,
+        scope: driver.scope,
+        origin: driver.origin,
+        needsTrust,
+        trusted: needsTrust && trusted.has(fingerprint),
+        referenced: driver.referenced ?? true,
+        fingerprint,
+      };
+    });
+  }
+
+  /**
+   * Plays an agent (or a tool) editing a repository's git config behind WHY's
+   * back: the drivers change, and the caches the UI holds do not know yet.
+   */
+  setFilters(repoName: string, drivers: FixtureDriver[]) {
+    this.filters[repoName] = structuredClone(drivers);
+  }
+
+  private security(repoId: RepoId): RepositorySecurity {
+    const drivers = this.driversOf(repoId);
+    const needing = drivers.filter((driver) => driver.needsTrust);
+    let status: FilterGuardStatus = "clear";
+    if (drivers.length > 0) status = "info";
+    if (needing.length > 0)
+      status = needing.every((driver) => driver.trusted) ? "trusted" : "blocked";
+    return {
+      repoId,
+      status,
+      fingerprint: needing.map((driver) => driver.fingerprint).join("|"),
+      drivers,
+    };
+  }
+
+  private blockedError(repoId: RepoId): IpcError | null {
+    const security = this.security(repoId);
+    return security.status === "blocked"
+      ? { kind: "untrustedFilters", drivers: security.drivers.filter((d) => d.needsTrust) }
+      : null;
+  }
+
+  /** What `list_worktrees` does for a blocked repository: listed, with the reason. */
+  private withGuard(worktree: Worktree): Worktree {
+    const blocked = this.blockedError(worktree.repoId);
+    return blocked
+      ? { ...worktree, base: null, changeCount: 0, loadError: blocked, lastActivity: null }
+      : worktree;
+  }
+
+  async getRepositorySecurity(repoId: RepoId) {
+    await this.delay();
+    if (!this.repos.some((repo) => repo.id === repoId))
+      throw { kind: "notFound" } satisfies IpcError;
+    return structuredClone(this.security(repoId));
+  }
+
+  async trustRepositoryFilters(repoId: RepoId, fingerprint: string) {
+    await this.delay();
+    const security = await this.getRepositorySecurity(repoId);
+    if (security.fingerprint === "" || security.fingerprint !== fingerprint) {
+      throw {
+        kind: "invalidInput",
+        message: "the repository's filter configuration changed; review it again",
+      } satisfies IpcError;
+    }
+    // Like the core: what is trusted afterwards is exactly what was just shown.
+    this.trusted.set(
+      repoId,
+      new Set(security.drivers.filter((d) => d.needsTrust).map((d) => d.fingerprint)),
+    );
+    return structuredClone(this.security(repoId));
+  }
+
+  async revokeRepositoryFilters(repoId: RepoId): Promise<RevokeResult> {
+    await this.delay();
+    await this.getRepositorySecurity(repoId);
+    this.trusted.delete(repoId);
+    return { security: structuredClone(this.security(repoId)), rescanError: null };
   }
 
   private worktree(id: string) {
@@ -104,6 +244,9 @@ export class FixtureDataSource implements DataSource {
 
   private changesForMode(worktreeId: string, mode: DiffMode) {
     const worktree = this.worktree(worktreeId);
+    // The real core refuses to read a repository with untrusted filter programs.
+    const blocked = this.blockedError(worktree.repoId);
+    if (blocked) throw blocked;
     // The real core runs git in the worktree, which fails the same way.
     if (worktree.loadError) throw worktree.loadError;
     if (mode === "vsBase" && !worktree.base) {
