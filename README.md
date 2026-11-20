@@ -89,8 +89,14 @@ them.
   repo-local setting can name a program that git would execute during `git status`. Diff commands
   must also pass `--no-ext-diff --no-textconv`.
 
-One residual risk is known: git filter drivers selected by `.gitattributes` can still run during
-`status`. It is described in [`SECURITY.md`](SECURITY.md), which also explains how to report a
+- **Git filter programs need your OK.** A repository's own config can define *filter drivers*
+  (`filter.<name>.clean` / `process`, picked by `.gitattributes`) that git runs while it reads
+  files, so merely reading a repository could run a program that an agent wrote there. WHY checks
+  before every read and refuses (the repository is shown as blocked, with the programs listed) until
+  you choose "Trust and continue". Drivers from your own git config, such as git-lfs, are allowed
+  without asking. Details and limits are in [`SECURITY.md`](SECURITY.md).
+
+Known limits are listed in [`SECURITY.md`](SECURITY.md), which also explains how to report a
 vulnerability.
 
 ## Architecture at a glance
