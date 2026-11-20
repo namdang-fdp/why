@@ -183,6 +183,13 @@ pub enum ConflictKind {
 /// directory is reported file by file (not as a single `dir/` entry the
 /// reviewer cannot open). The runner sets `GIT_OPTIONAL_LOCKS=0`, so this
 /// never writes to the index.
+///
+/// `--ignore-submodules=dirty`: without it `status` starts a nested `git status`
+/// inside every submodule to look for edits, and that nested git reads the
+/// *submodule's own* config (`.git/modules/<name>/config`), which nothing here
+/// has vetted: a `filter.<name>.clean` defined only there ran on an outer
+/// `git status` (measured on git 2.56). With `dirty` the submodule is compared
+/// by commit id only, which is also what `git diff` does in `diff.rs`.
 pub async fn read_status(runner: &GitRunner, worktree: &Path) -> Result<StatusSnapshot, GitError> {
     let out = runner
         .run(
@@ -193,6 +200,7 @@ pub async fn read_status(runner: &GitRunner, worktree: &Path) -> Result<StatusSn
                 "-z",
                 "--branch",
                 "--untracked-files=all",
+                "--ignore-submodules=dirty",
             ],
         )
         .await?;
