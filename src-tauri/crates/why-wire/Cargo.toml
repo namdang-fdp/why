@@ -1,6 +1,6 @@
 [package]
 name = "why-wire"
-version = "0.2.0"
+version = "0.2.1"
 description = "Wire protocol shared by why-hook and the WHY app: envelope, framing, instance paths"
 edition = "2024"
 rust-version = "1.90"

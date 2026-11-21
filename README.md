@@ -6,7 +6,7 @@
 
 [![CI](https://github.com/namdang-fdp/why/actions/workflows/ci.yml/badge.svg)](https://github.com/namdang-fdp/why/actions/workflows/ci.yml)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
-![Status: early, v0.2.0](https://img.shields.io/badge/status-early%20%C2%B7%20v0.2.0-orange)
+![Status: early, v0.2.1](https://img.shields.io/badge/status-early%20%C2%B7%20v0.2.1-orange)
 ![Platform: Linux first](https://img.shields.io/badge/platform-Linux%20first-lightgrey)
 
 WHY is a local-first desktop app (Tauri 2 + Rust, React + TypeScript) for humans who review code
@@ -15,7 +15,7 @@ worktrees. It watches the repos your agents are working in and shows you the liv
 goal of attaching the reason behind each change and telling you where to look first.
 
 > [!WARNING]
-> **WHY is early software.** v0.2.0 adds session context to the live diff viewer: what Claude Code
+> **WHY is early software.** v0.2 adds session context to the live diff viewer: what Claude Code
 > and Codex did in each worktree, turn by turn, and which turns explain each changed file. Line-level
 > provenance and attention signals are planned for v0.3 and later. Builds are Linux only, and Linux
 > is the only platform the author develops and tests on. See [Known limitations](#known-limitations).
@@ -38,7 +38,7 @@ It never replaces reading the code, and the human always owns the approval.
 
 ## Status: what exists today and what is planned
 
-**v0.2.0 is the current release.** It covers the workspace, live-diff and session-context slices of
+**v0.2.1 is the current release.** It covers the workspace, live-diff and session-context slices of
 the roadmap below; everything from v0.3 on is a plan, not a promise. The detailed roadmap is in
 [`why-brain/04 - MVP and Validation.md`](<why-brain/04 - MVP and Validation.md>), and every change
 is listed in the [changelog](CHANGELOG.md).
@@ -57,7 +57,7 @@ provenance is v0.3.
 
 ### What v0.2 adds
 
-- **Install agent hooks with your consent.** The _Agent hooks_ dialog shows the exact change to your
+- **Install agent hooks with your consent.** The _Agent hooks_ section of the settings page shows the exact change to your
   user-level Claude Code or Codex config and writes nothing until you confirm. Uninstall restores
   your file. The hook is fail-open: it can never stall or fail your agent.
 - **See each agent session** in the inspector: the task, the model, and a live timeline of turns,
@@ -103,9 +103,9 @@ provenance is v0.3.
 
 ## Install
 
-WHY v0.2.0 ships as a Linux AppImage and a `.deb`. Download one from the
+WHY v0.2.1 ships as a Linux AppImage and a `.deb`. Download one from the
 [latest release](https://github.com/namdang-fdp/why/releases/latest); the file names are
-`WHY_0.2.0_amd64.AppImage` and `WHY_0.2.0_amd64.deb`.
+`WHY_0.2.1_amd64.AppImage` and `WHY_0.2.1_amd64.deb`.
 
 **Requirements:**
 
@@ -124,17 +124,17 @@ sha256sum --check --ignore-missing SHA256SUMS
 **AppImage** (any distribution, nothing is installed):
 
 ```bash
-chmod +x WHY_0.2.0_amd64.AppImage
-./WHY_0.2.0_amd64.AppImage
+chmod +x WHY_0.2.1_amd64.AppImage
+./WHY_0.2.1_amd64.AppImage
 ```
 
 If it fails with a FUSE error, install `libfuse2` (`libfuse2t64` on Ubuntu 24.04) or run it with
-`./WHY_0.2.0_amd64.AppImage --appimage-extract-and-run`.
+`./WHY_0.2.1_amd64.AppImage --appimage-extract-and-run`.
 
 **Debian, Ubuntu and derivatives:**
 
 ```bash
-sudo apt install ./WHY_0.2.0_amd64.deb
+sudo apt install ./WHY_0.2.1_amd64.deb
 ```
 
 Then start WHY from your application menu, or run `why`. To remove it: `sudo apt remove why`.
@@ -142,7 +142,7 @@ Then start WHY from your application menu, or run `why`. To remove it: `sudo apt
 WHY keeps its databases (registered repositories, and since v0.2 the agent events it captured) in
 `~/.local/share/io.github.namdang-fdp.why/`, and the hook binary agents run in
 `~/.local/share/why/bin/`. Removing the app deletes neither, and it never modifies your
-repositories. **Uninstall the agent hooks from the _Agent hooks_ dialog before you remove the app**,
+repositories. **Uninstall the agent hooks from the _Agent hooks_ section of the settings page before you remove the app**,
 so your agent config no longer points at the hook.
 
 **Upgrading from v0.1.0:** replace the AppImage (or `sudo apt install` the new `.deb`). Your

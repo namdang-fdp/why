@@ -179,7 +179,7 @@ a program just by *looking* at the repository.
 - **Git filter drivers: mitigated, with limits.** See "Git filter drivers" above for what is
   guarded and for the race and command-path limits that remain.
 - **The hook runs inside your agent sessions.** It is small and fail-open, but it is code WHY ships
-  that runs with your permissions on every agent event. Uninstall it from the _Agent hooks_ dialog
+  that runs with your permissions on every agent event. Uninstall it from the _Agent hooks_ section of the settings page
   if you stop using WHY.
 - **The installer's last-moment check narrows, but cannot close, a race** with a program that edits
   your agent config at the same instant without taking a lock.
