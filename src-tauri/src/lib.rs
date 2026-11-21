@@ -109,6 +109,8 @@ pub fn run() {
             ipc::dialog::pick_repository_folder,
             ipc::sessions::list_sessions,
             ipc::sessions::get_session_timeline,
+            ipc::attribution::get_worktree_attribution,
+            ipc::attribution::get_file_activity,
         ])
         .build(tauri::generate_context!())
         .expect("error while building WHY")

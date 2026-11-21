@@ -505,3 +505,97 @@ fn sessions_changed_wire_format() {
     );
     assert_eq!(SESSIONS_CHANGED_EVENT, "sessions-changed");
 }
+
+// WHY-16: attribution contracts.
+fn sample_turn_ref(outcome: ToolOutcome) -> TurnRef {
+    TurnRef {
+        harness: Harness::Codex,
+        session_id: SessionId("codex:s1".into()),
+        turn_id: "t1".into(),
+        turn_index: 2,
+        agent_id: None,
+        tool_use_id: Some("call_1".into()),
+        outcome,
+        at: "2026-11-20T15:28:47.123Z".into(),
+        path: "src/a.rs".into(),
+    }
+}
+
+#[test]
+fn turn_ref_wire_format() {
+    assert_wire(
+        &sample_turn_ref(ToolOutcome::Unknown),
+        json!({
+            "harness": "codex",
+            "sessionId": "codex:s1",
+            "turnId": "t1",
+            "turnIndex": 2,
+            "agentId": null,
+            "toolUseId": "call_1",
+            "outcome": "unknown",
+            "at": "2026-11-20T15:28:47.123Z",
+            "path": "src/a.rs"
+        }),
+    );
+}
+
+#[test]
+fn attribution_statuses_are_plain_strings_and_there_is_no_manual() {
+    assert_wire(&AttributionStatus::Explained, json!("explained"));
+    assert_wire(&AttributionStatus::Unexplained, json!("unexplained"));
+}
+
+#[test]
+fn worktree_attribution_wire_format() {
+    let value = WorktreeAttribution {
+        worktree_id: WorktreeId("w1".into()),
+        mode: DiffMode::VsBase,
+        files: vec![FileAttribution {
+            change: FileChange {
+                path: "src/a.rs".into(),
+                old_path: None,
+                status: ChangeStatus::Modified,
+                staged: false,
+                unstaged: true,
+                additions: Some(3),
+                deletions: Some(1),
+                binary: false,
+                path_lossy: false,
+            },
+            status: AttributionStatus::Unexplained,
+            evidence: EvidenceLabel::Unknown,
+            explained_by: vec![],
+            attempts: vec![sample_turn_ref(ToolOutcome::Failed)],
+        }],
+        shell_leads: vec![ShellLead {
+            harness: Harness::ClaudeCode,
+            session_id: SessionId("claude-code:s2".into()),
+            turn_id: "p9".into(),
+            turn_index: 0,
+            command_count: 2,
+            first_at: "2026-11-20T15:30:00.000Z".into(),
+        }],
+    };
+    let wire = serde_json::to_value(&value).unwrap();
+    assert_eq!(wire["worktreeId"], "w1");
+    assert_eq!(wire["mode"], "vsBase");
+    let file = &wire["files"][0];
+    assert_eq!(file["status"], "unexplained");
+    assert_eq!(file["evidence"], "unknown");
+    assert_eq!(file["explainedBy"], json!([]));
+    assert_eq!(file["attempts"][0]["outcome"], "failed");
+    assert_eq!(file["change"]["path"], "src/a.rs");
+    assert_eq!(
+        wire["shellLeads"][0],
+        json!({
+            "harness": "claudeCode",
+            "sessionId": "claude-code:s2",
+            "turnId": "p9",
+            "turnIndex": 0,
+            "commandCount": 2,
+            "firstAt": "2026-11-20T15:30:00.000Z"
+        })
+    );
+    let back: WorktreeAttribution = serde_json::from_value(wire).unwrap();
+    assert_eq!(back, value);
+}

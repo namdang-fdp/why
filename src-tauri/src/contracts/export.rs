@@ -22,6 +22,8 @@ use super::{
     SessionSummary, SessionTimeline, SessionsChanged, StorageStatus, WORKTREE_CHANGED_EVENT,
     Worktree, WorktreeChanged,
 };
+// WHY-16
+use super::{TurnRef, WorktreeAttribution};
 
 /// Where the committed bindings live, relative to this crate (`src-tauri/`).
 fn committed_dir() -> PathBuf {
@@ -49,6 +51,8 @@ fn export_all(dir: &Path) -> Result<()> {
     SessionSummary::export_all(&cfg)?;
     SessionTimeline::export_all(&cfg)?;
     SessionsChanged::export_all(&cfg)?;
+    WorktreeAttribution::export_all(&cfg)?;
+    TurnRef::export_all(&cfg)?;
 
     const NOTE: &str = "// This file was generated from the Rust contracts in src-tauri/src/contracts. Do not edit it manually.\n// Regenerate with `pnpm gen:contracts`.\n";
 
