@@ -1,0 +1,16 @@
+---
+interface Props {
+  label: string;
+  code: string;
+}
+const { label, code } = Astro.props;
+---
+
+<!-- tabindex makes the scrollable block reachable by keyboard; long lines scroll inside it,
+     never the page. -->
+<pre
+  tabindex="0"
+  role="region"
+  aria-label={label}
+  class="border-line bg-surface text-ink overflow-x-auto rounded-2xl border p-4 font-mono text-sm leading-relaxed"
+><code>{code}</code></pre>

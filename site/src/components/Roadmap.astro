@@ -1,0 +1,63 @@
+---
+const planned = [
+  {
+    version: "v0.3",
+    title: "Line provenance",
+    body: "Attribute individual lines to the edits that produced them.",
+  },
+  {
+    version: "v0.4",
+    title: "Attention",
+    body: "Signals such as unknown origin, churn and untested code, and a review queue ordered by them.",
+  },
+  {
+    version: "v0.5",
+    title: "Close the loop",
+    body: "Anchored comments, and feedback sent back to the agent that wrote the code.",
+  },
+] as const;
+const limits = [
+  "Linux only. Releases are an AppImage and a .deb; macOS and Windows have no builds.",
+  "Unsigned builds and no auto-update. Check downloads against the published SHA256SUMS.",
+  "Needs Git 2.45.1 or newer.",
+  "Attribution is per file, not per line.",
+  "Session context covers Claude Code and Codex. Codex asks you to approve the hook in its own /hooks screen, and WHY cannot tell whether you did.",
+] as const;
+---
+
+<section
+  id="not-yet"
+  class="mx-auto max-w-5xl px-4 py-20 sm:px-6 md:py-28"
+  aria-labelledby="not-yet-title"
+>
+  <div class="max-w-2xl">
+    <h2
+      id="not-yet-title"
+      data-reveal
+      class="font-display text-4xl leading-tight tracking-tight sm:text-5xl"
+    >
+      What it is not, <em class="text-accent">yet</em>
+    </h2>
+    <p data-reveal class="text-muted mt-6 text-lg leading-relaxed">
+      These are plans, not shipped features. Everything from v0.3 on is a plan, not a promise, and
+      nothing here has a date.
+    </p>
+  </div>
+  <ol class="mt-12 grid gap-5 md:grid-cols-3">
+    {planned.map((item) => (
+      <li data-reveal class="border-line rounded-3xl border border-dashed p-7">
+        <p class="text-muted font-mono text-sm">{item.version} · planned, not shipped</p>
+        <h3 class="mt-3 text-xl">{item.title}</h3>
+        <p class="text-muted mt-2 leading-relaxed">{item.body}</p>
+      </li>
+    ))}
+  </ol>
+  <h3 data-reveal class="mt-14 text-xl">
+    Limits today
+  </h3>
+  <ul data-reveal class="text-muted mt-4 max-w-2xl list-disc space-y-2 pl-5 leading-relaxed">
+    {limits.map((limit) => (
+      <li>{limit}</li>
+    ))}
+  </ul>
+</section>

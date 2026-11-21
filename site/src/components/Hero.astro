@@ -1,0 +1,59 @@
+---
+import { links } from "../data/links";
+import { release } from "../data/release";
+---
+
+<section class="mx-auto max-w-5xl px-4 pt-16 pb-10 text-center sm:px-6 md:pt-24">
+  <a
+    href="#not-yet"
+    data-enter="0"
+    class="border-line bg-surface text-muted hover:text-ink inline-flex items-center rounded-full border px-3.5 py-1.5 text-sm transition-colors"
+  >
+    v{release.version} · early · Linux only
+  </a>
+  <h1
+    data-enter="1"
+    class="font-display mx-auto mt-7 max-w-3xl text-[2.6rem] leading-[1.04] tracking-tight sm:text-6xl md:text-7xl"
+  >
+    Read the diff. Then ask <em class="text-accent">why</em>.
+  </h1>
+  <p data-enter="2" class="text-muted mx-auto mt-6 max-w-xl text-lg leading-relaxed">
+    WHY is a local-first desktop app for reviewing code your coding agents wrote. It shows the live
+    diff of every repo and worktree you add, and what Claude Code and Codex did, turn by turn.{" "}
+    <span class="whitespace-nowrap">Read-only</span>, early, Linux only.
+  </p>
+  <div data-enter="3" class="mt-9 flex flex-wrap items-center justify-center gap-3">
+    <a
+      href={links.latest}
+      class="bg-ink text-bg inline-flex items-center gap-2 rounded-2xl px-6 py-3.5 transition-opacity hover:opacity-90"
+    >
+      Download for Linux
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path
+          d="M5 12h14m-6-6 6 6-6 6"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        ></path>
+      </svg>
+    </a>
+    <a
+      href={links.repo}
+      class="border-line bg-surface hover:border-muted inline-flex items-center rounded-2xl border px-6 py-3.5 transition-colors"
+    >
+      View on GitHub
+    </a>
+  </div>
+  <p data-enter="4" class="text-muted mt-6 text-sm">
+    <a href="/changelog/" class="hover:text-ink underline underline-offset-4">
+      Changelog
+    </a>
+    <span aria-hidden="true"> · </span>
+    <a href={links.security} class="hover:text-ink underline underline-offset-4">
+      Security
+    </a>
+    <span aria-hidden="true"> · </span>
+    <span>{release.license}</span>
+  </p>
+</section>

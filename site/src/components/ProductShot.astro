@@ -1,0 +1,29 @@
+---
+import { Picture } from "astro:assets";
+import hero from "../assets/shots/hero.png";
+
+interface Props {
+  alt: string;
+}
+const { alt } = Astro.props;
+---
+
+<figure data-enter="5" class="mx-auto max-w-6xl px-4 sm:px-6">
+  <div class="border-line bg-surface overflow-hidden rounded-3xl border p-1.5 sm:p-2.5">
+    <Picture
+      src={hero}
+      alt={alt}
+      formats={["avif", "webp"]}
+      fallbackFormat="webp"
+      widths={[640, 1280, 2560]}
+      sizes="(min-width: 1152px) 1120px, 100vw"
+      loading="eager"
+      fetchpriority="high"
+      class="h-auto w-full rounded-2xl"
+    />
+  </div>
+  <figcaption class="text-muted mx-auto mt-4 max-w-2xl text-center text-sm">
+    WHY on demo data: a worktree's changed files with the agent turns that explain them, the diff,
+    and a Codex session timeline. Fixture data, not a real repository.
+  </figcaption>
+</figure>

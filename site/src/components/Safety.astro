@@ -1,0 +1,65 @@
+---
+import { links } from "../data/links";
+
+const claims = [
+  {
+    title: "A passive observer",
+    body: "WHY never writes to your repositories: no checkout, reset, add or commit. It reads them, and treats their config as untrusted.",
+  },
+  {
+    title: "Local only",
+    body: "No network requests, no telemetry. Nothing WHY captures leaves your machine.",
+  },
+  {
+    title: "Hooks are opt-in",
+    body: "The Agent hooks dialog shows the exact change to your user-level Claude Code or Codex config and writes nothing until you confirm. Uninstall restores your original file, or removes only WHY's entries if you have edited it since.",
+  },
+  {
+    title: "It never stalls your agent",
+    body: "The hook is fail-open: it always exits successfully within a short timeout, even if WHY is closed or broken.",
+  },
+  {
+    title: "It never reads agent credentials",
+    body: "WHY does not read your agents' credential files, and collects no account, plan or rate-limit data.",
+  },
+  {
+    title: "Programs in a repo need your OK",
+    body: "A repository can define git filter programs that run while git reads it. WHY refuses to read such a repository until you choose to trust it.",
+  },
+] as const;
+---
+
+<section
+  id="safety"
+  class="mx-auto max-w-5xl px-4 py-20 sm:px-6 md:py-28"
+  aria-labelledby="safety-title"
+>
+  <div class="max-w-2xl">
+    <h2
+      id="safety-title"
+      data-reveal
+      class="font-display text-4xl leading-tight tracking-tight sm:text-5xl"
+    >
+      Safe to run next to your <em class="text-accent">agents</em>
+    </h2>
+    <p data-reveal class="text-muted mt-6 text-lg leading-relaxed">
+      WHY runs git against repositories that agents are using right now, so it is built never to
+      disturb them.
+    </p>
+  </div>
+  <ul class="mt-12 grid gap-x-10 gap-y-8 sm:grid-cols-2 lg:grid-cols-3">
+    {claims.map((claim) => (
+      <li data-reveal class="border-line border-t pt-5">
+        <h3 class="text-lg">{claim.title}</h3>
+        <p class="text-muted mt-2 leading-relaxed">{claim.body}</p>
+      </li>
+    ))}
+  </ul>
+  <p data-reveal class="mt-12 max-w-2xl leading-relaxed">
+    It is early software and has had no external security review. The{" "}
+    <a href={links.security} class="text-accent underline underline-offset-4">
+      security policy
+    </a>{" "}
+    lists its known limits and how to report a problem.
+  </p>
+</section>

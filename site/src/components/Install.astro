@@ -1,0 +1,72 @@
+---
+import { links } from "../data/links";
+import { release } from "../data/release";
+import Code from "./Code.astro";
+---
+
+<section id="get" class="mx-auto max-w-3xl px-4 py-20 sm:px-6 md:py-28" aria-labelledby="get-title">
+  <h2
+    id="get-title"
+    data-reveal
+    class="font-display text-4xl leading-tight tracking-tight sm:text-5xl"
+  >
+    Get <em class="text-accent">WHY</em>
+  </h2>
+  <p data-reveal class="text-muted mt-6 text-lg leading-relaxed">
+    WHY v{release.version} ships as a Linux AppImage and a <code class="font-mono">.deb</code>.
+    Download one from the{" "}
+    <a href={links.latest} class="text-accent underline underline-offset-4">
+      latest release
+    </a>
+    {"."}
+  </p>
+
+  <div data-reveal class="mt-10 space-y-3">
+    <h3 class="text-xl">Requirements</h3>
+    <ul class="text-muted list-disc space-y-2 pl-5 leading-relaxed">
+      <li>
+        <strong class="text-ink font-medium">Git {release.minGit} or newer</strong> on your{" "}
+        <code class="font-mono">PATH</code>. Check with <code class="font-mono">git --version</code>
+        {"."}
+      </li>
+      <li>
+        webkit2gtk 4.1 and GTK 3. The <code class="font-mono">.deb</code> installs them for you; the
+        AppImage bundles its own copy.
+      </li>
+    </ul>
+  </div>
+
+  <div data-reveal class="mt-10 space-y-3">
+    <h3 class="text-xl">Check the download</h3>
+    <p class="text-muted leading-relaxed">
+      Builds are unsigned. Download{" "}
+      <a href={links.sums} class="text-accent underline underline-offset-4">
+        {release.sums}
+      </a>{" "}
+      from the same release and run this next to the files:
+    </p>
+    <Code label="Check the download" code={`sha256sum --check --ignore-missing ${release.sums}`} />
+  </div>
+
+  <div data-reveal class="mt-10 space-y-3">
+    <h3 class="text-xl">AppImage, any distribution</h3>
+    <Code label="Run the AppImage" code={`chmod +x ${release.appImage}\n./${release.appImage}`} />
+    <p class="text-muted leading-relaxed">
+      If it fails with a FUSE error, install <code class="font-mono">libfuse2</code> (
+      <code class="font-mono">libfuse2t64</code> on Ubuntu 24.04).
+    </p>
+  </div>
+
+  <div data-reveal class="mt-10 space-y-3">
+    <h3 class="text-xl">Debian, Ubuntu and derivatives</h3>
+    <Code label="Install the .deb" code={`sudo apt install ./${release.deb}`} />
+    <p class="text-muted leading-relaxed">
+      Then start WHY from your application menu, or run <code class="font-mono">why</code>.
+    </p>
+  </div>
+
+  <p data-reveal class="text-muted mt-10 leading-relaxed">
+    Uninstall the agent hooks from the Agent hooks dialog before you remove the app, so your agent
+    config no longer points at the hook.
+  </p>
+</section>

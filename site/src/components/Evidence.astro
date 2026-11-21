@@ -1,0 +1,62 @@
+---
+// Full class names on purpose: Tailwind only keeps classes it can see written out.
+const labels = [
+  {
+    name: "Observed",
+    tone: "text-ev-observed border-ev-observed",
+    body: "The harness recorded it: a tool call, an edit, an exit code.",
+  },
+  {
+    name: "Declared",
+    tone: "text-ev-declared border-ev-declared",
+    body: "The agent said it. Shown as its own claim, never as proof.",
+  },
+  {
+    name: "Inferred",
+    tone: "text-ev-inferred border-ev-inferred",
+    body: "Reconstructed from the available records. Part of the model; v0.2 does not produce it yet.",
+  },
+  {
+    name: "Unknown",
+    tone: "text-ev-unknown border-ev-unknown",
+    body: "There is not enough evidence. WHY says so instead of guessing.",
+  },
+] as const;
+---
+
+<section
+  id="evidence"
+  class="mx-auto max-w-5xl px-4 py-20 sm:px-6 md:py-28"
+  aria-labelledby="evidence-title"
+>
+  <div class="max-w-2xl">
+    <h2
+      id="evidence-title"
+      data-reveal
+      class="font-display text-4xl leading-tight tracking-tight sm:text-5xl"
+    >
+      Every explanation says how it is <em class="text-accent">backed</em>
+    </h2>
+    <p data-reveal class="text-muted mt-6 text-lg leading-relaxed">
+      WHY labels each piece of evidence, and never presents a guess as fact. In v0.2 the labels you
+      will see are Observed, Declared and Unknown.
+    </p>
+  </div>
+  <dl class="mt-12 grid gap-5 sm:grid-cols-2">
+    {labels.map((label) => (
+      <div data-reveal class="border-line bg-surface rounded-3xl border p-7">
+        <dt>
+          <span class={`rounded-full border px-3 py-1 font-mono text-sm ${label.tone}`}>
+            {label.name}
+          </span>
+        </dt>
+        <dd class="text-muted mt-4 leading-relaxed">{label.body}</dd>
+      </div>
+    ))}
+  </dl>
+  <p data-reveal class="mt-10 max-w-2xl text-lg leading-relaxed">
+    Unknown beats a confident guess. A tool call that started and never reported a result is shown
+    as unknown, never as success. A change that no captured agent edit explains is shown as exactly
+    that, because WHY cannot tell a human from a shell command or a lost event.
+  </p>
+</section>

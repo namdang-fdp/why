@@ -1,0 +1,31 @@
+---
+import Evidence from "../components/Evidence.astro";
+import Features from "../components/Features.astro";
+import Footer from "../components/Footer.astro";
+import Header from "../components/Header.astro";
+import Hero from "../components/Hero.astro";
+import Install from "../components/Install.astro";
+import Problem from "../components/Problem.astro";
+import ProductShot from "../components/ProductShot.astro";
+import Roadmap from "../components/Roadmap.astro";
+import Safety from "../components/Safety.astro";
+import Base from "../layouts/Base.astro";
+
+const description =
+  "WHY is a local-first desktop app for reviewing code your coding agents wrote: the live diff of every repo and worktree you add, and what Claude Code and Codex did, turn by turn. Early, read-only, Linux only.";
+---
+
+<Base title="WHY: read the diff, then ask why" description={description}>
+  <Header />
+  <main id="main">
+    <Hero />
+    <ProductShot alt="The WHY window on demo data: repositories and worktrees on the left with each changed file marked by the agent turns that explain it, a split diff of mod.rs in the middle, and on the right a Codex session timeline whose items are labelled Observed, Declared or Unknown." />
+    <Problem />
+    <Features />
+    <Evidence />
+    <Safety />
+    <Roadmap />
+    <Install />
+  </main>
+  <Footer />
+</Base>
