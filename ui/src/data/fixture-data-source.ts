@@ -510,6 +510,7 @@ export class FixtureDataSource implements DataSource {
             evidence: "observed",
             outcome: null,
             agentId: null,
+            toolUseId: null,
           },
         ],
       };
@@ -526,6 +527,7 @@ export class FixtureDataSource implements DataSource {
       evidence: "observed",
       outcome: "ok",
       agentId: null,
+      toolUseId: `${turn.id}-sim-tool-${turn.events.length}`,
     });
     timeline.session.lastEventAt = now;
     timeline.session.status = "live";

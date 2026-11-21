@@ -30,6 +30,8 @@ function event(
     evidence: "observed",
     outcome: null,
     agentId: null,
+    // A tool call (it has an outcome) gets a plausible fixture id; the rest null.
+    toolUseId: partial.outcome != null ? `toolu_fixture_${partial.id}` : null,
     ...partial,
   };
 }

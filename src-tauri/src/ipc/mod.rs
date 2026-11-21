@@ -35,6 +35,9 @@
 //! * [`sessions`]: agent sessions (`list_sessions`, `get_session_timeline`).
 //! * [`attribution`]: which agent turns explain a worktree's changed files
 //!   (`get_worktree_attribution`, `get_file_activity`).
+//! * [`rationale`]: the agent's own words around a turn or tool call, and Codex
+//!   shell outcomes, read lazily from the harness transcript
+//!   (`get_turn_rationale`, `get_tool_rationale`, `get_shell_outcomes`).
 //! * [`hooks`]: installing WHY's hooks into the agents' user-level config
 //!   (`preview_install`, `install`, `preview_uninstall`, `uninstall`, `hook_status`).
 //! * [`error`]: the one place errors become `IpcError`.
@@ -49,6 +52,8 @@ pub mod sessions;
 pub mod storage;
 // WHY-16
 pub mod attribution;
+// WHY-53
+pub mod rationale;
 
 // Commands are not re-exported here. `#[tauri::command]` also generates helper
 // macros (`__cmd__<name>`) that `generate_handler!` looks up next to the function,

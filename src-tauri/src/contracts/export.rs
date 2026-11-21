@@ -24,6 +24,8 @@ use super::{
 };
 // WHY-16
 use super::{TurnRef, WorktreeAttribution};
+// WHY-53 rationale contracts.
+use super::{RationaleResult, ShellOutcomesResult};
 // WHY-51 hook installer contracts.
 use super::{ApplyResult, HookHarness, HookStatusReport, PreviewResult};
 
@@ -55,6 +57,8 @@ fn export_all(dir: &Path) -> Result<()> {
     SessionsChanged::export_all(&cfg)?;
     WorktreeAttribution::export_all(&cfg)?;
     TurnRef::export_all(&cfg)?;
+    RationaleResult::export_all(&cfg)?;
+    ShellOutcomesResult::export_all(&cfg)?;
     HookStatusReport::export_all(&cfg)?;
     PreviewResult::export_all(&cfg)?;
     ApplyResult::export_all(&cfg)?;

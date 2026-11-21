@@ -165,14 +165,15 @@ pub enum TimelineEventKind {
 /// One entry in a turn.
 ///
 /// A tool call is ONE entry even though the harness sends two events for it
-/// (`PreToolUse` and `PostToolUse`): the core pairs them by `tool_use_id`,
+/// (`PreToolUse` and `PostToolUse`): the core pairs them by agent and `tool_use_id`,
 /// whatever order they arrived in, and the entry's `outcome` comes from the
 /// result (or is `unknown` when no result arrived).
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[cfg_attr(test, derive(TS))]
 #[serde(rename_all = "camelCase")]
 pub struct TimelineEvent {
-    /// Opaque; unique within its session.
+    /// Opaque; unique within its session. For tool rows with a `tool_use_id`,
+    /// pass this as `event_id` to `get_tool_rationale`.
     pub id: String,
     pub kind: TimelineEventKind,
     /// RFC 3339 (for a tool call: when it started, if that was seen).
@@ -189,4 +190,7 @@ pub struct TimelineEvent {
     pub outcome: Option<ToolOutcome>,
     /// Set when a subagent (not the main agent) did this.
     pub agent_id: Option<String>,
+    /// The harness's ID for a tool call. `null` for other entries and for calls
+    /// the harness gave no ID.
+    pub tool_use_id: Option<String>,
 }

@@ -7,13 +7,14 @@ import type { ToolOutcome } from "./ToolOutcome";
  * One entry in a turn.
  *
  * A tool call is ONE entry even though the harness sends two events for it
- * (`PreToolUse` and `PostToolUse`): the core pairs them by `tool_use_id`,
+ * (`PreToolUse` and `PostToolUse`): the core pairs them by agent and `tool_use_id`,
  * whatever order they arrived in, and the entry's `outcome` comes from the
  * result (or is `unknown` when no result arrived).
  */
 export type TimelineEvent = { 
 /**
- * Opaque; unique within its session.
+ * Opaque; unique within its session. For tool rows with a `tool_use_id`,
+ * pass this as `event_id` to `get_tool_rationale`.
  */
 id: string, kind: TimelineEventKind, 
 /**
@@ -40,4 +41,9 @@ outcome: ToolOutcome | null,
 /**
  * Set when a subagent (not the main agent) did this.
  */
-agentId: string | null, };
+agentId: string | null, 
+/**
+ * The harness's ID for a tool call. `null` for other entries and for calls
+ * the harness gave no ID.
+ */
+toolUseId: string | null, };
