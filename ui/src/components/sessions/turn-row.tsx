@@ -1,4 +1,4 @@
-import { memo, useLayoutEffect, useRef } from "react";
+import { memo, useLayoutEffect, useRef, type ReactNode } from "react";
 import {
   ChevronDown,
   CircleStop,
@@ -21,7 +21,8 @@ import { Evidence, EventTime, Outcome, PromptExcerpt, RecoveredOutcome } from ".
 import { canExplainCall } from "./rationale-model";
 import { WhyPanel, WhyToggle } from "./why-panel";
 import type { RationaleTarget } from "@/stores/evidence";
-import { eventGroups, isWorktreePath } from "./timeline-model";
+import { eventGroups, foldRuns, isWorktreePath, runLabel } from "./timeline-model";
+import { effectiveOutcome } from "./outcome-model";
 
 const eventKind = {
   prompt: { name: "Prompt", Icon: MessageSquare },
@@ -91,11 +92,14 @@ function EventRow({
 }) {
   const { name, Icon } = eventKind[event.kind];
   const disclosure = event.kind === "toolCall" || event.kind === "shell";
-  const outcome = event.outcome ?? (disclosure || event.kind === "testRun" ? "unknown" : null);
   const fileMatch = event.files.some((path) => path === file?.path || path === file?.oldPath);
   const heading = event.toolName ? `${name} · ${event.toolName}` : name;
+  const outcome = effectiveOutcome(event, undefined);
   // Only a call the hooks left unknown takes the recovered code; a hook-reported outcome stays as it is.
   const overlay = recovered && outcome === "unknown" ? recovered : undefined;
+  // A chip carries information only when it differs from "unknown": an unknown
+  // outcome is the default, said once in the session header, not on every row.
+  const showOutcome = outcome !== null && outcome !== "unknown";
   const why: RationaleTarget | null =
     canExplainCall(event.kind, event.toolUseId) && sessionId !== ""
       ? { kind: "tool", sessionId, eventId: event.id }
@@ -123,11 +127,12 @@ function EventRow({
         {overlay ? (
           <RecoveredOutcome outcome={overlay} test={event.kind === "testRun"} />
         ) : (
-          outcome && <Outcome outcome={outcome} test={event.kind === "testRun"} />
+          showOutcome && <Outcome outcome={outcome} test={event.kind === "testRun"} />
         )}
         {why && <WhyToggle target={why} subject={`${heading}: ${event.summary}`} />}
-        {/* The recovered chip is already the Observed label for this outcome. */}
-        {!overlay && <Evidence label={event.evidence} />}
+        {/* The recovered chip is already the Observed label for this outcome. Observed is
+            the default (the legend says so); only a different label is worth a chip. */}
+        {!overlay && event.evidence !== "observed" && <Evidence label={event.evidence} />}
       </div>
       {why && <WhyPanel target={why} />}
       {event.summary && (
@@ -145,6 +150,63 @@ function EventRow({
           <EventTime at={event.at} />
         </div>
       )}
+    </li>
+  );
+}
+
+/**
+ * 3+ consecutive shell/tool calls from one agent, folded into one row. It is
+ * closed by default; its open state lives in the timeline's `openItems` (keyed
+ * by turn id + `run:<first event id>`), so it survives the row being unmounted
+ * by the virtualized window. The summary says how many failed, so a failure is
+ * never hidden inside a closed group.
+ */
+function RunRow({
+  id,
+  events,
+  open,
+  toggleRun,
+  file,
+  outcomes,
+  children,
+}: {
+  id: string;
+  events: TimelineEvent[];
+  open: boolean;
+  toggleRun: () => void;
+  file: FileChange | undefined;
+  outcomes: ReadonlyMap<string, ShellOutcome> | undefined;
+  children: ReactNode;
+}) {
+  const failed = events.filter((event) => effectiveOutcome(event, outcomes) === "failed").length;
+  const fileMatch = events.some((event) =>
+    event.files.some((path) => path === file?.path || path === file?.oldPath),
+  );
+  const label = runLabel(events);
+  return (
+    <li
+      className="session-event session-run"
+      data-run={id}
+      data-file-match={fileMatch || undefined}
+    >
+      <div className="session-event-head">
+        <SquareTerminal size={13} aria-hidden />
+        <button
+          type="button"
+          className="session-tool-toggle"
+          aria-expanded={open}
+          onClick={toggleRun}
+        >
+          <span>{label}</span>
+          <ChevronDown size={12} aria-hidden />
+        </button>
+        {failed > 0 && (
+          <span className="session-outcome" data-outcome="failed">
+            {failed} failed
+          </span>
+        )}
+      </div>
+      {open && <ul className="session-run-events">{children}</ul>}
     </li>
   );
 }
@@ -231,7 +293,9 @@ export const TurnRow = memo(function TurnRow({
               subject={`Turn ${turn.index + 1}`}
             />
           )}
-          <Evidence label={promptEvent?.evidence ?? "unknown"} />
+          {(promptEvent?.evidence ?? "unknown") !== "observed" && (
+            <Evidence label={promptEvent?.evidence ?? "unknown"} />
+          )}
         </div>
         {turn.id !== "" && <WhyPanel target={{ kind: "turn", sessionId, turnId: turn.id }} />}
         {synthetic && <p className="session-synthetic">Task notification · not typed by you</p>}
@@ -259,18 +323,43 @@ export const TurnRow = memo(function TurnRow({
               </div>
             )}
             <ul>
-              {group.events.map((event) => (
-                <EventRow
-                  key={event.id}
-                  event={event}
-                  sessionId={sessionId}
-                  recovered={outcomes?.get(event.id)}
-                  file={file}
-                  openFile={openFile}
-                  expanded={openItems?.has(event.id) ?? false}
-                  toggle={() => toggle(turn.id, event.id)}
-                />
-              ))}
+              {foldRuns(group.events).map((item) =>
+                item.type === "event" ? (
+                  <EventRow
+                    key={item.event.id}
+                    event={item.event}
+                    sessionId={sessionId}
+                    recovered={outcomes?.get(item.event.id)}
+                    file={file}
+                    openFile={openFile}
+                    expanded={openItems?.has(item.event.id) ?? false}
+                    toggle={() => toggle(turn.id, item.event.id)}
+                  />
+                ) : (
+                  <RunRow
+                    key={item.id}
+                    id={item.id}
+                    events={item.events}
+                    open={openItems?.has(item.id) ?? false}
+                    toggleRun={() => toggle(turn.id, item.id)}
+                    file={file}
+                    outcomes={outcomes}
+                  >
+                    {item.events.map((event) => (
+                      <EventRow
+                        key={event.id}
+                        event={event}
+                        sessionId={sessionId}
+                        recovered={outcomes?.get(event.id)}
+                        file={file}
+                        openFile={openFile}
+                        expanded={openItems?.has(event.id) ?? false}
+                        toggle={() => toggle(turn.id, event.id)}
+                      />
+                    ))}
+                  </RunRow>
+                ),
+              )}
             </ul>
           </div>
         ))}

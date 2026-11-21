@@ -59,3 +59,50 @@ export function turnsTouchingFile(
   });
   return matches;
 }
+
+/** The recorded kinds a run of calls may be folded from. Never decided from command text. */
+const foldable = new Set<TimelineEvent["kind"]>(["shell", "toolCall"]);
+/** Fewer consecutive calls than this stay as plain rows. */
+export const minRunLength = 3;
+
+export type EventItem =
+  { type: "event"; event: TimelineEvent } | { type: "run"; id: string; events: TimelineEvent[] };
+
+/**
+ * Fold 3+ consecutive `shell` / `toolCall` events into one run. The input is
+ * already one agent's events (`eventGroups`), so a run never spans two agents.
+ * An edit, test run, message, subagent or stop between calls splits the run,
+ * and none of those is ever folded. The run's id (`run:<first event id>`)
+ * is the key its open/closed state is stored under.
+ */
+export function foldRuns(events: readonly TimelineEvent[]): EventItem[] {
+  const items: EventItem[] = [];
+  let run: TimelineEvent[] = [];
+  const flush = () => {
+    const first = run[0];
+    if (first && run.length >= minRunLength) {
+      items.push({ type: "run", id: `run:${first.id}`, events: run });
+    } else {
+      for (const event of run) items.push({ type: "event", event });
+    }
+    run = [];
+  };
+  for (const event of events) {
+    if (foldable.has(event.kind)) {
+      run.push(event);
+    } else {
+      flush();
+      items.push({ type: "event", event });
+    }
+  }
+  flush();
+  return items;
+}
+
+/** "5 shell commands", "4 tool calls" or, for a mix, "6 shell and tool calls". */
+export function runLabel(events: readonly TimelineEvent[]) {
+  const shells = events.filter((event) => event.kind === "shell").length;
+  if (shells === events.length) return `${events.length} shell commands`;
+  if (shells === 0) return `${events.length} tool calls`;
+  return `${events.length} shell and tool calls`;
+}

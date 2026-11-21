@@ -7,6 +7,7 @@ import { turnsTouchingFile } from "./timeline-model";
 import { recoveredOutcomes } from "./outcome-overlay";
 import { TurnRow } from "./turn-row";
 import { useTurnWindow } from "./use-turn-window";
+import { TurnStrip } from "./turn-strip";
 
 export function SessionTimeline({
   turns,
@@ -143,61 +144,74 @@ export function SessionTimeline({
       {turns.length === 0 ? (
         <p className="rail-note">No turns recorded for this session.</p>
       ) : (
-        <div className="session-scroll-frame">
-          <div
-            ref={viewport}
-            className="session-scroll"
-            role="region"
-            aria-label="Session turns"
-            tabIndex={0}
-            onScroll={readViewport}
-            onBlur={onBlur}
-          >
-            <div className="session-window" style={{ height: total }}>
-              {[...visible]
-                .sort((a, b) => a - b)
-                .map((index) => {
-                  const turn = turns[index];
-                  const top = offsets[index];
-                  if (!turn || top === undefined) return null;
-                  return (
-                    <TurnRow
-                      key={turn.id}
-                      turn={turn}
-                      setSize={turns.length}
-                      top={top}
-                      selected={turn.id === selected}
-                      matching={matching.has(index)}
-                      file={file}
-                      measure={measure}
-                      select={selectTurn}
-                      onTurnFocus={setFocused}
-                      openFile={openFile}
-                      openItems={openItems.get(turn.id)}
-                      toggle={toggle}
-                      sessionId={sessionId}
-                      outcomes={outcomes}
-                    />
-                  );
-                })}
+        <>
+          <TurnStrip
+            turns={turns}
+            recovered={outcomes}
+            selected={selected}
+            // Focus the turn too: the timeline reveals a turn only on a focus request.
+            onSelect={(turnId) => selectTurn(turnId, true)}
+          />
+          <p className="session-legend">
+            Rows are observed by the agent&rsquo;s hooks unless marked. No outcome chip means none
+            was recorded.
+          </p>
+          <div className="session-scroll-frame">
+            <div
+              ref={viewport}
+              className="session-scroll"
+              role="region"
+              aria-label="Session turns"
+              tabIndex={0}
+              onScroll={readViewport}
+              onBlur={onBlur}
+            >
+              <div className="session-window" style={{ height: total }}>
+                {[...visible]
+                  .sort((a, b) => a - b)
+                  .map((index) => {
+                    const turn = turns[index];
+                    const top = offsets[index];
+                    if (!turn || top === undefined) return null;
+                    return (
+                      <TurnRow
+                        key={turn.id}
+                        turn={turn}
+                        setSize={turns.length}
+                        top={top}
+                        selected={turn.id === selected}
+                        matching={matching.has(index)}
+                        file={file}
+                        measure={measure}
+                        select={selectTurn}
+                        onTurnFocus={setFocused}
+                        openFile={openFile}
+                        openItems={openItems.get(turn.id)}
+                        toggle={toggle}
+                        sessionId={sessionId}
+                        outcomes={outcomes}
+                      />
+                    );
+                  })}
+              </div>
+            </div>
+            <div className="session-arrivals" aria-live="polite">
+              {unseen > 0 && (
+                <button
+                  type="button"
+                  className="session-new"
+                  onClick={() => {
+                    follow();
+                    viewport.current?.focus({ preventScroll: true });
+                  }}
+                >
+                  <ArrowDown size={13} aria-hidden />
+                  {unseen} new
+                </button>
+              )}
             </div>
           </div>
-          <div className="session-arrivals" aria-live="polite">
-            {unseen > 0 && (
-              <button
-                type="button"
-                className="session-new"
-                onClick={() => {
-                  follow();
-                  viewport.current?.focus({ preventScroll: true });
-                }}
-              >
-                <ArrowDown size={13} aria-hidden />
-                {unseen} new
-              </button>
-            )}
-          </div>
-        </div>
+        </>
       )}
     </>
   );

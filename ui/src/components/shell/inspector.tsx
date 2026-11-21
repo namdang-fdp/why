@@ -1,12 +1,15 @@
 import { Fragment, useContext, useLayoutEffect, useRef, type KeyboardEvent } from "react";
 import { ArrowLeft, MessageSquareText, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { SessionList, TaskHeader } from "@/components/sessions/session-details";
+import { SessionHeader } from "@/components/sessions/session-details";
 import { SessionTimeline } from "@/components/sessions/session-timeline";
 import { moveTurn } from "@/components/sessions/session-controls";
 import { WorkspaceContext, useSessions, useWorkspace } from "@/stores/workspace-context";
 import { ErrorMessage, LoadingMessage } from "./async-message";
-import { FileActivity } from "./file-activity";
+import { FileTab } from "./file-tab";
+import { InspectorTabs } from "./inspector-tabs";
+import { WorktreeTab } from "./worktree-tab";
+import { useInspectorTab } from "@/stores/inspector-view";
 
 export function Inspector() {
   const workspace = useContext(WorkspaceContext);
@@ -15,8 +18,8 @@ export function Inspector() {
   const sessionId = useSessions((state) => state.sessionId);
   const timeline = useSessions((state) => state.timeline);
   const selectSession = useSessions((state) => state.selectSession);
-  const loadList = useSessions((state) => state.loadList);
   const loadTimeline = useSessions((state) => state.loadTimeline);
+  const tab = useInspectorTab();
   const panel = useRef<HTMLElement>(null);
   const backButton = useRef<HTMLButtonElement>(null);
   const restore = useRef<string | null>(null);
@@ -151,17 +154,17 @@ export function Inspector() {
           <X aria-hidden />
         </Button>
       </div>
-      <FileActivity />
       {sessionId === null ? (
         <>
-          {list.status === "idle" && (
-            <p className="rail-note">Select a worktree to see its sessions.</p>
-          )}
-          {list.status === "loading" && <LoadingMessage>Loading sessions…</LoadingMessage>}
-          {list.status === "error" && (
-            <ErrorMessage context="Sessions" error={list.error} retry={() => void loadList()} />
-          )}
-          {list.status === "ok" && <SessionList sessions={list.data} onSelect={open} />}
+          <InspectorTabs />
+          <div
+            id="inspector-tabpanel"
+            role="tabpanel"
+            aria-labelledby={`inspector-tab-${tab}`}
+            className="inspector-panel"
+          >
+            {tab === "file" ? <FileTab /> : <WorktreeTab onOpenSession={open} />}
+          </div>
         </>
       ) : (
         <>
@@ -177,7 +180,7 @@ export function Inspector() {
           )}
           {timeline.status === "ok" && (
             <Fragment key={sessionId}>
-              <TaskHeader session={timeline.data.session} />
+              <SessionHeader session={timeline.data.session} turns={timeline.data.turns} />
               <SessionTimeline
                 turns={timeline.data.turns}
                 moveMatch={(direction) => moveTurn(workspace, direction, true)}

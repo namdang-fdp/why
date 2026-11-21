@@ -14,6 +14,7 @@ import { SESSION_LONG } from "@/dev-fixtures/long-session";
 import {
   SESSION_CLAUDE,
   SESSION_CODEX,
+  SESSION_CODEX_QUIET,
   SESSION_SUBAGENT,
   sessionTimelines,
 } from "@/fixtures/sessions";
@@ -128,7 +129,10 @@ describe("FixtureDataSource sessions", () => {
     const source = new FixtureDataSource();
     const agent = await source.listSessions(WT_WHY_AGENT);
     expect(agent.map((session) => session.id)).toEqual([SESSION_CODEX, SESSION_CLAUDE]);
-    expect((await source.listSessions(WT_WHY_MAIN)).map((s) => s.id)).toEqual([SESSION_SUBAGENT]);
+    expect((await source.listSessions(WT_WHY_MAIN)).map((s) => s.id)).toEqual([
+      SESSION_CODEX_QUIET,
+      SESSION_SUBAGENT,
+    ]);
     await expect(source.listSessions("wt-nope")).resolves.toEqual([]);
   });
 

@@ -15,6 +15,7 @@ import type {
 } from "@/contracts";
 import { FixtureDataSource } from "@/data/fixture-data-source";
 import type { HookFixtureScenario } from "@/fixtures/hooks";
+import { inspectorViewStore, resetInspectorView } from "@/stores/inspector-view";
 import { createWorkspaceStore } from "@/stores/workspace";
 import { deferred } from "@/test/deferred";
 import { App } from "./App";
@@ -34,6 +35,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  resetInspectorView();
   cleanup();
   localStorage.clear();
   vi.restoreAllMocks();
@@ -54,6 +56,8 @@ const button = (name: string) => page().getByRole("button", { name });
 const diff = () => page().getByLabelText("Unified config diff");
 
 function setup(source: FixtureDataSource, strict = false) {
+  // The inspector opens on its File tab; most of these tests look at the session list.
+  inspectorViewStore.getState().setTab("worktree");
   const user = userEvent.setup();
   const app = createElement(App, { store: createWorkspaceStore(source) });
   render(strict ? createElement(StrictMode, null, app) : app);

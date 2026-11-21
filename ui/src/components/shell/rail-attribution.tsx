@@ -117,7 +117,7 @@ function TurnLine({
           {turn.agentId && <span className="evidence-subagent">subagent</span>}
           {extra}
         </span>
-        <span className="evidence-turn-task">{task || "Task unknown"}</span>
+        <span className="evidence-turn-task">{task || "No task context captured"}</span>
       </button>
     </li>
   );
