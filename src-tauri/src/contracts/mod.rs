@@ -24,6 +24,8 @@
 //! | `pick_repository_folder()` | `Option<String>` | Native folder picker (`None` = cancelled) |
 //! | `list_sessions(worktree_id: WorktreeId)` | `Vec<SessionSummary>` | Agent sessions seen in a worktree, most recent first |
 //! | `get_session_timeline(session_id: SessionId)` | `SessionTimeline` | One session's turns and events |
+//! | `get_worktree_attribution(worktree_id: WorktreeId, mode: Option<DiffMode>)` | `WorktreeAttribution` | Each changed file with the agent turns whose captured edits explain it, or `unexplained` (default mode `vsBase`) |
+//! | `get_file_activity(worktree_id: WorktreeId, path: String)` | `Vec<TurnRef>` | Every captured edit attempt on one file, newest first, any outcome |
 //!
 //! # Event
 //!
@@ -54,6 +56,8 @@ mod repo;
 mod security;
 mod sessions;
 mod storage;
+// WHY-16: file <-> turn attribution.
+mod attribution;
 
 pub use changes::{ChangeStatus, DiffMode, FileChange, FileDiff};
 pub use error::IpcError;
@@ -71,6 +75,10 @@ pub use sessions::{
     TimelineEvent, TimelineEventKind, ToolOutcome, Turn,
 };
 pub use storage::StorageStatus;
+// WHY-16
+pub use attribution::{
+    AttributionStatus, FileAttribution, ShellLead, TurnRef, WorktreeAttribution,
+};
 
 // `ts-rs` is a dev-dependency: the types derive `TS` only under `cfg(test)`
 // (`#[cfg_attr(test, derive(TS))]`), so the app binary does not contain it.

@@ -5,8 +5,12 @@ use std::collections::{HashMap, HashSet};
 use std::sync::{Mutex, MutexGuard};
 
 use super::clock::Clock;
-use super::model::{EventKey, NormalizedEvent, SessionKey};
-use super::timeline::{build_summary, build_timeline};
+use super::correlation::{
+    Call, CallEvent, EditTouch, ShellTurn, build_edit_touches, build_shell_turns,
+    distinct_sessions, fold_calls, tool_event_class,
+};
+use super::model::{EventKey, NormalizedEvent, SessionKey, ToolClass};
+use super::timeline::{TimelinePosition, TurnIndices, build_summary, build_timeline, turn_indices};
 use super::{AppendOutcome, EventStore};
 use crate::contracts::{SessionSummary, SessionTimeline, WorktreeId};
 use crate::store::StoreError;
@@ -53,6 +57,30 @@ impl MemoryEventStore {
             .lock()
             .map_err(|_| StoreError::Backend("event store lock poisoned".to_string()))
     }
+}
+
+/// The calls of one tool class that happened in worktree `wt` in one session.
+/// Events resolved to another worktree are ignored here, so a call split across
+/// two worktrees (a Pre in one, a Post in the other) is never stitched together.
+fn calls_in(events: &[NormalizedEvent], wt: &WorktreeId, classes: &[ToolClass]) -> Vec<Call> {
+    fold_calls(
+        events
+            .iter()
+            .filter(|e| {
+                e.worktree_id.as_ref() == Some(wt)
+                    && tool_event_class(e).is_some_and(|class| classes.contains(&class))
+            })
+            .filter_map(CallEvent::from_event),
+    )
+}
+
+fn session_turn_indices(events: &[NormalizedEvent]) -> TurnIndices {
+    let positions: Vec<_> = events
+        .iter()
+        .filter(|e| !e.kind.is_lifecycle())
+        .map(TimelinePosition::from_event)
+        .collect();
+    turn_indices(&positions)
 }
 
 impl EventStore for MemoryEventStore {
@@ -127,6 +155,49 @@ impl EventStore for MemoryEventStore {
             keep
         });
         Ok(before - sessions.len())
+    }
+
+    // Complexity: O(all stored events) per call, because there is no index. This
+    // backend is the test fake and the fallback when `events.db` cannot be
+    // opened; the SQLite store has the real index (`event_files`).
+    fn edit_calls(&self, wt: &WorktreeId, paths: &[String]) -> Result<Vec<EditTouch>, StoreError> {
+        let inner = self.lock()?;
+        let wanted: HashSet<&str> = paths.iter().map(String::as_str).collect();
+        let mut calls: Vec<Call> = Vec::new();
+        let mut indices = HashMap::new();
+        for (session, events) in &inner.sessions {
+            let session_calls: Vec<Call> = calls_in(events, wt, &[ToolClass::Edit])
+                .into_iter()
+                .filter(|c| c.paths.iter().any(|p| wanted.contains(p.as_str())))
+                .collect();
+            if session_calls.is_empty() {
+                continue;
+            }
+            indices.insert(session.clone(), session_turn_indices(events));
+            calls.extend(session_calls);
+        }
+        Ok(build_edit_touches(calls, &wanted, &indices))
+    }
+
+    fn shell_turns(&self, wt: &WorktreeId) -> Result<Vec<ShellTurn>, StoreError> {
+        let inner = self.lock()?;
+        let mut calls: Vec<Call> = Vec::new();
+        for events in inner.sessions.values() {
+            // Shell commands and test runs: both are processes that may write.
+            calls.extend(calls_in(
+                events,
+                wt,
+                &[ToolClass::Shell, ToolClass::TestRun],
+            ));
+        }
+        let indices: HashMap<SessionKey, TurnIndices> = distinct_sessions(&calls)
+            .into_iter()
+            .filter_map(|k| {
+                let events = inner.sessions.get(&k)?;
+                Some((k, session_turn_indices(events)))
+            })
+            .collect();
+        Ok(build_shell_turns(calls, &indices))
     }
 }
 

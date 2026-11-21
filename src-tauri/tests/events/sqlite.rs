@@ -39,7 +39,7 @@ fn history() -> Vec<NormalizedEvent> {
 }
 
 #[test]
-fn file_database_uses_wal_incremental_vacuum_and_version_1() {
+fn file_database_uses_wal_incremental_vacuum_and_current_version() {
     let dir = tempfile::tempdir().unwrap();
     drop(SqliteEventStore::open(&db(&dir)).unwrap());
     let conn = Connection::open(db(&dir)).unwrap();
@@ -47,7 +47,7 @@ fn file_database_uses_wal_incremental_vacuum_and_version_1() {
         .pragma_query_value(None, "journal_mode", |r| r.get(0))
         .unwrap();
     assert_eq!(mode.to_lowercase(), "wal");
-    assert_eq!(pragma(&db(&dir), "user_version"), 1);
+    assert_eq!(pragma(&db(&dir), "user_version"), 2);
     // 2 = INCREMENTAL. It only sticks if set before the first write.
     assert_eq!(pragma(&db(&dir), "auto_vacuum"), 2);
 }
@@ -87,7 +87,7 @@ fn restart_gives_the_same_timeline_and_keeps_deduplicating() {
             "keys survive restarts"
         );
     }
-    assert_eq!(pragma(&db(&dir), "user_version"), 1);
+    assert_eq!(pragma(&db(&dir), "user_version"), 2);
 }
 
 #[test]

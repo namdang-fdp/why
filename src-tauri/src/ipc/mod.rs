@@ -33,6 +33,8 @@
 //! * [`storage`]: `get_storage_status` (are repositories saved?).
 //! * [`dialog`]: `pick_repository_folder` (native folder picker, opened by the core).
 //! * [`sessions`]: agent sessions (`list_sessions`, `get_session_timeline`).
+//! * [`attribution`]: which agent turns explain a worktree's changed files
+//!   (`get_worktree_attribution`, `get_file_activity`).
 //! * [`error`]: the one place errors become `IpcError`.
 
 pub mod changes;
@@ -42,6 +44,8 @@ pub mod repos;
 pub mod security;
 pub mod sessions;
 pub mod storage;
+// WHY-16
+pub mod attribution;
 
 // Commands are not re-exported here. `#[tauri::command]` also generates helper
 // macros (`__cmd__<name>`) that `generate_handler!` looks up next to the function,

@@ -179,10 +179,12 @@ impl Builder<'_> {
         // timeline's file list means "files this turn changed".
         let mut files = Vec::new();
         if class == ToolClass::Edit {
-            let path = target_path(input)
-                .or_else(|| non_empty(response, "filePath"))
-                .map(str::to_owned);
-            files.extend(path);
+            // A successful tool response identifies the file actually edited.
+            let executed = match phase {
+                Phase::Done => non_empty(response, "filePath"),
+                _ => None,
+            };
+            files.extend(executed.or_else(|| target_path(input)).map(str::to_owned));
         }
 
         // What the row says. NOTE the timeline keeps the *start* text over the

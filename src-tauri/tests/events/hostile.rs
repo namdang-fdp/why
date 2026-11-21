@@ -60,8 +60,8 @@ fn a_database_from_a_newer_why_falls_back_and_is_left_alone() {
 }
 
 /// A real, current-version database, then damaged with `sql` (via a plain
-/// connection, so the file stays a valid SQLite file at `user_version = 1`).
-fn damaged_v1(sql: &str) -> tempfile::TempDir {
+/// connection, so the file stays a valid SQLite file at the current `user_version = 2`).
+fn damaged_current(sql: &str) -> tempfile::TempDir {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("events.db");
     drop(SqliteEventStore::open(&path).unwrap());
@@ -70,26 +70,26 @@ fn damaged_v1(sql: &str) -> tempfile::TempDir {
     let version: i64 = conn
         .pragma_query_value(None, "user_version", |r| r.get(0))
         .unwrap();
-    assert_eq!(version, 1, "premise: the version still says current");
+    assert_eq!(version, 2, "premise: the version still says current");
     drop(conn);
     dir
 }
 
 #[test]
 fn a_current_version_database_missing_a_table_falls_back_and_is_left_alone() {
-    let dir = damaged_v1("DROP TABLE session_worktrees;");
+    let dir = damaged_current("DROP TABLE session_worktrees;");
     assert_refused_untouched(dir.path(), "session_worktrees");
 }
 
 #[test]
 fn a_current_version_database_missing_a_column_falls_back_and_is_left_alone() {
-    let dir = damaged_v1("ALTER TABLE events DROP COLUMN transcript_path;");
+    let dir = damaged_current("ALTER TABLE events DROP COLUMN transcript_path;");
     assert_refused_untouched(dir.path(), "transcript_path");
 }
 
 #[test]
 fn a_current_version_database_missing_an_index_falls_back_and_is_left_alone() {
-    let dir = damaged_v1("DROP INDEX events_by_session;");
+    let dir = damaged_current("DROP INDEX events_by_session;");
     assert_refused_untouched(dir.path(), "events_by_session");
 }
 
