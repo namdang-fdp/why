@@ -840,3 +840,127 @@ fn shell_outcomes_wire_format() {
         json!({ "status": "unavailable", "reason": "notApplicable" }),
     );
 }
+
+// ---- WHY-64: line provenance ------------------------------------------------
+
+#[test]
+fn line_origins_result_wire_format() {
+    assert_wire(
+        &LineOriginsResult::Unavailable {
+            reason: LineOriginsUnavailable::EngineNotReady,
+        },
+        json!({ "status": "unavailable", "reason": "engineNotReady" }),
+    );
+    for (reason, wire) in [
+        (LineOriginsUnavailable::NotText, "notText"),
+        (LineOriginsUnavailable::TooLarge, "tooLarge"),
+    ] {
+        assert_eq!(serde_json::to_value(reason).unwrap(), json!(wire));
+    }
+
+    let mut turn = sample_turn_ref(ToolOutcome::Ok);
+    turn.agent_id = None;
+    let origins = FileLineOrigins {
+        worktree_id: WorktreeId("wt-1".into()),
+        path: "src/a.rs".into(),
+        line_count: 6,
+        runs: vec![
+            LineRun {
+                start_line: 1,
+                end_line: 2,
+                origin: LineOriginKind::Base,
+                evidence: EvidenceLabel::Observed,
+            },
+            LineRun {
+                start_line: 3,
+                end_line: 5,
+                origin: LineOriginKind::Edit { turn },
+                evidence: EvidenceLabel::Observed,
+            },
+            LineRun {
+                start_line: 6,
+                end_line: 6,
+                origin: LineOriginKind::Unknown {
+                    reason: LineUnknownReason::AmbiguousMatch,
+                },
+                evidence: EvidenceLabel::Unknown,
+            },
+        ],
+        coverage: LineCoverage {
+            lines: 6,
+            base: 2,
+            unknown: 1,
+            explained: vec![HarnessLines {
+                harness: Harness::Codex,
+                lines: 3,
+            }],
+        },
+    };
+    let value = serde_json::to_value(LineOriginsResult::Ok {
+        origins: origins.clone(),
+    })
+    .unwrap();
+    assert_null(&value["origins"]["runs"][1]["origin"]["turn"], "agentId");
+    assert_wire(
+        &LineOriginsResult::Ok { origins },
+        json!({
+            "status": "ok",
+            "origins": {
+                "worktreeId": "wt-1",
+                "path": "src/a.rs",
+                "lineCount": 6,
+                "runs": [
+                    { "startLine": 1, "endLine": 2,
+                      "origin": { "kind": "base" }, "evidence": "observed" },
+                    { "startLine": 3, "endLine": 5,
+                      "origin": { "kind": "edit", "turn": {
+                          "harness": "codex",
+                          "sessionId": "codex:s1",
+                          "turnId": "t1",
+                          "turnIndex": 2,
+                          "agentId": null,
+                          "toolUseId": "call_1",
+                          "outcome": "ok",
+                          "at": "2026-11-20T15:28:47.123Z",
+                          "path": "src/a.rs"
+                      } },
+                      "evidence": "observed" },
+                    { "startLine": 6, "endLine": 6,
+                      "origin": { "kind": "unknown", "reason": "ambiguousMatch" },
+                      "evidence": "unknown" }
+                ],
+                "coverage": {
+                    "lines": 6, "base": 2, "unknown": 1,
+                    "explained": [ { "harness": "codex", "lines": 3 } ]
+                }
+            }
+        }),
+    );
+}
+
+#[test]
+fn line_unknown_reasons_are_stable_strings_and_there_is_no_manual() {
+    let all = [
+        (LineUnknownReason::NoCapture, "noCapture"),
+        (LineUnknownReason::PayloadReduced, "payloadReduced"),
+        (LineUnknownReason::Unparsed, "unparsed"),
+        (LineUnknownReason::ReplayMismatch, "replayMismatch"),
+        (LineUnknownReason::AmbiguousMatch, "ambiguousMatch"),
+        (LineUnknownReason::ConcurrentWriter, "concurrentWriter"),
+        (LineUnknownReason::NotReplayed, "notReplayed"),
+    ];
+    for (reason, wire) in all {
+        assert_eq!(serde_json::to_value(reason).unwrap(), json!(wire));
+        assert_eq!(
+            serde_json::from_value::<LineUnknownReason>(json!(wire)).unwrap(),
+            reason
+        );
+    }
+    for bad in ["manual", "human"] {
+        assert!(serde_json::from_value::<LineUnknownReason>(json!(bad)).is_err());
+        assert!(
+            serde_json::from_value::<LineOriginKind>(json!({ "kind": bad })).is_err(),
+            "{bad}"
+        );
+    }
+}

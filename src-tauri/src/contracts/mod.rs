@@ -34,6 +34,7 @@
 //! | `preview_uninstall(harness: HookHarness)` | `PreviewResult` | The exact change removing WHY's hooks would make |
 //! | `uninstall(harness: HookHarness, fingerprint: String)` | `ApplyResult` | Remove WHY's hooks (restoring the original bytes when the file is untouched) |
 //! | `hook_status()` | `HookStatusReport` | Per-harness hook health plus the collector's |
+//! | `get_line_origins(worktree_id: WorktreeId, path: String)` | `LineOriginsResult` | Which captured edit wrote each line of one file (`base` / `edit` / `unknown`), as runs; `unavailable { engineNotReady }` until the replay engine lands (WHY-22) |
 //!
 //! # Event
 //!
@@ -69,6 +70,8 @@ mod storage;
 mod attribution;
 // WHY-53: lazy rationale from the harness transcript.
 mod rationale;
+// WHY-64: line provenance.
+mod provenance;
 
 pub use changes::{ChangeStatus, DiffMode, FileChange, FileDiff};
 pub use error::IpcError;
@@ -99,6 +102,11 @@ pub use attribution::{
 pub use rationale::{
     BlockPosition, Rationale, RationaleBlock, RationaleResult, ShellOutcome, ShellOutcomes,
     ShellOutcomesResult, TranscriptSource, TranscriptUnavailable,
+};
+// WHY-64
+pub use provenance::{
+    FileLineOrigins, HarnessLines, LineCoverage, LineOriginKind, LineOriginsResult,
+    LineOriginsUnavailable, LineRun, LineUnknownReason,
 };
 
 // `ts-rs` is a dev-dependency: the types derive `TS` only under `cfg(test)`
