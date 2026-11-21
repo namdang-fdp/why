@@ -63,5 +63,26 @@ They come from the app's UI running on fixture data, never from a real machine. 
 
 ## Deploys
 
-Nothing here deploys itself. Hosting (Vercel, root directory `site`) and the domain are set up by
-the maintainer; `vercel.json` only holds headers.
+The site is hosted on Vercel as the project `why`. Nothing in this repo deploys it; the project
+settings live in the Vercel dashboard, and `vercel.json` only holds headers.
+
+| Setting                                  | Value                                                                  |
+| ---------------------------------------- | ---------------------------------------------------------------------- |
+| Git repository                           | `namdang-fdp/why`, production branch `main`                            |
+| Root Directory                           | `site`                                                                 |
+| Framework, build, output                 | Astro, `pnpm build`, `dist`                                            |
+| Node.js                                  | 24.x                                                                   |
+| Include source files outside Root Dir    | **on**: `/changelog` reads `../CHANGELOG.md` at build time             |
+| Ignored Build Step                       | `git diff --quiet HEAD^ HEAD -- . ../CHANGELOG.md`                     |
+| Web Analytics, Speed Insights            | **off**: the page promises no tracking                                 |
+| Production domain                        | `why.dorriss.com`                                                      |
+
+- Vercel deploys a commit **pushed** to `main`. A project created after a commit does not deploy
+  that commit by itself, so the first deploy needs a new commit on `main`.
+- A push that changes neither `site/` nor `CHANGELOG.md` skips the build (the Ignored Build Step
+  exits 0). If the command fails, Vercel builds anyway.
+- DNS is at Cloudflare: a `CNAME` for `why` pointing at the value Vercel shows for the domain, with
+  the proxy **off** (DNS only, grey cloud). A proxied record in front of Vercel breaks its
+  certificates.
+- The `*.vercel.app` URLs sit behind Vercel Authentication; the custom domain is public.
+- The canonical URL and Open Graph tags come from `site` in `src/data/release.ts`.
