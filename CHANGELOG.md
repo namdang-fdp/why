@@ -11,6 +11,60 @@ the GitHub release notes, so keep each version section self-contained. Details a
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-11-21
+
+Polish from the first dogfood of v0.2.0: a settings page, a calmer top bar, and a Why inspector that
+answers "why does this file look like this, and how far can I trust that?" first. This is a UI
+release: it changes nothing about what WHY captures, how hooks are installed, or what it reads from
+your repositories. Linux only, as before.
+
+### Added
+
+- **A settings page.** A gear at the bottom of the left rail (or `Ctrl/Cmd+,`) opens a full settings
+  page with a sidebar: **Editor** (font, size, line height, ligatures, whitespace and theme, with a
+  live preview) and **Agent hooks** (the same install, review and uninstall flow as before, moved
+  here from a dialog). It replaces the top-bar _Agent hooks_ button and the editor-settings popover,
+  and the command palette entries open the right section. Settings are still stored locally in the
+  app, as before.
+- **A worktree overview in the inspector** (the new _Worktree_ tab). It shows the task as the
+  verbatim first prompt of the latest session that has one, or "No task context captured" (WHY never
+  guesses a task from a branch name); the changed-file and session counts; the added and removed
+  lines; and an **evidence coverage** bar: how many changed files have a captured agent edit, only
+  an unconfirmed attempt, or none. A control lists the files without an applied edit, the same set
+  as the rail's _Unexplained_ filter.
+- **A turn strip** above a session's turns, marking turns with edits, test runs and failures. A very
+  long session is grouped into at most 80 segments.
+
+### Changed
+
+- **Selecting a worktree opens its first changed file**, or the file you last had open there,
+  instead of an empty "Select a file". Keyboard navigation in the rail keeps working and focus does
+  not move.
+- **The inspector is file-first.** The _File_ tab shows one evidence chip (explained by N captured
+  edits, an unconfirmed attempt, or no captured agent edit) and the captured edits behind it, and
+  no session log. In a session, the start and end times and the Codex exit-code note are collapsed
+  under _Session details_; runs of three or more shell or tool calls fold into one row (by the kind
+  WHY recorded, never by guessing from the command text); and outcome and evidence chips appear only
+  when they add information. A session in which no outcome was recorded says so once, instead of
+  repeating "unknown" on every row. _Why?_ on a tool call shows on hover or focus.
+- **A calmer top bar.** The logo mark replaces the "WHY" wordmark and Search moves to the left. The
+  repository and worktree names live in the rail, and the base is a compact button next to the diff
+  modes. The `?` shortcuts dialog has two columns.
+
+### Known limitations
+
+- **Linux only**, unsigned builds, no auto-update (unchanged). Needs Git 2.45.1 or newer.
+- **Edits made by shell commands are not attributed.** Codex in particular often edits files
+  through shell commands, so its files can show "No captured agent edit". Capturing shell writes
+  is planned for v0.3.
+- **A session is attributed to the worktree of its working directory.** If an agent started in one
+  worktree edits a file in another by absolute path, the other worktree shows no evidence for it.
+- **The Codex card keeps asking you to review the hook in `/hooks`**, because WHY cannot read
+  Codex's trust store, even after you approved it. The _Agent hooks_ status can also read "Spool
+  files waiting: unknown" until the spool directory exists.
+- **File-level attribution only.** A file explained by an agent turn may still hold changes WHY did
+  not see; line-level provenance is planned for v0.3.
+
 ## [0.2.0] - 2026-11-21
 
 Session context: WHY now sees what Claude Code and Codex did in each worktree, turn by turn, and
@@ -159,6 +213,7 @@ disturb them.
 - **Unsigned builds.** The release assets are not code-signed and WHY has no auto-update. Check the
   download against `SHA256SUMS`.
 
-[Unreleased]: https://github.com/namdang-fdp/why/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/namdang-fdp/why/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/namdang-fdp/why/releases/tag/v0.2.1
 [0.2.0]: https://github.com/namdang-fdp/why/releases/tag/v0.2.0
 [0.1.0]: https://github.com/namdang-fdp/why/releases/tag/v0.1.0
