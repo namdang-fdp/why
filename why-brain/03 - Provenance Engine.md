@@ -22,5 +22,8 @@ Never claim access to private chain-of-thought; summaries/messages are not guara
 ## Portable records
 Reviewers are often not the person who ran the agent and lack the transcript. Design LineOrigin, Decision and Evidence as exportable, versioned, path-relative records keyed by revision + file + range + content hash, with evidence excerpts and source refs embedded or content-addressed. Target carriers: git notes, commit trailers, checkpoint file on a PR. Redact secrets/private prompts on export. Not in MVP; the schema must not block it.
 
+## What v0.3 stores (decision 29)
+The replay needs exact edits, not the rendered excerpts v0.2 keeps. Per edit WHY stores line **hashes** and counts (removed, added, context; positions and a whole old-file hash where the harness provides them), never line text. Claude `Write`/`Edit` gives positions and `originalFile`, so every edit can be checked against the replayed state and a mismatch resyncs instead of guessing. Codex `apply_patch` gives context but no positions, so hunks are located by context and an ambiguous match is Unknown. A payload the hook reduced is recorded as unobserved. An edit is stored under the worktree that owns the edited file, not the session's cwd (decision 32).
+
 ## Inputs
 Claude Code: SessionStart, UserPromptSubmit, MessageDisplay, PreToolUse, PostToolUse, SubagentStart/Stop, Stop; transcript_path. Codex: corresponding hooks incl. apply_patch, cwd/session/turn IDs; rollout JSONL (unstable format, version adapters). App Server JSON-RPC can stream structured items if WHY later controls sessions. Use Git worktree discovery, not Claude WorktreeCreate hook (that hook replaces default creation).
