@@ -31,6 +31,10 @@ tauri = { version = "2.12", features = [] }
 tokio = { version = "1.54", features = ["rt-multi-thread", "macros", "sync", "time", "process", "fs", "net", "io-util"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+# Codex's managed hook policy lives in requirements.toml.
+toml = "1"
+# Exclusively created staging files for hook binaries and settings.
+tempfile = "3"
 thiserror = "2.0"
 anyhow = "1.0"
 tracing = "0.1"
@@ -67,8 +71,6 @@ libc = "0.2"
 # Test-only: generates the TypeScript types in ui/src/contracts from the contract
 # types (`#[cfg_attr(test, derive(TS))]`), so it never ships in the app binary.
 ts-rs = "12.0.1"
-# Throw-away directories for the git integration tests.
-tempfile = "3"
 # `test-util` adds the paused clock (`tokio::time::pause`/`advance`) for the
 # debounce tests; `macros` + `rt` give `#[tokio::test]`. Test-only, never shipped.
 tokio = { version = "1.54", features = ["test-util", "macros", "rt"] }

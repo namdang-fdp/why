@@ -2,9 +2,15 @@
 // Regenerate with `pnpm gen:contracts`.
 
 export * from "./events";
+export type { ApplyResult } from "./ApplyResult";
 export type { AttributionStatus } from "./AttributionStatus";
+export type { BinaryInfo } from "./BinaryInfo";
+export type { BinaryStatus } from "./BinaryStatus";
 export type { BranchInfo } from "./BranchInfo";
+export type { ChangeOutcome } from "./ChangeOutcome";
 export type { ChangeStatus } from "./ChangeStatus";
+export type { CollectorHealth } from "./CollectorHealth";
+export type { CollectorState } from "./CollectorState";
 export type { DiffMode } from "./DiffMode";
 export type { EvidenceLabel } from "./EvidenceLabel";
 export type { FileAttribution } from "./FileAttribution";
@@ -14,7 +20,15 @@ export type { FilterDriverInfo } from "./FilterDriverInfo";
 export type { FilterGuardStatus } from "./FilterGuardStatus";
 export type { FilterScope } from "./FilterScope";
 export type { Harness } from "./Harness";
+export type { HarnessHookStatus } from "./HarnessHookStatus";
+export type { HookHarness } from "./HookHarness";
+export type { HookPreview } from "./HookPreview";
+export type { HookState } from "./HookState";
+export type { HookStatusReport } from "./HookStatusReport";
 export type { IpcError } from "./IpcError";
+export type { PreviewKind } from "./PreviewKind";
+export type { PreviewResult } from "./PreviewResult";
+export type { RefusalReason } from "./RefusalReason";
 export type { RepoId } from "./RepoId";
 export type { Repository } from "./Repository";
 export type { RepositoryChanged } from "./RepositoryChanged";

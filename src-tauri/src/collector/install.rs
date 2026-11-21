@@ -4,23 +4,34 @@
 //! and the bundled `why-hook` sits inside that mount, so a hook config naming
 //! it would break the next launch. The installers (WHY-14/15) therefore point
 //! at ONE stable copy: `~/.local/share/why/bin/why-hook`. The app is meant to
-//! refresh it at start so an upgrade replaces the hook too; nothing calls
-//! [`install_bundled_hook`] yet (the installers, WHY-14/15, will).
+//! refresh it when hooks are installed (`hooks/`, WHY-51), so an upgrade
+//! replaces the hook too.
 
+use std::ffi::CString;
+use std::fs;
 use std::io;
-use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
-use why_wire::PathEnv;
+use why_wire::{Instance, PathEnv};
 
 /// Name of the binary, as Tauri places a sidecar next to the app executable
 /// (the `-<target-triple>` suffix is stripped when bundling).
 pub const HOOK_BINARY: &str = "why-hook";
 
-/// `<data home>/why/bin/why-hook`: `$XDG_DATA_HOME` if absolute, else
-/// `$HOME/.local/share` (also on macOS, deliberately: one documented path for
-/// both, easy for users to find and to audit). `None` without a usable home.
-pub fn stable_hook_path(env: &PathEnv) -> Option<PathBuf> {
+/// The stable copy of the hook for `instance` (decision 25):
+///
+/// * installed: `<data home>/why/bin/why-hook`;
+/// * dev on port P: `<data home>/why/bin/dev-P/why-hook`, so a worker's
+///   in-progress build never overwrites the file the INSTALLED instance's
+///   agent configs run (and Codex, which pins trust to the hook's hash, never
+///   needs a re-approval because of a dev build).
+///
+/// `<data home>` is `$XDG_DATA_HOME` if absolute, else `$HOME/.local/share`
+/// (also on macOS, deliberately: one documented path for both, easy for users
+/// to find and to audit). `None` without a usable home. The file name stays
+/// `why-hook` in every case: the hook installer's ownership rule relies on it.
+pub fn stable_hook_path(env: &PathEnv, instance: Instance) -> Option<PathBuf> {
     let abs = |v: &Option<std::ffi::OsString>| {
         v.as_deref()
             .map(Path::new)
@@ -28,12 +39,27 @@ pub fn stable_hook_path(env: &PathEnv) -> Option<PathBuf> {
             .map(Path::to_path_buf)
     };
     let base = abs(&env.data_home).or_else(|| abs(&env.home).map(|h| h.join(".local/share")))?;
-    Some(base.join("why/bin").join(HOOK_BINARY))
+    let bin = base.join("why/bin");
+    Some(match instance {
+        Instance::Installed => bin.join(HOOK_BINARY),
+        Instance::Dev { port } => bin.join(format!("dev-{port}")).join(HOOK_BINARY),
+    })
 }
 
 /// Where the bundled sidecar is, given the app executable's path.
 pub fn bundled_hook_path(current_exe: &Path) -> Option<PathBuf> {
     Some(current_exe.parent()?.join(HOOK_BINARY))
+}
+
+pub fn is_executable(path: &Path) -> bool {
+    if !path.is_file() {
+        return false;
+    }
+    let Ok(path) = CString::new(path.as_os_str().as_encoded_bytes()) else {
+        return false;
+    };
+    // SAFETY: path is NUL-terminated and lives through the call.
+    unsafe { libc::faccessat(libc::AT_FDCWD, path.as_ptr(), libc::X_OK, libc::AT_EACCESS) == 0 }
 }
 
 /// Copy `src` to `dest` atomically with mode `0755`.
@@ -48,36 +74,42 @@ pub fn install_hook_binary(src: &Path, dest: &Path) -> io::Result<()> {
     let dir = dest
         .parent()
         .ok_or_else(|| io::Error::other("destination has no parent directory"))?;
-    std::fs::create_dir_all(dir)?;
-    let tmp = dir.join(format!(".{HOOK_BINARY}.tmp-{}", std::process::id()));
-    let result = (|| {
-        let mut from = std::fs::File::open(src)?;
-        let mut to = std::fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .mode(0o755)
-            .open(&tmp)?;
-        io::copy(&mut from, &mut to)?;
-        to.sync_all()?;
-        drop(to); // close before rename/exec: an open-for-write file is ETXTBSY
-        // `mode` above is filtered by the umask; set the final mode explicitly.
-        std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o755))?;
-        std::fs::rename(&tmp, dest)
-    })();
-    if result.is_err() {
-        let _ = std::fs::remove_file(&tmp);
-    }
-    result
+    let mut from = fs::File::open(src)?;
+    fs::create_dir_all(dir)?;
+    let mut staged = tempfile::NamedTempFile::new_in(dir)?;
+    io::copy(&mut from, &mut staged)?;
+    staged
+        .as_file()
+        .set_permissions(fs::Permissions::from_mode(0o755))?;
+    staged.as_file().sync_all()?;
+    // Close before publishing: exec on an open-for-write file can get ETXTBSY.
+    staged.into_temp_path().persist(dest)?;
+    Ok(())
 }
 
-/// Install the bundled hook to the stable path; returns where it now lives.
-pub fn install_bundled_hook(env: &PathEnv) -> io::Result<PathBuf> {
+/// Install the bundled hook to `instance`'s stable path; returns where it now lives.
+pub fn install_bundled_hook(env: &PathEnv, instance: Instance) -> io::Result<PathBuf> {
     let missing = |what: &str| io::Error::new(io::ErrorKind::NotFound, what.to_owned());
-    let dest = stable_hook_path(env).ok_or_else(|| missing("no usable HOME or XDG_DATA_HOME"))?;
     let exe = std::env::current_exe()?;
     let src = bundled_hook_path(&exe).ok_or_else(|| missing("no directory for the app binary"))?;
-    install_hook_binary(&src, &dest)?;
+    install_hook_binary_from(env, instance, &src)
+}
+
+/// Install the hook binary at `src` to `instance`'s stable path. The hook installer
+/// (`hooks/`) calls this with a path it resolved through its injected
+/// environment, so tests never depend on where the test executable lives.
+pub fn install_hook_binary_from(
+    env: &PathEnv,
+    instance: Instance,
+    src: &Path,
+) -> io::Result<PathBuf> {
+    let dest = stable_hook_path(env, instance).ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::NotFound,
+            "no usable HOME or XDG_DATA_HOME".to_owned(),
+        )
+    })?;
+    install_hook_binary(src, &dest)?;
     Ok(dest)
 }
 
@@ -100,20 +132,43 @@ mod tests {
     #[test]
     fn the_stable_path_follows_xdg_rules() {
         assert_eq!(
-            stable_hook_path(&env(None, Some("/home/u"))),
+            stable_hook_path(&env(None, Some("/home/u")), Instance::Installed),
             Some("/home/u/.local/share/why/bin/why-hook".into())
         );
         assert_eq!(
-            stable_hook_path(&env(Some("/data"), Some("/home/u"))),
+            stable_hook_path(&env(Some("/data"), Some("/home/u")), Instance::Installed),
             Some("/data/why/bin/why-hook".into())
         );
         // Relative XDG_DATA_HOME is invalid per the spec: ignored.
         assert_eq!(
-            stable_hook_path(&env(Some("rel"), Some("/home/u"))),
+            stable_hook_path(&env(Some("rel"), Some("/home/u")), Instance::Installed),
             Some("/home/u/.local/share/why/bin/why-hook".into())
         );
-        assert_eq!(stable_hook_path(&env(None, None)), None);
-        assert_eq!(stable_hook_path(&env(None, Some("relative"))), None);
+        assert_eq!(
+            stable_hook_path(&env(None, None), Instance::Installed),
+            None
+        );
+        assert_eq!(
+            stable_hook_path(&env(None, Some("relative")), Instance::Installed),
+            None
+        );
+    }
+
+    #[test]
+    fn dev_instances_get_their_own_stable_path_with_the_same_file_name() {
+        let e = env(None, Some("/home/u"));
+        assert_eq!(
+            stable_hook_path(&e, Instance::Dev { port: 1520 }),
+            Some("/home/u/.local/share/why/bin/dev-1520/why-hook".into())
+        );
+        assert_ne!(
+            stable_hook_path(&e, Instance::Dev { port: 1520 }),
+            stable_hook_path(&e, Instance::Dev { port: 1530 })
+        );
+        assert_eq!(
+            stable_hook_path(&e, Instance::Installed),
+            Some("/home/u/.local/share/why/bin/why-hook".into())
+        );
     }
 
     #[test]
@@ -161,5 +216,29 @@ mod tests {
             std::fs::read_dir(dest.parent().unwrap()).unwrap().count(),
             1
         );
+    }
+
+    #[test]
+    fn concurrent_copies_publish_a_complete_binary() {
+        let t = TempDir::new().unwrap();
+        let sources = [t.path().join("a"), t.path().join("b")];
+        let contents = [vec![b'a'; 1024 * 1024], vec![b'b'; 2 * 1024 * 1024]];
+        for (source, bytes) in sources.iter().zip(&contents) {
+            fs::write(source, bytes).unwrap();
+        }
+        let dest = t.path().join("bin/why-hook");
+        let start = std::sync::Barrier::new(sources.len());
+        std::thread::scope(|scope| {
+            for source in &sources {
+                let (start, dest) = (&start, &dest);
+                scope.spawn(move || {
+                    start.wait();
+                    install_hook_binary(source, dest).unwrap();
+                });
+            }
+        });
+        assert!(contents.contains(&fs::read(&dest).unwrap()));
+        assert!(is_executable(&dest));
+        assert_eq!(fs::read_dir(dest.parent().unwrap()).unwrap().count(), 1);
     }
 }

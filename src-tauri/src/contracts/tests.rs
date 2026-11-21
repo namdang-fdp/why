@@ -599,3 +599,124 @@ fn worktree_attribution_wire_format() {
     let back: WorktreeAttribution = serde_json::from_value(wire).unwrap();
     assert_eq!(back, value);
 }
+
+// ---- hook installer (WHY-51) ----
+
+fn sample_binary() -> BinaryInfo {
+    BinaryInfo {
+        status: BinaryStatus::Unverified,
+        stable_path: "/h/.local/share/why/bin/why-hook".into(),
+        bundled_path: None,
+    }
+}
+
+#[test]
+fn hook_state_is_a_tagged_union() {
+    assert_wire(&HookState::NotInstalled, json!({ "kind": "notInstalled" }));
+    assert_wire(&HookState::Installed, json!({ "kind": "installed" }));
+    assert_wire(
+        &HookState::Outdated {
+            reasons: vec!["a timeout differs".into()],
+        },
+        json!({ "kind": "outdated", "reasons": ["a timeout differs"] }),
+    );
+    assert_wire(
+        &HookState::NeedsReview { hint: "h".into() },
+        json!({ "kind": "needsReview", "hint": "h" }),
+    );
+    assert_wire(
+        &HookState::DisabledByUserSetting {
+            message: "m".into(),
+        },
+        json!({ "kind": "disabledByUserSetting", "message": "m" }),
+    );
+    assert_wire(
+        &HookState::DisabledByPolicy {
+            source: "/etc/x".into(),
+        },
+        json!({ "kind": "disabledByPolicy", "source": "/etc/x" }),
+    );
+    assert_wire(
+        &HookState::ConfigInvalid {
+            message: "m".into(),
+        },
+        json!({ "kind": "configInvalid", "message": "m" }),
+    );
+}
+
+#[test]
+fn hook_preview_and_results_wire_format() {
+    let preview = HookPreview {
+        harness: HookHarness::ClaudeCode,
+        kind: PreviewKind::Install,
+        config_path: "/h/.claude/settings.json".into(),
+        fingerprint: "absent".into(),
+        outcome: ChangeOutcome::CreateFile,
+        before: None,
+        after: Some("{}\n".into()),
+        diff: "d".into(),
+        binary: sample_binary(),
+        notes: vec![],
+    };
+    let wire = serde_json::to_value(&preview).unwrap();
+    assert_eq!(wire["harness"], "claudeCode");
+    assert_eq!(wire["kind"], "install");
+    assert_eq!(wire["outcome"], "createFile");
+    assert_null(&wire, "before");
+    assert_eq!(wire["configPath"], "/h/.claude/settings.json");
+    assert_null(&wire["binary"], "bundledPath");
+    assert_eq!(wire["binary"]["status"], "unverified");
+
+    let ready = PreviewResult::Ready {
+        preview: preview.clone(),
+    };
+    let wire = serde_json::to_value(&ready).unwrap();
+    assert_eq!(wire["result"], "ready");
+    assert_eq!(wire["preview"]["fingerprint"], "absent");
+    assert_wire(
+        &PreviewResult::Refused {
+            reason: RefusalReason::DisabledByPolicy,
+            message: "no".into(),
+        },
+        json!({ "result": "refused", "reason": "disabledByPolicy", "message": "no" }),
+    );
+    let stale = ApplyResult::Stale { preview };
+    assert_eq!(serde_json::to_value(&stale).unwrap()["result"], "stale");
+    let wire = serde_json::to_value(&ApplyResult::Applied {
+        outcome: ChangeOutcome::RestoreOriginal,
+        status: HarnessHookStatus {
+            harness: HookHarness::Codex,
+            config_path: "/h/.codex/hooks.json".into(),
+            state: HookState::NotInstalled,
+            events: vec!["Stop".into()],
+        },
+    })
+    .unwrap();
+    assert_eq!(wire["result"], "applied");
+    assert_eq!(wire["outcome"], "restoreOriginal");
+    assert_eq!(wire["status"]["state"], json!({ "kind": "notInstalled" }));
+}
+
+#[test]
+fn collector_health_wire_format() {
+    let health = CollectorHealth {
+        socket_path: "/run/why/collector.sock".into(),
+        status: CollectorState::Disabled {
+            reason: "in use".into(),
+        },
+        events_received: Some(3),
+        spool_ingested: None,
+        spool_files: Some(0),
+        unavailable: vec!["lastEventAt".into()],
+    };
+    let wire = serde_json::to_value(&health).unwrap();
+    assert_eq!(
+        wire["status"],
+        json!({ "kind": "disabled", "reason": "in use" })
+    );
+    assert_eq!(wire["eventsReceived"], 3);
+    assert_null(&wire, "spoolIngested");
+    assert_eq!(wire["unavailable"], json!(["lastEventAt"]));
+    assert_wire(&CollectorState::Listening, json!({ "kind": "listening" }));
+    assert_wire(&HookHarness::Codex, json!("codex"));
+}

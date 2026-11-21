@@ -12,6 +12,7 @@
 
 use crate::contracts::IpcError;
 use crate::git::GitError;
+use crate::hooks::HookError;
 use crate::ipc::security::driver_info;
 use crate::store::StoreError;
 
@@ -62,6 +63,31 @@ impl From<StoreError> for IpcError {
         match err {
             StoreError::Backend(_) => IpcError::Internal {
                 message: "internal storage error".to_string(),
+            },
+        }
+    }
+}
+
+impl From<HookError> for IpcError {
+    fn from(err: HookError) -> Self {
+        tracing::warn!(error = ?err, "hook installer error: {err}");
+        match err {
+            // User-fixable refusals. The installer normally turns these into
+            // `Refused` values before they get here; this keeps `?` honest.
+            HookError::NoHome
+            | HookError::InvalidEnv(_)
+            | HookError::ConfigInvalid(_)
+            | HookError::DisabledByPolicy(_)
+            | HookError::UnsafeTarget(_)
+            | HookError::ReadOnly
+            | HookError::Locked
+            | HookError::TooLarge
+            | HookError::HookBinaryMissing(_) => IpcError::InvalidInput {
+                message: err.to_string(),
+            },
+            // The cause may name paths; it stays in the log.
+            HookError::Io(_) => IpcError::Internal {
+                message: "I/O error while updating the agent config".to_string(),
             },
         }
     }

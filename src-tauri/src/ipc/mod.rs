@@ -35,11 +35,14 @@
 //! * [`sessions`]: agent sessions (`list_sessions`, `get_session_timeline`).
 //! * [`attribution`]: which agent turns explain a worktree's changed files
 //!   (`get_worktree_attribution`, `get_file_activity`).
+//! * [`hooks`]: installing WHY's hooks into the agents' user-level config
+//!   (`preview_install`, `install`, `preview_uninstall`, `uninstall`, `hook_status`).
 //! * [`error`]: the one place errors become `IpcError`.
 
 pub mod changes;
 pub mod dialog;
 mod error;
+pub mod hooks;
 pub mod repos;
 pub mod security;
 pub mod sessions;
