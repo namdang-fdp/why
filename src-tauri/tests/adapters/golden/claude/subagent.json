@@ -1,0 +1,32 @@
+[
+  {
+    "status": "ended",
+    "turns": [
+      {
+        "closed": true,
+        "events": [
+          "prompt - - [] observed",
+          "subagent Agent ok [] observed",
+          "subagent - - [] observed agent=ae9d",
+          "assistantMessage - - [] declared",
+          "stop - - [] observed",
+          "edit Write ok [src/sub.py] observed agent=ae9d",
+          "assistantMessage - - [] declared agent=ae9d",
+          "subagent - - [] observed agent=ae9d"
+        ],
+        "prompt": "Use the Agent tool (subagent_type genera",
+        "synthetic": false
+      },
+      {
+        "closed": true,
+        "events": [
+          "prompt - - [] observed",
+          "assistantMessage - - [] declared",
+          "stop - - [] observed"
+        ],
+        "prompt": "<task-notification>\n<task-id>ae9d3e717da",
+        "synthetic": true
+      }
+    ]
+  }
+]

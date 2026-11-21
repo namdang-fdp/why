@@ -1,0 +1,19 @@
+[
+  {
+    "status": "ended",
+    "turns": [
+      {
+        "closed": true,
+        "events": [
+          "prompt - - [] observed",
+          "edit Write ok [src/e.py] observed",
+          "toolCall Read ok [] observed",
+          "assistantMessage - - [] declared",
+          "stop - - [] observed"
+        ],
+        "prompt": "Use the Write tool to create the file sr",
+        "synthetic": false
+      }
+    ]
+  }
+]

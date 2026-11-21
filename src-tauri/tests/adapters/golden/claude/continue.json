@@ -1,0 +1,17 @@
+[
+  {
+    "status": "ended",
+    "turns": [
+      {
+        "closed": true,
+        "events": [
+          "prompt - - [] observed",
+          "assistantMessage - - [] declared",
+          "stop - - [] observed"
+        ],
+        "prompt": "What was the last file you were asked to",
+        "synthetic": false
+      }
+    ]
+  }
+]

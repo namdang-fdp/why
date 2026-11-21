@@ -109,6 +109,15 @@ pub struct EventKey(pub String);
 impl EventKey {
     /// The key of the `index`-th event normalized from `env`.
     pub fn for_delivery(env: &Envelope, index: u32) -> Self {
+        DeliveryDigest::new(env).event_key(index)
+    }
+}
+
+/// The shared prefix of all event keys from one hook delivery.
+pub(crate) struct DeliveryDigest(String);
+
+impl DeliveryDigest {
+    pub(crate) fn new(env: &Envelope) -> Self {
         let mut hasher = Sha256::new();
         hasher.update(b"why:event-key:v1\0");
         feed(&mut hasher, env.harness.as_str().as_bytes());
@@ -120,8 +129,11 @@ impl EventKey {
         feed(&mut hasher, &payload);
         let digest = hasher.finalize();
         // 128 bits: no realistic collision across years of one person's events.
-        let hex: String = digest[..16].iter().map(|b| format!("{b:02x}")).collect();
-        EventKey(format!("{hex}:{index}"))
+        Self(digest[..16].iter().map(|b| format!("{b:02x}")).collect())
+    }
+
+    pub(crate) fn event_key(&self, index: u32) -> EventKey {
+        EventKey(format!("{}:{index}", self.0))
     }
 }
 
@@ -236,8 +248,17 @@ impl NormalizedEvent {
         session_id: impl Into<String>,
         kind: EventKind,
     ) -> Self {
+        Self::from_delivery_key(env, EventKey::for_delivery(env, index), session_id, kind)
+    }
+
+    pub(crate) fn from_delivery_key(
+        env: &Envelope,
+        key: EventKey,
+        session_id: impl Into<String>,
+        kind: EventKind,
+    ) -> Self {
         Self {
-            key: EventKey::for_delivery(env, index),
+            key,
             session: SessionKey::new(env.harness, session_id),
             hook_event: env.event.clone(),
             kind,

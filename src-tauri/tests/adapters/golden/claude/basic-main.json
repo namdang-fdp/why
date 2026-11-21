@@ -1,0 +1,38 @@
+[
+  {
+    "status": "ended",
+    "turns": [
+      {
+        "closed": true,
+        "events": [
+          "prompt - - [] observed",
+          "toolCall Read ok [] observed",
+          "edit Write ok [src/greet.py] observed",
+          "edit Edit ok [src/calc.py] observed",
+          "shell Bash ok [] observed",
+          "assistantMessage - - [] declared",
+          "assistantMessage - - [] declared",
+          "stop - - [] observed"
+        ],
+        "prompt": "Do these steps in order using tools: 1) ",
+        "synthetic": false
+      },
+      {
+        "closed": true,
+        "events": [
+          "prompt - - [] observed",
+          "toolCall ToolSearch ok [] observed",
+          "toolCall Read ok [] observed",
+          "edit Edit failed [src/calc.py] observed",
+          "edit Edit ok [tests/test_calc.py] observed",
+          "shell Bash ok [] observed",
+          "assistantMessage - - [] declared",
+          "assistantMessage - - [] declared",
+          "stop - - [] observed"
+        ],
+        "prompt": "Now: 1) Use the Edit tool to replace the",
+        "synthetic": false
+      }
+    ]
+  }
+]

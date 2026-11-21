@@ -1,0 +1,21 @@
+[
+  {
+    "status": "ended",
+    "turns": [
+      {
+        "closed": true,
+        "events": [
+          "prompt - - [] observed",
+          "toolCall Read ok [] observed",
+          "edit Write ok [src/greet.py] observed",
+          "shell Bash ok [] observed",
+          "assistantMessage - - [] declared",
+          "assistantMessage - - [] declared",
+          "stop - - [] observed"
+        ],
+        "prompt": "Do exactly these tool calls in order: (a",
+        "synthetic": false
+      }
+    ]
+  }
+]

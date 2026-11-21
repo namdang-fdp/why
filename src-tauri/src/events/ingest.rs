@@ -199,17 +199,37 @@ mod tests {
         assert!(again.changed_worktrees.is_empty());
     }
 
-    // With the WHY-46 stub adapters, a real envelope stores nothing.
+    // A harness with no adapter stores nothing: the envelope is dropped, not
+    // an error.
     #[tokio::test]
-    async fn stub_adapters_store_nothing() {
+    async fn envelope_of_a_harness_without_adapter_stores_nothing() {
         let store = MemoryEventStore::new();
         let env = crate::events::test_support::envelope(
-            why_wire::Harness::ClaudeCode,
+            why_wire::Harness::Unknown,
             "UserPromptSubmit",
             1,
             serde_json::json!({ "session_id": "s", "hook_event_name": "UserPromptSubmit", "prompt": "hi" }),
         );
         let out = ingest(&env, &NoResolver, &store).await.unwrap();
         assert_eq!(out, AppendOutcome::default());
+    }
+
+    // Since WHY-14 the Claude adapter is real: its prompt is stored.
+    #[tokio::test]
+    async fn claude_prompt_is_stored_through_the_adapter() {
+        let store = MemoryEventStore::new();
+        let env = crate::events::test_support::envelope(
+            why_wire::Harness::ClaudeCode,
+            "UserPromptSubmit",
+            1,
+            serde_json::json!({ "session_id": "s", "hook_event_name": "UserPromptSubmit", "prompt": "hi", "prompt_id": "p1" }),
+        );
+        let out = ingest(&env, &NoResolver, &store).await.unwrap();
+        assert_eq!(out.inserted, 1);
+        let t = store
+            .timeline(&SessionKey::new(why_wire::Harness::ClaudeCode, "s"))
+            .unwrap()
+            .unwrap();
+        assert_eq!(t.session.task.as_deref(), Some("hi"));
     }
 }
