@@ -128,6 +128,45 @@ describe("order and clean grouping", () => {
 });
 
 describe("which worktree the files belong to", () => {
+  it("opens the first of three changed files on a worktree click", async () => {
+    const { user, store } = setup();
+    await user.click(await worktreeRow(/^agent\/scoring/));
+    const files = await screen.findByRole("list", { name: "Changed files" });
+    const rows = within(files).getAllByRole("button", { name: /feature-\d\.ts/ });
+    expect(rows).toHaveLength(3);
+    expect(rows[0]?.getAttribute("aria-current")).toBe("true");
+    await waitFor(() =>
+      expect(store.getState().fileDiff).toMatchObject({
+        status: "ok",
+        data: { path: "src/modules/wt-aip-3/feature-1.ts" },
+      }),
+    );
+  });
+
+  it("keeps focus on the worktree row when Enter selects it and j/k change files", async () => {
+    const { user, store } = setup();
+    const row = await worktreeRow(/^agent\/scoring/);
+    row.focus();
+    await user.keyboard("{Enter}");
+    const first = "src/modules/wt-aip-3/feature-1.ts";
+    const second = "src/modules/wt-aip-3/feature-2.ts";
+    await waitFor(() => expect(store.getState().filePath).toBe(first));
+    expect(document.activeElement).toBe(row);
+    await user.keyboard("j");
+    expect(store.getState().filePath).toBe(second);
+    await user.keyboard("k");
+    expect(store.getState().filePath).toBe(first);
+    expect(document.activeElement).toBe(row);
+  });
+
+  it("keeps the empty state when a selected worktree has no changes", async () => {
+    const { user, store } = setup();
+    await user.click(await worktreeRow(/^main/));
+    expect(await screen.findByRole("heading", { name: "No changes" })).toBeTruthy();
+    expect(store.getState().filePath).toBeNull();
+    expect(store.getState().fileDiff.status).toBe("idle");
+  });
+
   it("names the selected worktree in the Changed files header", async () => {
     const { user } = setup();
     await user.click(await worktreeRow(/^agent\/scoring/));

@@ -27,7 +27,8 @@ describe("file diff cache and prefetch", () => {
     const { store, pathsRead, settle } = await setup();
     await store.getState().selectFile(B); // second of eight: neighbours A and C
     await settle();
-    expect(pathsRead().sort()).toEqual([A, B, C].sort());
+    // The initial selection of A already cached A and prefetched B.
+    expect(pathsRead()).toEqual([C]);
     await store.getState().selectFile(B);
     await settle();
     expect(pathsRead().filter((path) => path === C)).toHaveLength(1); // no second prefetch
