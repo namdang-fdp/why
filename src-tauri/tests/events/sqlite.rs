@@ -7,7 +7,7 @@ use std::thread;
 
 use rusqlite::{Connection, OpenFlags};
 use why_lib::contracts::ToolOutcome;
-use why_lib::events::sqlite::{SESSION_EVENTS_SQL, WORKTREE_SESSIONS_SQL};
+use why_lib::events::sqlite::{SCHEMA_VERSION, SESSION_EVENTS_SQL, WORKTREE_SESSIONS_SQL};
 use why_lib::events::{Clock, EventStore, NormalizedEvent, SessionKey, SqliteEventStore};
 use why_wire::Harness;
 
@@ -47,7 +47,7 @@ fn file_database_uses_wal_incremental_vacuum_and_current_version() {
         .pragma_query_value(None, "journal_mode", |r| r.get(0))
         .unwrap();
     assert_eq!(mode.to_lowercase(), "wal");
-    assert_eq!(pragma(&db(&dir), "user_version"), 2);
+    assert_eq!(pragma(&db(&dir), "user_version"), SCHEMA_VERSION as i64);
     // 2 = INCREMENTAL. It only sticks if set before the first write.
     assert_eq!(pragma(&db(&dir), "auto_vacuum"), 2);
 }
@@ -87,7 +87,7 @@ fn restart_gives_the_same_timeline_and_keeps_deduplicating() {
             "keys survive restarts"
         );
     }
-    assert_eq!(pragma(&db(&dir), "user_version"), 2);
+    assert_eq!(pragma(&db(&dir), "user_version"), SCHEMA_VERSION as i64);
 }
 
 #[test]

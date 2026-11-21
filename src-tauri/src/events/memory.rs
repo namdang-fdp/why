@@ -9,11 +9,13 @@ use super::correlation::{
     Call, CallEvent, EditTouch, ShellTurn, build_edit_touches, build_shell_turns,
     distinct_sessions, fold_calls, tool_event_class,
 };
+use super::edits::stored_form;
 use super::model::{EventKey, NormalizedEvent, SessionKey, ToolClass};
 use super::rationale::SourceEvent;
 use super::timeline::{TimelinePosition, TurnIndices, build_summary, build_timeline, turn_indices};
 use super::{AppendOutcome, EventStore};
 use crate::contracts::{SessionSummary, SessionTimeline, WorktreeId};
+use crate::provenance::{EditRecord, EditSource};
 use crate::store::StoreError;
 
 #[derive(Debug, Default)]
@@ -23,6 +25,13 @@ struct Inner {
     /// Each session's events in ARRIVAL order (the timeline builder relies on
     /// it to break timestamp ties).
     sessions: HashMap<SessionKey, Vec<NormalizedEvent>>,
+    /// WHY-64: every stored edit op, in arrival order (the order
+    /// `edit_records` returns). Kept apart from the events, like SQLite's
+    /// `edit_ops` table, so the two stores behave alike.
+    edits: Vec<EditRecord>,
+    /// The next event's arrival number: SQLite's `events.seq`, which an
+    /// [`EditRecord::seq`] reports.
+    next_seq: u64,
 }
 
 /// An [`EventStore`] in two hash maps behind one `std::sync::Mutex` (held for
@@ -93,11 +102,36 @@ impl EventStore for MemoryEventStore {
             // `insert` returns false when the key was already there: that check
             // and the insert are one operation, under the lock.
             if inner.keys.insert(ev.key.clone()) {
+                let seq = inner.next_seq;
+                inner.next_seq += 1;
+                // The event and its ops go in under the same lock: no reader
+                // ever sees one without the other.
+                for (index, op) in ev.edits.iter().enumerate() {
+                    let Some((_, op)) = stored_form(op) else {
+                        continue;
+                    };
+                    inner.edits.push(EditRecord {
+                        source: EditSource {
+                            session: ev.session.clone(),
+                            turn_id: ev.turn_id.clone(),
+                            agent_id: ev.agent_id.clone(),
+                            tool_use_id: ev.tool.as_ref().and_then(|t| t.use_id.clone()),
+                            event_key: ev.key.clone(),
+                        },
+                        seq,
+                        op_index: u32::try_from(index).unwrap_or(u32::MAX),
+                        at_ms: ev.at_ms,
+                        op,
+                    });
+                }
+                let mut stored = ev.clone();
+                // Like SQLite: the ops live in `edits`, not on the event.
+                stored.edits = Vec::new();
                 inner
                     .sessions
                     .entry(ev.session.clone())
                     .or_default()
-                    .push(ev.clone());
+                    .push(stored);
                 changed_sessions.insert(&ev.session);
                 outcome.inserted += 1;
             } else {
@@ -144,7 +178,12 @@ impl EventStore for MemoryEventStore {
 
     fn prune_older_than(&self, cutoff_ms: u64) -> Result<usize, StoreError> {
         let mut inner = self.lock()?;
-        let Inner { keys, sessions } = &mut *inner;
+        let Inner {
+            keys,
+            sessions,
+            edits,
+            ..
+        } = &mut *inner;
         let before = sessions.len();
         sessions.retain(|_, events| {
             let keep = events.iter().any(|e| e.at_ms >= cutoff_ms);
@@ -155,6 +194,8 @@ impl EventStore for MemoryEventStore {
             }
             keep
         });
+        // A pruned session's ops go with it (SQLite: ON DELETE CASCADE).
+        edits.retain(|r| sessions.contains_key(&r.source.session));
         Ok(before - sessions.len())
     }
 
@@ -178,6 +219,18 @@ impl EventStore for MemoryEventStore {
             calls.extend(session_calls);
         }
         Ok(build_edit_touches(calls, &wanted, &indices))
+    }
+
+    // O(all stored ops) per call; see `edit_calls` for why that is acceptable.
+    fn edit_records(&self, wt: &WorktreeId, path: &str) -> Result<Vec<EditRecord>, StoreError> {
+        let inner = self.lock()?;
+        // `edits` is already in (seq, op_index) order: appended in arrival order.
+        Ok(inner
+            .edits
+            .iter()
+            .filter(|r| r.op.worktree_id.as_ref() == Some(wt) && r.op.path == path)
+            .cloned()
+            .collect())
     }
 
     fn shell_turns(&self, wt: &WorktreeId) -> Result<Vec<ShellTurn>, StoreError> {

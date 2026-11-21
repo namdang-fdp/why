@@ -33,6 +33,8 @@ pub mod model;
 pub mod rationale;
 pub mod sqlite;
 pub mod timeline;
+// WHY-64: how an event's edit ops are stored.
+mod edits;
 
 #[cfg(test)]
 pub(crate) mod test_support;
@@ -40,6 +42,7 @@ pub(crate) mod test_support;
 use std::time::Duration;
 
 use crate::contracts::{SessionSummary, SessionTimeline, WorktreeId};
+use crate::provenance::EditRecord;
 use crate::store::StoreError;
 
 pub use clock::Clock;
@@ -79,6 +82,15 @@ pub trait EventStore: Send + Sync {
     /// [`SessionKey`] creates it, later ones (including a resume's
     /// `SessionStart`) update it. Compute changed worktrees with the append
     /// so memberships and insertions are read from the same store state.
+    ///
+    /// Each newly stored event's [`NormalizedEvent::edits`] are stored with
+    /// it, atomically (both or neither), so a redelivered event stores its
+    /// ops once. An op without a `worktree_id`, or whose path has no
+    /// [`canonical_path`] form, could never be looked up by
+    /// [`EventStore::edit_records`]: it is skipped, and the event itself is
+    /// still stored. An op's worktree is NOT added to `changed_worktrees` nor
+    /// linked to the session here; listing the session in the edited file's
+    /// worktree is the ingest step's job (WHY-65, decision 32).
     fn append(&self, events: &[NormalizedEvent]) -> Result<AppendOutcome, StoreError>;
 
     /// Sessions with at least one event in this worktree, most recently active
@@ -138,6 +150,20 @@ pub trait EventStore: Send + Sync {
     /// Same default as [`EventStore::edit_calls`]: an error, never "none".
     fn source_events(&self, _session: &SessionKey) -> Result<Option<Vec<SourceEvent>>, StoreError> {
         Err(unsupported("source_events"))
+    }
+
+    /// The stored edit ops of file `path` in worktree `wt`, in replay order:
+    /// by event arrival (`seq`), then by position inside the event
+    /// (`op_index`) (WHY-64). `path` must be in [`canonical_path`] form, as for
+    /// [`EventStore::edit_calls`]; the same relative path in another worktree
+    /// is a different file. Ops are matched by their CURRENT path only: an op
+    /// stored under another path with `renamed_from == path` is not returned
+    /// (the engine follows rename chains, not the store).
+    ///
+    /// Same default as [`EventStore::edit_calls`]: an error, never "none".
+    /// An empty list would label every line of the file `NoCapture`.
+    fn edit_records(&self, _wt: &WorktreeId, _path: &str) -> Result<Vec<EditRecord>, StoreError> {
+        Err(unsupported("edit_records"))
     }
 }
 
