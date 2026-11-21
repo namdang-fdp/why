@@ -101,7 +101,8 @@ describe("live sessions", () => {
     expect(updated.turnId).toBe(turnId);
     expect(
       updated.timeline.status === "ok" && updated.timeline.data.turns.at(-1)?.events,
-    ).toHaveLength(52);
+      // The fixture turn already has 4 events (prompt, test run and two more shell calls) before the 50.
+    ).toHaveLength(54);
 
     stop();
     source.emitSessionsChanged({ worktreeId: WT_WHY_AGENT });

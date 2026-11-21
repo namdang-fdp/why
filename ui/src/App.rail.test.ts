@@ -166,10 +166,12 @@ describe("filter", () => {
     const { user } = setup();
     await user.click(await worktreeRow(/^agent\/login-flow/));
     const files = await screen.findByRole("list", { name: "Changed files" });
-    expect(within(files).getAllByRole("button")).toHaveLength(7);
+    // The evidence chips under each file are buttons too: count the file rows.
+    const rows = () => files.querySelectorAll(".file-row");
+    expect(rows()).toHaveLength(7);
     await user.keyboard("/");
     await user.keyboard("feature-3");
-    await waitFor(() => expect(within(files).getAllByRole("button")).toHaveLength(1));
+    await waitFor(() => expect(rows()).toHaveLength(1));
   });
 });
 
