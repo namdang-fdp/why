@@ -421,6 +421,47 @@ fn an_oversized_payload_becomes_a_truncated_envelope() {
     );
 }
 
+/// An oversized payload keeps the edited file's path, so the credential check
+/// the whole-payload path runs must also run on it: a huge `Write` into a
+/// credential file under a custom home is redacted, and the path is not kept.
+#[test]
+fn an_oversized_payload_for_a_credential_file_is_redacted_not_truncated() {
+    let sb = Sandbox::new();
+    let claude = sb._tmp.path().join("cfg-claude");
+    fs::create_dir_all(&claude).unwrap();
+    let env = [("CLAUDE_CONFIG_DIR", claude.as_path())];
+    let big = |path: &Path| {
+        format!(
+            r#","tool_input":{{"file_path":{},"content":"{}"}}"#,
+            serde_json::to_string(path).unwrap(),
+            "y".repeat(2 * 1024 * 1024)
+        )
+    };
+    sb.run_with(
+        &sb.payload(&sb.repo, &big(&claude.join(".credentials.json"))),
+        &env,
+    );
+    // Control: an ordinary path of the same size stays truncated, with its path.
+    sb.run_with(&sb.payload(&sb.repo, &big(&sb.repo.join("a.rs"))), &env);
+
+    let lines = sb.spooled_lines();
+    assert_eq!(lines.len(), 2);
+    let secret = envelope(&lines[0]);
+    assert_eq!(reduction_of(&secret.payload), Some(Reduction::Redacted));
+    assert!(secret.payload.get("tool_input").is_none());
+    assert!(
+        !String::from_utf8_lossy(&lines[0]).contains(".credentials.json"),
+        "the credential path is not forwarded"
+    );
+    assert_eq!(secret.payload["tool_name"], "Write");
+    let plain = envelope(&lines[1]);
+    assert_eq!(reduction_of(&plain.payload), Some(Reduction::Truncated));
+    assert_eq!(
+        plain.payload["tool_input"]["file_path"],
+        sb.repo.join("a.rs").to_str().unwrap()
+    );
+}
+
 /// Bigger than the hook will even buffer (8 MiB): still a timeline event, from
 /// the ids at the start of the payload.
 #[test]
