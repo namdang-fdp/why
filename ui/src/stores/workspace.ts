@@ -25,6 +25,7 @@ import { sortWorktrees, worktreeLabels } from "@/components/shell/rail-model";
 import { beginFileSwitch } from "@/lib/perf";
 import { createDiffCache } from "./diff-cache";
 import { createEvidenceStore } from "./evidence";
+import { createLineOriginsStore, diffReadRevision, tagDiffRead } from "./line-origins";
 import { createSessionsStore } from "./sessions";
 import { sameFileChange, sameFileChanges, sameFileDiff, sameJson } from "./same";
 
@@ -45,6 +46,8 @@ type WorkspaceStore = {
   sessions: ReturnType<typeof createSessionsStore>;
   /** Attribution, "Why?" rationale and recovered Codex exit codes (WHY-16, WHY-53a). */
   evidence: ReturnType<typeof createEvidenceStore>;
+  /** Line origins of the file open in the diff (WHY-25, v0.3 line provenance). */
+  lineOrigins: ReturnType<typeof createLineOriginsStore>;
   repositories: AsyncState<Repository[]>;
   storage: AsyncState<StorageStatus>;
   worktrees: Queries<Worktree[]>;
@@ -253,6 +256,7 @@ export const diffModes = [
 export function createWorkspaceStore(source: DataSource, toasts: StoreApi<Toasts> = toastStore) {
   const sessions = createSessionsStore(source);
   const evidence = createEvidenceStore(source);
+  const lineOrigins = createLineOriginsStore(source);
   return createStore<WorkspaceStore>((set, get) => {
     const lastFileByWorktree = new Map<WorktreeId, string>();
     const worktreeQueries = createQueryLoader(
@@ -321,10 +325,16 @@ export function createWorkspaceStore(source: DataSource, toasts: StoreApi<Toasts
       const shared = inflightDiffs.get(key);
       if (shared) return shared; // a prefetch of this very file is already running
       const epoch = diffCache.epoch(worktreeId);
+      // The file's change count when this read starts: the diff covers every change
+      // reported up to here, which line origins compare against (see `gutterGate`).
+      const revision = lineOrigins.getState().revisionOf(worktreeId, path);
       const request = resolveState(() => source.getFileDiff(worktreeId, path, mode)).then(
         (result) => {
           if (inflightDiffs.get(key) === request) inflightDiffs.delete(key);
-          if (result.status === "ok") diffCache.set(worktreeId, mode, path, result.data, epoch);
+          if (result.status === "ok") {
+            tagDiffRead(result.data, revision);
+            diffCache.set(worktreeId, mode, path, result.data, epoch);
+          }
           return result;
         },
       );
@@ -775,9 +785,15 @@ export function createWorkspaceStore(source: DataSource, toasts: StoreApi<Toasts
         version !== navigationVersion || // the user moved on
         now.worktreeId !== worktreeId ||
         now.filePath !== path ||
-        next.status !== "ok" ||
-        (now.fileDiff.status === "ok" && sameFileDiff(now.fileDiff.data, next.data))
+        next.status !== "ok"
       ) {
+        return;
+      }
+      if (now.fileDiff.status === "ok" && sameFileDiff(now.fileDiff.data, next.data)) {
+        // Same text: keep the shown diff (no re-render), but it has now been verified
+        // against the newer revision, which line origins are waiting to hear.
+        const revision = diffReadRevision(next.data);
+        if (revision !== undefined) lineOrigins.getState().confirmDiff(now.fileDiff.data, revision);
         return;
       }
       set({ fileDiff: next });
@@ -786,6 +802,7 @@ export function createWorkspaceStore(source: DataSource, toasts: StoreApi<Toasts
     return {
       sessions,
       evidence,
+      lineOrigins,
       hookData: source,
       repositories: idle,
       storage: idle,
@@ -1134,7 +1151,9 @@ export function createWorkspaceStore(source: DataSource, toasts: StoreApi<Toasts
       watchWorktrees: () => {
         const stopWorktrees = source.onWorktreeChanged(queueRefresh);
         const stopRepositories = source.onRepositoryChanged(queueRepository);
+        const stopLineOrigins = lineOrigins.getState().watch();
         return () => {
+          stopLineOrigins();
           stopWorktrees();
           stopRepositories();
           clearTimeout(flushTimer);
