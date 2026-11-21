@@ -13,4 +13,6 @@ mod conformance;
 // WHY-64
 mod edit_ops;
 mod hostile;
+// WHY-65
+mod last_event;
 mod sqlite;

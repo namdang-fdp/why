@@ -44,6 +44,7 @@ use std::time::Duration;
 use crate::contracts::{SessionSummary, SessionTimeline, WorktreeId};
 use crate::provenance::EditRecord;
 use crate::store::StoreError;
+use why_wire::Harness;
 
 pub use clock::Clock;
 pub use correlation::{EditTouch, ShellTurn, canonical_path};
@@ -170,6 +171,17 @@ pub trait EventStore: Send + Sync {
     /// An empty list would label every line of the file `NoCapture`.
     fn edit_records(&self, _wt: &WorktreeId, _path: &str) -> Result<Vec<EditRecord>, StoreError> {
         Err(unsupported("edit_records"))
+    }
+
+    /// When the newest event of `harness` arrived (Unix milliseconds), or
+    /// `None` if none was ever stored (WHY-55: "last event" per harness, the
+    /// sign that a harness really sends events to this instance). Any stored
+    /// event counts, whatever its kind; retention (30 days) applies.
+    ///
+    /// Same default as [`EventStore::edit_calls`]: an error, never "none".
+    /// "No event yet" would tell the user their hooks are not working.
+    fn last_event_ms(&self, _harness: Harness) -> Result<Option<u64>, StoreError> {
+        Err(unsupported("last_event_ms"))
     }
 }
 

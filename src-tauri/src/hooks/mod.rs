@@ -57,6 +57,7 @@ use crate::contracts::{
     HarnessHookStatus, HookHarness, HookPreview, HookState, HookStatusReport, PreviewKind,
     PreviewResult, RefusalReason,
 };
+use crate::events::timeline::rfc3339_from_ms;
 use config_file::Existing;
 
 /// Fingerprint of a config file that does not exist.
@@ -296,6 +297,14 @@ impl HooksEnv {
 pub struct CollectorSnapshot {
     pub status: CollectorStatus,
     pub stats: StatsSnapshot,
+}
+
+/// When each harness last sent an event to this WHY instance, in Unix
+/// milliseconds, as the event store reports it (`None` = none yet).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct LastEvents {
+    pub claude_code: Option<u64>,
+    pub codex: Option<u64>,
 }
 
 // ───────────────────────── the installer ─────────────────────────
@@ -746,6 +755,8 @@ impl HookContext {
             config_path,
             state,
             events,
+            // Filled by `hook_status`, which is given what the event store knows.
+            last_event_at: None,
         }
     }
 
@@ -856,30 +867,61 @@ impl HookContext {
         }
     }
 
-    pub fn hook_status(&self, collector: Option<CollectorSnapshot>) -> HookStatusReport {
+    /// The hook health of both harnesses plus the collector's.
+    ///
+    /// `last_events` is what the event store says about when each harness last
+    /// sent an event; `None` when the store could not be asked.
+    pub fn hook_status(
+        &self,
+        collector: Option<CollectorSnapshot>,
+        last_events: Option<LastEvents>,
+    ) -> HookStatusReport {
         let binary = self.binary_info().unwrap_or_else(|_| BinaryInfo {
             status: BinaryStatus::Missing,
             stable_path: String::new(),
             bundled_path: None,
         });
+        let at = |ms: Option<u64>| ms.map(rfc3339_from_ms);
+        let mut claude_code = self.status(Target::ClaudeCode);
+        claude_code.last_event_at = last_events.and_then(|l| at(l.claude_code));
+        let mut codex = self.status(Target::Codex);
+        codex.last_event_at = last_events.and_then(|l| at(l.codex));
+        // "Unknown" (listed) while there is nothing to show: the store could
+        // not be asked, or no harness has sent an event yet.
+        let known = last_events.is_some_and(|l| l.claude_code.is_some() || l.codex.is_some());
         HookStatusReport {
-            claude_code: self.status(Target::ClaudeCode),
-            codex: self.status(Target::Codex),
+            claude_code,
+            codex,
             binary,
-            collector: self.collector_health(collector),
+            collector: self.collector_health(collector, known),
             instance: self.instance(),
         }
     }
 
-    fn collector_health(&self, snapshot: Option<CollectorSnapshot>) -> CollectorHealth {
+    fn collector_health(
+        &self,
+        snapshot: Option<CollectorSnapshot>,
+        last_event_known: bool,
+    ) -> CollectorHealth {
         let to_u32 = |n: u64| u32::try_from(n).unwrap_or(u32::MAX);
-        let spool_files = fs::read_dir(&self.paths.spool_dir).ok().map(|d| {
-            to_u32(
+        // A spool directory that was never created holds nothing: the hook
+        // creates it the first time it has to spool. Any OTHER read error
+        // (permissions, not a directory) says nothing about its content, so
+        // it stays unknown instead of a reassuring 0.
+        let spool_files = match fs::read_dir(&self.paths.spool_dir) {
+            Ok(d) => Some(to_u32(
                 d.flatten()
                     .filter(|e| e.file_type().is_ok_and(|t| t.is_file()))
                     .count() as u64,
-            )
-        });
+            )),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => Some(0),
+            Err(_) => None,
+        };
+        let unavailable: Vec<String> = if last_event_known {
+            Vec::new()
+        } else {
+            vec!["lastEventAt".into()]
+        };
         let socket_path = self.paths.socket_path.to_string_lossy().into_owned();
         let Some(snap) = snapshot else {
             return CollectorHealth {
@@ -888,7 +930,7 @@ impl HookContext {
                 events_received: None,
                 spool_ingested: None,
                 spool_files,
-                unavailable: vec!["lastEventAt".into()],
+                unavailable,
             };
         };
         CollectorHealth {
@@ -901,8 +943,7 @@ impl HookContext {
             events_received: Some(to_u32(snap.stats.received)),
             spool_ingested: Some(to_u32(snap.stats.spool_ingested)),
             spool_files,
-            // The collector keeps counters but no timestamp of the last event.
-            unavailable: vec!["lastEventAt".into()],
+            unavailable,
         }
     }
 }

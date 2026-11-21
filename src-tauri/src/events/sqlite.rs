@@ -1156,6 +1156,22 @@ impl EventStore for SqliteEventStore {
         Ok(removed)
     }
 
+    fn last_event_ms(&self, harness: Harness) -> Result<Option<u64>, StoreError> {
+        let conn = lock(&self.reader, "reader")?;
+        // `sessions.last_event_ms` is the running MAX of its events' times
+        // (kept by `append`), so this reads one small row per session of the
+        // harness instead of scanning every event.
+        let max: Option<i64> = conn
+            .prepare_cached("SELECT max(last_event_ms) FROM sessions WHERE harness = ?1")
+            .map_err(backend("cannot prepare last event"))?
+            .query_row([harness.as_str()], |row| row.get(0))
+            .map_err(backend("cannot read the last event time"))?;
+        max.map(|ms| {
+            u64::try_from(ms).map_err(|_| StoreError::Backend(format!("bad last event time {ms}")))
+        })
+        .transpose()
+    }
+
     fn edit_records(&self, wt: &WorktreeId, path: &str) -> Result<Vec<EditRecord>, StoreError> {
         let conn = lock(&self.reader, "reader")?;
         // One statement: its own snapshot, no transaction needed.

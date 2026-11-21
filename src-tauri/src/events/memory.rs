@@ -18,6 +18,7 @@ use super::{AppendOutcome, EventStore};
 use crate::contracts::{SessionSummary, SessionTimeline, WorktreeId};
 use crate::provenance::{EditRecord, EditSource};
 use crate::store::StoreError;
+use why_wire::Harness;
 
 #[derive(Debug, Default)]
 struct Inner {
@@ -267,6 +268,16 @@ impl EventStore for MemoryEventStore {
             .filter(|r| r.op.worktree_id.as_ref() == Some(wt) && r.op.path == path)
             .cloned()
             .collect())
+    }
+
+    fn last_event_ms(&self, harness: Harness) -> Result<Option<u64>, StoreError> {
+        let inner = self.lock()?;
+        Ok(inner
+            .sessions
+            .iter()
+            .filter(|(key, _)| key.harness == harness)
+            .flat_map(|(_, events)| events.iter().map(|e| e.at_ms))
+            .max())
     }
 
     fn shell_turns(&self, wt: &WorktreeId) -> Result<Vec<ShellTurn>, StoreError> {

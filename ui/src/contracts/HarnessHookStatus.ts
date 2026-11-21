@@ -10,4 +10,13 @@ configPath: string, state: HookState,
 /**
  * The events WHY registers for this harness.
  */
-events: Array<string>, };
+events: Array<string>, 
+/**
+ * When this harness's newest event reached this WHY instance (RFC 3339),
+ * from the event store. `null` when no event of this harness was ever
+ * received here, or when the store could not be asked (then
+ * `collector.unavailable` names `lastEventAt`). It is the one reliable
+ * sign that a harness really sends events, including Codex, whose trust
+ * state WHY never reads.
+ */
+lastEventAt: string | null, };

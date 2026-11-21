@@ -84,6 +84,13 @@ pub struct HarnessHookStatus {
     pub state: HookState,
     /// The events WHY registers for this harness.
     pub events: Vec<String>,
+    /// When this harness's newest event reached this WHY instance (RFC 3339),
+    /// from the event store. `null` when no event of this harness was ever
+    /// received here, or when the store could not be asked (then
+    /// `collector.unavailable` names `lastEventAt`). It is the one reliable
+    /// sign that a harness really sends events, including Codex, whose trust
+    /// state WHY never reads.
+    pub last_event_at: Option<String>,
 }
 
 /// What the running collector can tell us. Fields the collector does not
@@ -99,9 +106,13 @@ pub struct CollectorHealth {
     /// Envelopes read back from the spool since the app started.
     pub spool_ingested: Option<u32>,
     /// Files waiting in the spool directory (events hooks could not deliver).
+    /// A spool directory that does not exist yet is an empty spool (`0`);
+    /// `null` only when it exists but cannot be read.
     pub spool_files: Option<u32>,
-    /// Health facts the collector does not expose (so the UI shows "unknown",
-    /// not zero): currently `lastEventAt`.
+    /// Health facts WHY cannot tell (so the UI shows "unknown", not zero):
+    /// `lastEventAt` while no harness has an event yet or the event store
+    /// could not be asked. The per-harness times are in
+    /// `HarnessHookStatus.lastEventAt`.
     pub unavailable: Vec<String>,
 }
 
