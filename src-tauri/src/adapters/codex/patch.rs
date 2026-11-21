@@ -204,7 +204,9 @@ pub fn parse_patch(text: &str) -> ParsedPatch {
     }
 
     for line in iter {
-        if line.trim() == "*** End Patch" {
+        // Column 0 only (trailing blanks tolerated): a CONTEXT line whose text is
+        // `*** End Patch` is written ` *** End Patch` and must stay a line.
+        if line.trim_end() == "*** End Patch" {
             flush_hunk(&mut current, &mut hunk);
             if let Some(file) = current.take() {
                 out.edits.push(file);
@@ -259,7 +261,7 @@ pub fn parse_patch(text: &str) -> ParsedPatch {
             }
             continue;
         }
-        if line.trim() == "*** End of File" {
+        if line.trim_end() == "*** End of File" {
             // A marker for the applier ("this hunk ends the file"); it is not
             // content.
             continue;
@@ -334,6 +336,35 @@ mod tests {
         assert_eq!(parsed.edits[0].path, path);
         assert!(parsed.problems.len() <= 32);
         assert!(parsed.problems.iter().all(|p| p.len() <= 256));
+    }
+
+    #[test]
+    fn markers_are_recognised_only_at_column_zero() {
+        // A CONTEXT line whose text happens to be a marker is written with its
+        // leading space (` *** End Patch`) and must stay a line of the hunk.
+        let text = "*** Begin Patch\n*** Update File: a.md\n@@\n before\n *** End Patch\n-old\n+new\n\
+                    *** Update File: b.md\n@@\n-x\n+y\n*** End Patch";
+        let parsed = parse_patch(text);
+        assert!(parsed.is_clean(), "{:?}", parsed.problems);
+        assert_eq!(parsed.edits.len(), 2);
+        assert_eq!(
+            parsed.edits[0].hunks[0].lines,
+            vec![
+                HunkLine::Context("before".into()),
+                HunkLine::Context("*** End Patch".into()),
+                HunkLine::Removed("old".into()),
+                HunkLine::Added("new".into()),
+            ]
+        );
+        assert_eq!(parsed.edits[1].path, "b.md");
+        // Same for the other directives: an indented one is context.
+        let text = "*** Begin Patch\n*** Update File: a\n@@\n *** Update File: z\n *** End of File\n+n\n*** End Patch";
+        let parsed = parse_patch(text);
+        assert!(parsed.is_clean(), "{:?}", parsed.problems);
+        assert_eq!(parsed.edits.len(), 1);
+        assert_eq!(parsed.edits[0].hunks[0].lines.len(), 3);
+        // A real marker with trailing blanks still ends the patch.
+        assert!(parse_patch("*** Begin Patch\n*** Add File: a\n+x\n*** End Patch  ").complete);
     }
 
     #[test]
