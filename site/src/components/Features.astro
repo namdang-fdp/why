@@ -1,0 +1,47 @@
+---
+const items = [
+  {
+    title: "The live diff of every worktree",
+    body: "Add your repositories and WHY lists every git worktree, including the ones your agents create. See what changed against the base branch, uncommitted or staged, and watch it update while an agent works.",
+  },
+  {
+    title: "What the agents did, turn by turn",
+    body: "With hooks you install yourself, the inspector shows each Claude Code and Codex session: the task, the model, and a live timeline of turns, tool calls, edits, shell commands, test runs and subagents.",
+  },
+  {
+    title: "Which turns explain each changed file",
+    body: "Each changed file is marked as explained by agent turns, as “Agent tried, not applied”, or as “No captured agent edit”. WHY never guesses who made a change that nothing explains.",
+  },
+  {
+    title: "“Why?” in the agent's own words",
+    body: "Ask on a turn or a tool call to read what the agent said it was doing, straight from its own transcript, labelled Declared. Codex exit codes are recovered from its session log.",
+  },
+] as const;
+---
+
+<section
+  id="today"
+  class="mx-auto max-w-5xl px-4 py-20 sm:px-6 md:py-28"
+  aria-labelledby="today-title"
+>
+  <div class="max-w-2xl">
+    <p data-reveal class="text-accent text-sm tracking-wide uppercase">
+      Today, in v0.2.0
+    </p>
+    <h2
+      id="today-title"
+      data-reveal
+      class="font-display mt-3 text-4xl leading-tight tracking-tight sm:text-5xl"
+    >
+      What WHY <em class="text-accent">does</em>
+    </h2>
+  </div>
+  <ul class="mt-12 grid gap-5 sm:grid-cols-2">
+    {items.map((item) => (
+      <li data-reveal class="border-line bg-surface rounded-3xl border p-7">
+        <h3 class="text-xl leading-snug">{item.title}</h3>
+        <p class="text-muted mt-3 leading-relaxed">{item.body}</p>
+      </li>
+    ))}
+  </ul>
+</section>

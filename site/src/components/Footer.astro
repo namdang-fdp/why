@@ -1,0 +1,64 @@
+---
+import logo from "../assets/logo.svg";
+import { links } from "../data/links";
+import { release } from "../data/release";
+
+const columns = [
+  {
+    title: "Project",
+    items: [
+      ["Source on GitHub", links.repo],
+      ["Latest release", links.latest],
+      ["Changelog", "/changelog/"],
+      ["About", "/about/"],
+      ["Report an issue", links.issues],
+    ],
+  },
+  {
+    title: "Trust",
+    items: [
+      ["Security policy", links.security],
+      ["MIT license", links.licenseMit],
+      ["Apache-2.0 license", links.licenseApache],
+    ],
+  },
+] as const;
+---
+
+<footer class="border-line border-t">
+  <div class="mx-auto grid max-w-5xl gap-10 px-4 py-14 sm:px-6 md:grid-cols-[1.4fr_1fr_1fr]">
+    <div>
+      <a href="/" class="flex items-center gap-2.5">
+        <img src={logo.src} width="28" height="28" alt="" />
+        <span class="font-semibold tracking-wide">WHY</span>
+      </a>
+      <p class="text-muted mt-4 max-w-xs text-sm leading-relaxed">
+        Because git diff tells you what, not why. Licensed {release.license}.
+      </p>
+    </div>
+    {columns.map((column) => (
+      <nav aria-label={column.title}>
+        <h2 class="text-sm">{column.title}</h2>
+        <ul class="text-muted mt-3 space-y-2 text-sm">
+          {column.items.map(([label, href]) => (
+            <li>
+              <a href={href} class="hover:text-ink underline-offset-4 hover:underline">
+                {label}
+              </a>
+            </li>
+          ))}
+        </ul>
+      </nav>
+    ))}
+  </div>
+  <div class="border-line border-t">
+    <p class="text-muted mx-auto max-w-5xl px-4 py-6 text-sm leading-relaxed sm:px-6">
+      WHY is not the first tool in this space: agent workspaces, vendor apps and live-diff viewers
+      each cover a piece. The bet is the combination, and{" "}
+      <a href={links.research} class="underline underline-offset-4">
+        the comparison
+      </a>{" "}
+      is public.
+    </p>
+  </div>
+</footer>

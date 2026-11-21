@@ -21,10 +21,28 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
+        with:
+          # Two commits: on a pull request HEAD is the merge commit and HEAD^1 the base tip.
+          fetch-depth: 2
+
+      # The ruleset requires this job, so it always runs. When a PR only changes site/ and docs/
+      # the steps below skip themselves (see scripts/ci-scope.mjs). They skip only on an explicit
+      # `app=false`: a missing or odd answer runs everything.
+      - name: Decide whether the app jobs are needed
+        id: scope
+        run: node scripts/ci-scope.mjs
+
+      # Cheap guards that always run, even for site-only changes: the landing page's release data
+      # must match the app's version, and the scope script's own tests must pass.
+      - name: Check the landing page release data and the scope script
+        run: |
+          node site/scripts/check-version.mjs
+          node --test scripts/ci-scope.test.mjs
 
       # System libraries Tauri needs on Linux
       # (https://v2.tauri.app/start/prerequisites/#linux).
       - name: Install Tauri system dependencies
+        if: steps.scope.outputs.app != 'false'
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
@@ -32,8 +50,10 @@ jobs:
 
       # pnpm's version comes from "packageManager" in package.json.
       - uses: pnpm/action-setup@v6
+        if: steps.scope.outputs.app != 'false'
 
       - uses: actions/setup-node@v7
+        if: steps.scope.outputs.app != 'false'
         with:
           node-version: 24
           cache: pnpm
@@ -41,18 +61,24 @@ jobs:
       # package.json, Cargo.toml, Cargo.lock and tauri.conf.json must carry the same version, or a
       # release would be built with file names that disagree with its tag.
       - name: Check that all version strings agree
+        if: steps.scope.outputs.app != 'false'
         run: node scripts/check-versions.mjs
 
       - uses: dtolnay/rust-toolchain@stable
+        if: steps.scope.outputs.app != 'false'
         with:
           components: clippy, rustfmt
 
       - uses: Swatinem/rust-cache@v2
+        if: steps.scope.outputs.app != 'false'
         with:
           workspaces: src-tauri
 
       - run: pnpm install --frozen-lockfile
+        if: steps.scope.outputs.app != 'false'
 
       - run: pnpm lint
+        if: steps.scope.outputs.app != 'false'
 
       - run: pnpm test
+        if: steps.scope.outputs.app != 'false'

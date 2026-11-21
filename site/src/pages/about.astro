@@ -1,0 +1,192 @@
+---
+import Footer from "../components/Footer.astro";
+import Header from "../components/Header.astro";
+import Base from "../layouts/Base.astro";
+import { links } from "../data/links";
+import { release } from "../data/release";
+
+// Principles and prior art are taken from the project's own notes (why-brain/00, 03, 05) and
+// from SECURITY.md. Nothing here may promise more than the README and CHANGELOG do.
+const principles = [
+  {
+    name: "Local-first",
+    body: "Your repositories, the agent events WHY captures and their transcripts stay on your machine. There is no telemetry and no network code.",
+  },
+  {
+    name: "Harness-agnostic",
+    body: "WHY is meant to work across agents, not inside one. Claude Code and Codex are covered today.",
+  },
+  {
+    name: "Evidence-first",
+    body: "Every explanation is labelled Observed, Declared, Inferred or Unknown, and missing evidence is shown as unknown rather than guessed.",
+  },
+  {
+    name: "Passive-first",
+    body: "WHY observes. It never writes to the repositories it reads, and it never takes a lock your agent needs.",
+  },
+  {
+    name: "No fake reasoning",
+    body: "WHY claims no access to an agent's private chain of thought. An agent's own explanation is shown as its claim, not as proof of why the code changed.",
+  },
+] as const;
+
+const priorArt = [
+  [
+    "LGTM",
+    "https://github.com/kunkka19xx/lgtm",
+    "live diff and line-anchored feedback, terminal-first",
+  ],
+  [
+    "Glassbox",
+    "https://github.com/brianwestphal/glassbox",
+    "a GUI with agent-authored, line-anchored rationale",
+  ],
+  [
+    "Docket",
+    "https://github.com/Dillonsmart/docket",
+    "replays session edits for per-line and per-hunk attribution",
+  ],
+  ["Entire", "https://github.com/entireio/cli", "git-native agent session checkpoints"],
+  [
+    "Atomic",
+    "https://docs.atomic.dev/agents/provenance",
+    "observed events and an inferred causal graph",
+  ],
+  [
+    "Daintree",
+    "https://github.com/daintreehq/daintree",
+    "a multi-project, multi-worktree agent workspace with review",
+  ],
+  ["Muster", "https://github.com/MaraniMatias/Muster", "desktop worktree discovery and review"],
+  ["Prufs", "https://prufs.ai/", "decision trails and line links"],
+] as const;
+---
+
+<Base
+  title="About · WHY"
+  description="Why WHY exists, what it is and is not, its principles, and the tools in the same space."
+>
+  <Header />
+  <main id="main" class="mx-auto max-w-3xl px-4 pt-16 pb-24 sm:px-6 md:pt-24">
+    <div data-enter="0">
+      <h1 class="font-display text-5xl leading-tight tracking-tight sm:text-6xl">
+        About <em class="text-accent">WHY</em>
+      </h1>
+      <p class="text-muted mt-6 text-lg leading-relaxed">
+        WHY is a local-first desktop app for people who review code written by coding agents, across
+        many repositories and git worktrees. It watches where your agents work and shows the live
+        diff, and, since v0.2, what Claude Code and Codex did there.
+      </p>
+    </div>
+
+    <section aria-labelledby="problem-title" class="mt-20">
+      <h2 id="problem-title" data-reveal class="font-display text-3xl tracking-tight sm:text-4xl">
+        The problem it starts from
+      </h2>
+      <div class="text-muted mt-6 space-y-5 text-lg leading-relaxed">
+        <p data-reveal>
+          Agent output is fast, but understanding it is slow.{" "}
+          <code class="font-mono text-[0.9em]">git diff</code> shows what changed. It does not show
+          the task the agent was given, why it made a change, whether a block was necessary, or
+          whether it drifted from scope, so people paste diffs back into the agent's chat to recover
+          that context.
+        </p>
+        <p data-reveal>
+          WHY tries to answer three questions in one place: what changed, how it changed, and why.
+          It is not meant to explain every line. An agent's reason can be an after-the-fact
+          rationalisation, so "why" never replaces reading the code; the aim is to tell you where to
+          look, and to say how well each explanation is backed.
+        </p>
+      </div>
+    </section>
+
+    <section aria-labelledby="is-title" class="mt-20">
+      <h2 id="is-title" data-reveal class="font-display text-3xl tracking-tight sm:text-4xl">
+        What it is, and what it is not
+      </h2>
+      <p data-reveal class="text-muted mt-6 text-lg leading-relaxed">
+        WHY is not an IDE, an agent harness, an automated code reviewer or an orchestrator. It
+        complements the tools you already use, and you own the approval. Line-level provenance,
+        attention signals and closing the loop with the agent are planned, not shipped; the{" "}
+        <a href="/#not-yet" class="text-accent underline underline-offset-4">
+          roadmap
+        </a>{" "}
+        says what is next and what the limits are today.
+      </p>
+    </section>
+
+    <section aria-labelledby="principles-title" class="mt-20">
+      <h2
+        id="principles-title"
+        data-reveal
+        class="font-display text-3xl tracking-tight sm:text-4xl"
+      >
+        Principles
+      </h2>
+      <dl class="mt-8 space-y-6">
+        {principles.map((item) => (
+          <div data-reveal class="border-line border-t pt-5">
+            <dt class="text-lg">{item.name}</dt>
+            <dd class="text-muted mt-2 leading-relaxed">{item.body}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+
+    <section aria-labelledby="prior-title" class="mt-20">
+      <h2 id="prior-title" data-reveal class="font-display text-3xl tracking-tight sm:text-4xl">
+        Not the first tool in this space
+      </h2>
+      <p data-reveal class="text-muted mt-6 text-lg leading-relaxed">
+        Each piece of WHY exists somewhere else. The bet is the combination: harness-agnostic, many
+        repositories and worktrees in one place, and evidence-backed "why". Agent vendors can also
+        show "why" next to the diff inside their own apps; WHY's angle is to work across agents.
+      </p>
+      <ul data-reveal class="mt-8 space-y-3 leading-relaxed">
+        {priorArt.map(([name, href, what]) => (
+          <li>
+            <a href={href} class="text-accent underline underline-offset-4">
+              {name}
+            </a>
+            <span class="text-muted">: {what}.</span>
+          </li>
+        ))}
+      </ul>
+      <p data-reveal class="text-muted mt-6 leading-relaxed">
+        Conductor, Crystal and Vibe Kanban are multi-worktree agent GUIs with diffs that lean
+        towards orchestration. These descriptions come from WHY's own{" "}
+        <a href={links.research} class="text-accent underline underline-offset-4">
+          research notes
+        </a>{" "}
+        and may be out of date; check each project for yourself.
+      </p>
+    </section>
+
+    <section aria-labelledby="who-title" class="mt-20">
+      <h2 id="who-title" data-reveal class="font-display text-3xl tracking-tight sm:text-4xl">
+        Who is behind it
+      </h2>
+      <p data-reveal class="text-muted mt-6 text-lg leading-relaxed">
+        WHY is maintained by one person in their spare time, as open source under {release.license}.
+        Bug reports and ideas are welcome as{" "}
+        <a href={links.issues} class="text-accent underline underline-offset-4">
+          issues
+        </a>
+        ; security problems go through GitHub's private reporting, described in the{" "}
+        <a href={links.security} class="text-accent underline underline-offset-4">
+          security policy
+        </a>
+        . The{" "}
+        <a href="/changelog/" class="text-accent underline underline-offset-4">
+          changelog
+        </a>{" "}
+        lists every release, and the{" "}
+        <a href={links.repo} class="text-accent underline underline-offset-4">
+          source
+        </a>{" "}
+        is public.
+      </p>
+    </section>
+  </main>
+  <Footer />
+</Base>
