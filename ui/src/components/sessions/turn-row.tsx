@@ -9,8 +9,18 @@ import {
   SquareTerminal,
   Wrench,
 } from "lucide-react";
-import type { TimelineEvent, TimelineEventKind, Turn, FileChange } from "@/contracts";
-import { Evidence, EventTime, Outcome, PromptExcerpt } from "./session-labels";
+import type {
+  TimelineEvent,
+  TimelineEventKind,
+  Turn,
+  FileChange,
+  SessionId,
+  ShellOutcome,
+} from "@/contracts";
+import { Evidence, EventTime, Outcome, PromptExcerpt, RecoveredOutcome } from "./session-labels";
+import { canExplainCall } from "./rationale-model";
+import { WhyPanel, WhyToggle } from "./why-panel";
+import type { RationaleTarget } from "@/stores/evidence";
 import { eventGroups, isWorktreePath } from "./timeline-model";
 
 const eventKind = {
@@ -62,12 +72,18 @@ function FileChips({
 
 function EventRow({
   event,
+  sessionId,
+  recovered,
   file,
   openFile,
   expanded,
   toggle,
 }: {
   event: TimelineEvent;
+  sessionId: SessionId;
+  /** The exit code the rollout settled for this call, when the hooks left it unknown. */
+  recovered: ShellOutcome | undefined;
+
   file: FileChange | undefined;
   openFile: (path: string) => void;
   expanded: boolean;
@@ -78,6 +94,12 @@ function EventRow({
   const outcome = event.outcome ?? (disclosure || event.kind === "testRun" ? "unknown" : null);
   const fileMatch = event.files.some((path) => path === file?.path || path === file?.oldPath);
   const heading = event.toolName ? `${name} · ${event.toolName}` : name;
+  // Only a call the hooks left unknown takes the recovered code; a hook-reported outcome stays as it is.
+  const overlay = recovered && outcome === "unknown" ? recovered : undefined;
+  const why: RationaleTarget | null =
+    canExplainCall(event.kind, event.toolUseId) && sessionId !== ""
+      ? { kind: "tool", sessionId, eventId: event.id }
+      : null;
   return (
     <li className="session-event" data-kind={event.kind} data-file-match={fileMatch || undefined}>
       <div className="session-event-head">
@@ -98,9 +120,16 @@ function EventRow({
             {heading}
           </span>
         )}
-        {outcome && <Outcome outcome={outcome} test={event.kind === "testRun"} />}
-        <Evidence label={event.evidence} />
+        {overlay ? (
+          <RecoveredOutcome outcome={overlay} test={event.kind === "testRun"} />
+        ) : (
+          outcome && <Outcome outcome={outcome} test={event.kind === "testRun"} />
+        )}
+        {why && <WhyToggle target={why} subject={`${heading}: ${event.summary}`} />}
+        {/* The recovered chip is already the Observed label for this outcome. */}
+        {!overlay && <Evidence label={event.evidence} />}
       </div>
+      {why && <WhyPanel target={why} />}
       {event.summary && (
         <p
           className="session-event-summary"
@@ -133,7 +162,11 @@ export const TurnRow = memo(function TurnRow({
   openFile,
   openItems,
   toggle,
+  sessionId,
+  outcomes,
 }: {
+  sessionId: SessionId;
+  outcomes: ReadonlyMap<string, ShellOutcome> | undefined;
   turn: Turn;
   setSize: number;
   top: number;
@@ -191,8 +224,16 @@ export const TurnRow = memo(function TurnRow({
             Turn {turn.index + 1}
           </button>
           <EventTime at={turn.startedAt} />
+          {/* A turn the harness gave no id cannot be looked up, so it offers no Why?. */}
+          {turn.id !== "" && (
+            <WhyToggle
+              target={{ kind: "turn", sessionId, turnId: turn.id }}
+              subject={`Turn ${turn.index + 1}`}
+            />
+          )}
           <Evidence label={promptEvent?.evidence ?? "unknown"} />
         </div>
+        {turn.id !== "" && <WhyPanel target={{ kind: "turn", sessionId, turnId: turn.id }} />}
         {synthetic && <p className="session-synthetic">Task notification · not typed by you</p>}
         {turn.prompt ? (
           <PromptExcerpt
@@ -222,6 +263,8 @@ export const TurnRow = memo(function TurnRow({
                 <EventRow
                   key={event.id}
                   event={event}
+                  sessionId={sessionId}
+                  recovered={outcomes?.get(event.id)}
                   file={file}
                   openFile={openFile}
                   expanded={openItems?.has(event.id) ?? false}

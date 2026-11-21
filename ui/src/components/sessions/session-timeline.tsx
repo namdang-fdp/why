@@ -2,8 +2,9 @@ import { useCallback, useLayoutEffect, useMemo, useRef, useState, type FocusEven
 import { ArrowDown, ChevronDown, ChevronUp } from "lucide-react";
 import type { SessionTimeline as SessionTimelineData } from "@/contracts";
 import { selectActiveFile } from "@/stores/workspace";
-import { useSessions, useWorkspace } from "@/stores/workspace-context";
-import { filesInTurn, matchesFile } from "./timeline-model";
+import { useEvidence, useSessions, useWorkspace } from "@/stores/workspace-context";
+import { turnsTouchingFile } from "./timeline-model";
+import { recoveredOutcomes } from "./outcome-overlay";
 import { TurnRow } from "./turn-row";
 import { useTurnWindow } from "./use-turn-window";
 
@@ -25,15 +26,28 @@ export function SessionTimeline({
   const [openItems, setOpenItems] = useState<ReadonlyMap<string, ReadonlySet<string | null>>>(
     () => new Map(),
   );
-  const files = useMemo(() => turns.map(filesInTurn), [turns]);
-  const matching = useMemo(() => {
-    const matches = new Set<number>();
-    if (file)
-      files.forEach((paths, index) => {
-        if (matchesFile(paths, file)) matches.add(index);
-      });
-    return matches;
-  }, [file, files]);
+  const sessionId = useSessions((state) => state.sessionId) ?? "";
+  const activity = useEvidence((state) => state.activity);
+  const activityPath = useEvidence((state) => state.activityPath);
+  const outcomeState = useEvidence((state) => state.outcomes);
+  const outcomeSession = useEvidence((state) => state.session?.id);
+  // Exit codes recovered for THIS session only; another session's never overlay here.
+  const outcomes = useMemo(
+    () => (outcomeSession === sessionId ? recoveredOutcomes(outcomeState) : undefined),
+    [outcomeSession, sessionId, outcomeState],
+  );
+  // A turn matches the selected file when its events name it OR the core's edit
+  // history for the file (which also knows renames) points at it.
+  const matching = useMemo(
+    () =>
+      turnsTouchingFile(
+        turns,
+        file,
+        activity.status === "ok" ? activity.data : undefined,
+        sessionId,
+      ),
+    [turns, file, activity, sessionId],
+  );
   const firstMatch = matching.values().next().value;
   const fileKey = file ? JSON.stringify([file.path, file.oldPath]) : null;
   const selectedIndex = turns.findIndex(({ id }) => id === selected);
@@ -42,11 +56,21 @@ export function SessionTimeline({
   const { viewport, measure, readViewport, reveal, unseen, follow, offsets, total, start, end } =
     useTurnWindow(turns);
 
+  // The edit history arrives after the file is selected, and it may be the only thing
+  // that names the matching turn: do not call the file "handled" before it has answered.
+  const historySettled =
+    !file ||
+    file.pathLossy ||
+    (activityPath === file.path && activity.status !== "loading" && activity.status !== "idle");
   useLayoutEffect(() => {
     if (revealed.current === fileKey) return;
-    revealed.current = fileKey;
-    if (firstMatch !== undefined) reveal(firstMatch);
-  }, [fileKey, firstMatch, reveal]);
+    if (firstMatch !== undefined) {
+      revealed.current = fileKey;
+      reveal(firstMatch);
+    } else if (historySettled) {
+      revealed.current = fileKey;
+    }
+  }, [fileKey, firstMatch, historySettled, reveal]);
 
   useLayoutEffect(() => {
     if (focusRequest === focusHandled.current) return;
@@ -151,6 +175,8 @@ export function SessionTimeline({
                       openFile={openFile}
                       openItems={openItems.get(turn.id)}
                       toggle={toggle}
+                      sessionId={sessionId}
+                      outcomes={outcomes}
                     />
                   );
                 })}

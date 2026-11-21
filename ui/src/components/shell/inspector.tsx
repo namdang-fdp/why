@@ -6,6 +6,7 @@ import { SessionTimeline } from "@/components/sessions/session-timeline";
 import { moveTurn } from "@/components/sessions/session-controls";
 import { WorkspaceContext, useSessions, useWorkspace } from "@/stores/workspace-context";
 import { ErrorMessage, LoadingMessage } from "./async-message";
+import { FileActivity } from "./file-activity";
 
 export function Inspector() {
   const workspace = useContext(WorkspaceContext);
@@ -59,6 +60,15 @@ export function Inspector() {
     if (key === "Escape" && sessionId !== null) {
       event.preventDefault();
       back();
+      return;
+    }
+    if (sessionId !== null && key === "w") {
+      // Show why for the selected turn (the agent's words, read only now).
+      const { turnId } = workspace.getState().sessions.getState();
+      if (turnId !== null && turnId !== "") {
+        event.preventDefault();
+        workspace.getState().evidence.getState().toggleWhy({ kind: "turn", sessionId, turnId });
+      }
       return;
     }
     if (sessionId !== null && (key === "n" || key === "p")) {
@@ -141,6 +151,7 @@ export function Inspector() {
           <X aria-hidden />
         </Button>
       </div>
+      <FileActivity />
       {sessionId === null ? (
         <>
           {list.status === "idle" && (

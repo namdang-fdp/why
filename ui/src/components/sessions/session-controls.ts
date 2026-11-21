@@ -1,7 +1,7 @@
 import type { Turn } from "@/contracts";
 import { selectActiveFile } from "@/stores/workspace";
 import type { Workspace } from "@/stores/workspace-context";
-import { filesInTurn, matchesFile } from "./timeline-model";
+import { turnsTouchingFile } from "./timeline-model";
 
 export function focusInspector(store: Workspace, onFocus?: () => void) {
   store.getState().showInspector();
@@ -22,7 +22,15 @@ export function moveTurn(store: Workspace, direction: 1 | -1 | "first" | "last",
   if (matching) {
     const file = selectActiveFile(workspace);
     if (!file) return;
-    const touchesFile = (turn: Turn) => matchesFile(filesInTurn(turn), file);
+    const evidence = workspace.evidence.getState();
+    const touching = turnsTouchingFile(
+      turns,
+      file,
+      evidence.activity.status === "ok" ? evidence.activity.data : undefined,
+      state.sessionId ?? undefined,
+    );
+    const touchingIds = new Set([...touching].map((index) => turns[index]?.id));
+    const touchesFile = (turn: Turn) => touchingIds.has(turn.id);
     const forward = direction === 1 || direction === "first";
     const wrap = forward ? turns.find(touchesFile) : turns.findLast(touchesFile);
     const turn =
@@ -47,4 +55,38 @@ export function moveTurn(store: Workspace, direction: 1 | -1 | "first" | "last",
           : Math.min(turns.length - 1, Math.max(0, current + direction));
   const turn = turns[index];
   if (turn) state.selectTurn(turn.id, true);
+}
+
+/**
+ * Show a turn in the timeline: open its session, then select the turn (the
+ * timeline scrolls to it and focuses it). Used by every link that points at a
+ * turn, wherever the pointer came from (the rail, the file history).
+ */
+export async function openTurn(
+  store: Workspace,
+  ref: { sessionId: string; turnId: string },
+  focus = true,
+) {
+  store.getState().showInspector();
+  const sessions = store.getState().sessions;
+  await sessions.getState().selectSession(ref.sessionId);
+  // Already selected and still loading: selectSession returned at once, so wait for the
+  // timeline (or for the reviewer to pick another session, which ends the wait).
+  await new Promise<void>((resolve) => {
+    const settled = (state: ReturnType<typeof sessions.getState>) =>
+      state.sessionId !== ref.sessionId || state.timeline.status !== "loading";
+    if (settled(sessions.getState())) return resolve();
+    const stop = sessions.subscribe((state) => {
+      if (!settled(state)) return;
+      stop();
+      resolve();
+    });
+  });
+  // The user may have opened something else while the timeline loaded.
+  const now = sessions.getState();
+  if (now.sessionId !== ref.sessionId || now.timeline.status !== "ok") return;
+  // A turn the harness gave no id is still a real row, grouped under id "".
+  if (now.timeline.data.turns.some(({ id }) => id === ref.turnId)) {
+    now.selectTurn(ref.turnId, focus);
+  }
 }

@@ -3,13 +3,15 @@ import { Binary, FileWarning } from "lucide-react";
 import type { FileChange } from "@/contracts";
 import { useSlidingHighlight } from "@/hooks/use-sliding-highlight";
 import { selectActiveWorktreeTitle, selectChanges } from "@/stores/workspace";
-import { useSessions, useWorkspace } from "@/stores/workspace-context";
+import { useEvidence, useSessions, useWorkspace } from "@/stores/workspace-context";
 import { filesInTurn, matchesFile } from "@/components/sessions/timeline-model";
 import { ErrorMessage, LoadingMessage } from "./async-message";
 import { ChangeStatusBadge, LineCounts, displayPath } from "./change-labels";
 import { RailSectionHeader } from "./rail-section";
 import { fileMatches } from "./rail-model";
 import { RowMarker } from "./rail-repositories";
+import { AttributionMarker, ShellLeadsLine } from "./rail-attribution";
+import { evidenceKind } from "./attribution-model";
 
 function PathPart({ path }: { path: string }) {
   const nameIndex = path.lastIndexOf("/") + 1;
@@ -76,6 +78,29 @@ export function ChangedFiles({ expanded, onToggle }: { expanded: boolean; onTogg
   const retry = useWorkspace((state) => state.retryChanges);
   const filter = useWorkspace((state) => state.railFilter);
   const worktreeTitle = useWorkspace(selectActiveWorktreeTitle);
+  const evidence = useEvidence((state) => state.attribution);
+  const evidenceScope = useEvidence((state) => state.scope);
+  const onlyUnexplained = useEvidence((state) => state.onlyUnexplained);
+  const setOnlyUnexplained = useEvidence((state) => state.setOnlyUnexplained);
+  // Only an answer for THIS worktree and comparison may label its rows.
+  const attribution = useMemo(() => {
+    const current =
+      evidence.status === "ok" &&
+      evidence.data.worktreeId === worktreeId &&
+      evidence.data.mode === evidenceScope?.mode
+        ? evidence.data
+        : undefined;
+    // A file whose name was not valid UTF-8 shares its display string with other
+    // files, so it is never joined to evidence by path (the core leaves it unexplained).
+    return (
+      current && {
+        byPath: new Map(
+          current.files.filter((f) => !f.change.pathLossy).map((f) => [f.change.path, f]),
+        ),
+        current,
+      }
+    );
+  }, [evidence, worktreeId, evidenceScope?.mode]);
   const rows = useRef<HTMLUListElement>(null);
   const bar = useRef<HTMLLIElement>(null);
   useSlidingHighlight(rows, bar);
@@ -94,8 +119,17 @@ export function ChangedFiles({ expanded, onToggle }: { expanded: boolean; onTogg
   // rather than emptying the list the reader is looking at.
   const all = changes.status === "ok" ? changes.data : [];
   const matching = all.filter((file) => fileMatches(file, filter));
-  const files = matching.length > 0 ? matching : all;
-  const narrowed = filter.trim() !== "" && matching.length > 0 && matching.length < all.length;
+  const byText = matching.length > 0 ? matching : all;
+  const unexplainedCount =
+    attribution?.current.files.filter((f) => f.status === "unexplained").length ?? 0;
+  // "Show unexplained files" narrows to the files no captured edit explains.
+  const files =
+    onlyUnexplained && attribution
+      ? byText.filter((file) => attribution.byPath.get(file.path)?.status !== "explained")
+      : byText;
+  const narrowed =
+    (filter.trim() !== "" && matching.length > 0 && matching.length < all.length) ||
+    (onlyUnexplained && attribution !== undefined);
 
   return (
     <section className="files-section" aria-labelledby="files-heading">
@@ -107,6 +141,17 @@ export function ChangedFiles({ expanded, onToggle }: { expanded: boolean; onTogg
         context={worktreeTitle}
         contextTitle={worktreeTitle ? `Changes in ${worktreeTitle}` : undefined}
       >
+        {changes.status === "ok" && attribution && (unexplainedCount > 0 || onlyUnexplained) && (
+          <button
+            type="button"
+            className="evidence-filter"
+            aria-pressed={onlyUnexplained}
+            title="Show only files no captured agent edit explains"
+            onClick={() => setOnlyUnexplained(!onlyUnexplained)}
+          >
+            Unexplained {unexplainedCount}
+          </button>
+        )}
         {changes.status === "ok" && (
           <span className="rail-total">
             {narrowed ? `${files.length}/${changes.data.length}` : changes.data.length}
@@ -127,18 +172,44 @@ export function ChangedFiles({ expanded, onToggle }: { expanded: boolean; onTogg
           (changes.data.length === 0 ? (
             <p className="rail-note">No changes in this mode.</p>
           ) : (
-            <ul id="changed-file-list" className="file-list" aria-label="Changed files" ref={rows}>
-              <li className="slide-highlight" aria-hidden="true" ref={bar} />
-              {files.map((file) => (
-                <li key={file.path}>
-                  <FileRow
-                    file={file}
-                    selected={file.path === selectedPath}
-                    touched={!!touched && matchesFile(touched, file)}
-                  />
-                </li>
-              ))}
-            </ul>
+            <>
+              <ul
+                id="changed-file-list"
+                className="file-list"
+                aria-label="Changed files"
+                ref={rows}
+              >
+                <li className="slide-highlight" aria-hidden="true" ref={bar} />
+                {files.map((file) => {
+                  const item = file.pathLossy ? undefined : attribution?.byPath.get(file.path);
+                  return (
+                    <li
+                      key={file.path}
+                      className="file-item"
+                      data-evidence={item && evidenceKind(item)}
+                    >
+                      <FileRow
+                        file={file}
+                        selected={file.path === selectedPath}
+                        touched={!!touched && matchesFile(touched, file)}
+                      />
+                      {item && <AttributionMarker file={item} />}
+                    </li>
+                  );
+                })}
+              </ul>
+              {files.length === 0 && onlyUnexplained && (
+                <p className="rail-note">
+                  {unexplainedCount === 0
+                    ? "Every changed file has a captured agent edit."
+                    : "No unexplained file matches the filter."}
+                </p>
+              )}
+              {attribution && <ShellLeadsLine leads={attribution.current.shellLeads} />}
+              {evidence.status === "error" && (
+                <p className="rail-note">Attribution is unavailable right now.</p>
+              )}
+            </>
           ))}
       </div>
     </section>

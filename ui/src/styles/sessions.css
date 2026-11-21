@@ -481,3 +481,137 @@
     animation: none !important;
   }
 }
+
+/* ---- "Why?" on demand, recovered exit codes, edit history ------------------------------ */
+
+.session-why-toggle {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 3px;
+  min-height: 20px;
+  padding: 0 5px;
+  border-radius: 4px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+.session-why-toggle:hover,
+.session-why-toggle[aria-expanded="true"] {
+  background: var(--shell-hover);
+  color: var(--foreground);
+}
+.session-turn-head .session-why-toggle {
+  margin-left: auto;
+}
+.session-turn-head .session-why-toggle + .session-evidence {
+  margin-left: 0;
+}
+.session-event-head .session-why-toggle {
+  margin-left: auto;
+}
+.session-event-head .session-why-toggle + .session-evidence {
+  margin-left: 0;
+}
+
+.why-panel {
+  display: grid;
+  gap: 6px;
+  margin: 6px 0 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--muted-foreground);
+  border-radius: 6px;
+  font-size: 12px;
+}
+.why-source {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+.why-source .session-evidence {
+  margin-left: 0;
+}
+.why-declared,
+.why-caveat,
+.why-hint,
+.why-block-meta {
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+.why-caveat {
+  line-height: 1.4;
+}
+.why-blocks {
+  display: grid;
+  gap: 8px;
+}
+.why-block-meta {
+  display: flex;
+  gap: 8px;
+}
+.why-text {
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.why-text[data-expanded="false"] {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+}
+.why-empty {
+  color: var(--muted-foreground);
+  line-height: 1.4;
+}
+.why-refresh {
+  justify-self: start;
+}
+
+.session-outcome[data-recovered] {
+  border-style: solid;
+}
+.session-evidence[data-recovered] {
+  margin-left: 0;
+}
+.session-outcomes-note {
+  margin-top: 6px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.file-activity {
+  display: grid;
+  flex: none;
+  gap: 4px;
+  max-height: 34%;
+  overflow: auto;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.file-activity h3 {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-weight: 600;
+}
+.file-activity h3 code {
+  color: var(--foreground);
+  font: 500 11px var(--font-mono);
+}
+.file-activity ul {
+  display: grid;
+  gap: 2px;
+}
+
+/* A narrow inspector: let a call's chips wrap under its name instead of scrolling sideways. */
+.session-event-head {
+  flex-wrap: wrap;
+  row-gap: 2px;
+}
+.session-event-head .session-tool-toggle,
+.session-event-head .session-event-name {
+  flex: 1 1 8ch;
+}
