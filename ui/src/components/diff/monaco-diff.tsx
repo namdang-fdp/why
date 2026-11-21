@@ -10,6 +10,7 @@ import { createBufferedDiff, type DiffSlot, type DiffTarget } from "./buffered-d
 import { detectLanguage } from "./detect-language";
 import { buildEditorOptions } from "./editor-options";
 import { createHunkNavigator } from "./hunk-navigation";
+import { useLineOriginGutter } from "./line-origin-gutter";
 import { createModelManager } from "./model-manager";
 import { defineEditorThemes, monaco } from "./monaco-setup";
 import { whenDiffReady } from "./ready-gate";
@@ -104,6 +105,8 @@ export default function MonacoDiff({
   const [editors, setEditors] = useState<Editors>([null, null]);
   const [front, setFront] = useState<0 | 1>(0);
   const [hasFront, setHasFront] = useState(false);
+  // The file the front editor really shows (not `diff`, which may be the next one still loading).
+  const [frontDiff, setFrontDiff] = useState<FileDiff | null>(null);
   const worktreeId = useWorkspace((state) => state.worktreeId);
   const mode = useWorkspace(selectDiffMode);
   const layout = useWorkspace((state) => state.diffLayout);
@@ -113,6 +116,7 @@ export default function MonacoDiff({
   const viewer = useRef<ReturnType<typeof createBufferedDiff> | null>(null);
   const onRevealRef = useRef(onReveal);
   const bothMounted = editors[0] !== null && editors[1] !== null;
+  const { tip } = useLineOriginGutter({ editors, front, shown: hasFront ? frontDiff : null });
 
   useEffect(() => {
     onRevealRef.current = onReveal;
@@ -139,6 +143,7 @@ export default function MonacoDiff({
       onFront(index, target, swapped) {
         setFront(index);
         setHasFront(true);
+        setFrontDiff(target.diff);
         unregister?.();
         const navigator = slots[index].navigator();
         if (navigator) unregister = registerNavigation(target.diff, navigator.move);
@@ -149,6 +154,7 @@ export default function MonacoDiff({
         unregister?.();
         unregister = undefined;
         setHasFront(false);
+        setFrontDiff(null);
         onRevealRef.current?.(null);
       },
       later(action, ms) {
@@ -202,30 +208,33 @@ export default function MonacoDiff({
   }
 
   return (
-    <div className="diff-editor-stack" data-stale={stale || undefined}>
-      {([0, 1] as const).map((index) => {
-        const isFront = hasFront && front === index;
-        return (
-          <div
-            key={index}
-            className="diff-editor-host"
-            data-diff-editor
-            data-front={isFront}
-            inert={!isFront}
-            aria-hidden={!isFront}
-          >
-            <DiffEditor
-              theme={settings.theme}
-              options={options}
-              beforeMount={defineEditorThemes}
-              onMount={mount(index)}
-              loading={null}
-              keepCurrentOriginalModel
-              keepCurrentModifiedModel
-            />
-          </div>
-        );
-      })}
-    </div>
+    <>
+      <div className="diff-editor-stack" data-stale={stale || undefined}>
+        {([0, 1] as const).map((index) => {
+          const isFront = hasFront && front === index;
+          return (
+            <div
+              key={index}
+              className="diff-editor-host"
+              data-diff-editor
+              data-front={isFront}
+              inert={!isFront}
+              aria-hidden={!isFront}
+            >
+              <DiffEditor
+                theme={settings.theme}
+                options={options}
+                beforeMount={defineEditorThemes}
+                onMount={mount(index)}
+                loading={null}
+                keepCurrentOriginalModel
+                keepCurrentModifiedModel
+              />
+            </div>
+          );
+        })}
+      </div>
+      {tip}
+    </>
   );
 }

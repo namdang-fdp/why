@@ -837,3 +837,208 @@
 .session-event-head .session-event-name {
   flex: 1 1 8ch;
 }
+
+/* ---- Line origins (WHY-25): diff gutter marks, hover card, File tab section ---------------- */
+
+/*
+ * Turn colours. Colour is reserved for diff, agent status and risk, so these avoid green
+ * (added), red (removed) and amber (modified / unknown): they run cyan -> blue -> violet ->
+ * magenta. Each turn gets one by hashing its id (see `turnColorIndex`), so a turn keeps its
+ * colour across files and reloads. Lightness alternates so neighbours on the hue wheel stay
+ * apart; the hover card names the turn, so colour is never the only signal.
+ */
+:root {
+  --og-turn-0: oklch(0.55 0.12 215);
+  --og-turn-1: oklch(0.45 0.14 245);
+  --og-turn-2: oklch(0.55 0.15 270);
+  --og-turn-3: oklch(0.45 0.16 295);
+  --og-turn-4: oklch(0.55 0.16 320);
+  --og-turn-5: oklch(0.45 0.15 345);
+  --og-turn-6: oklch(0.55 0.1 190);
+  --og-turn-7: oklch(0.45 0.12 225);
+}
+.dark {
+  --og-turn-0: oklch(0.78 0.11 215);
+  --og-turn-1: oklch(0.68 0.14 245);
+  --og-turn-2: oklch(0.78 0.13 270);
+  --og-turn-3: oklch(0.68 0.16 295);
+  --og-turn-4: oklch(0.78 0.14 320);
+  --og-turn-5: oklch(0.68 0.15 345);
+  --og-turn-6: oklch(0.78 0.09 190);
+  --og-turn-7: oklch(0.68 0.12 225);
+}
+
+/* Monaco gives each decorated line a full-width box (the 14px `lineDecorationsWidth`); the
+   mark is a thin bar painted inside it. An edit run is a solid bar in its turn's colour. */
+.og-mark {
+  background: linear-gradient(var(--og, transparent), var(--og, transparent)) 4px 0 / 4px 100%
+    no-repeat;
+}
+.og-turn-0 {
+  --og: var(--og-turn-0);
+}
+.og-turn-1 {
+  --og: var(--og-turn-1);
+}
+.og-turn-2 {
+  --og: var(--og-turn-2);
+}
+.og-turn-3 {
+  --og: var(--og-turn-3);
+}
+.og-turn-4 {
+  --og: var(--og-turn-4);
+}
+.og-turn-5 {
+  --og: var(--og-turn-5);
+}
+.og-turn-6 {
+  --og: var(--og-turn-6);
+}
+.og-turn-7 {
+  --og: var(--og-turn-7);
+}
+/* Unknown is never hidden and never styled like success: a wider hatched bar in the risk
+   (modified) hue, so it reads as "look here" rather than as a gap. */
+.og-mark.og-unknown {
+  background: repeating-linear-gradient(135deg, var(--git-modified) 0 2px, transparent 2px 4px) 3px
+    0 / 6px 100% no-repeat;
+}
+
+.og-tip {
+  position: fixed;
+  z-index: 60;
+  display: grid;
+  max-width: 320px;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--card);
+  color: var(--foreground);
+  font-size: 11px;
+  line-height: 1.45;
+  pointer-events: none;
+}
+.og-tip-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.og-tip-session,
+.og-tip-meta,
+.og-tip-hint {
+  color: var(--muted-foreground);
+}
+.og-tip-prompt {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+.og-tip-hint {
+  padding-top: 2px;
+  border-top: 1px solid var(--border);
+  font-size: 10px;
+}
+
+.line-origins {
+  display: grid;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+.line-origins > h4,
+.og-line h5,
+.og-leads h5 {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-weight: 600;
+}
+.coverage-bar [data-kind="claudeCode"],
+.coverage-swatch[data-kind="claudeCode"] {
+  background: var(--og-turn-0);
+}
+.coverage-bar [data-kind="codex"],
+.coverage-swatch[data-kind="codex"] {
+  background: var(--og-turn-3);
+}
+.coverage-bar [data-kind="unknown"],
+.coverage-swatch[data-kind="unknown"] {
+  background: repeating-linear-gradient(135deg, var(--git-modified) 0 2px, transparent 2px 4px);
+}
+.coverage-bar [data-kind="base"],
+.coverage-swatch[data-kind="base"] {
+  background: var(--shell-selected);
+}
+.og-line {
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.og-line[data-origin="unknown"] {
+  border-style: dashed;
+}
+.og-line-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.og-line-head h5 {
+  color: var(--foreground);
+}
+.og-reason {
+  line-height: 1.45;
+}
+.og-line[data-origin="unknown"] .og-reason {
+  color: var(--git-modified);
+}
+.og-chain {
+  display: grid;
+  gap: 4px;
+}
+.og-row {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  gap: 8px;
+  font-size: 11px;
+}
+.og-row dt {
+  color: var(--muted-foreground);
+}
+.og-row dd {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px;
+}
+.og-prompt {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow-wrap: anywhere;
+}
+.og-declared {
+  display: grid;
+  gap: 4px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+.og-declared-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+.og-leads {
+  display: grid;
+  gap: 4px;
+}
