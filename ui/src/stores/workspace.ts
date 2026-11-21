@@ -24,6 +24,7 @@ import { toastStore, type Toasts } from "./toasts";
 import { sortWorktrees, worktreeLabels } from "@/components/shell/rail-model";
 import { beginFileSwitch } from "@/lib/perf";
 import { createDiffCache } from "./diff-cache";
+import { createEvidenceStore } from "./evidence";
 import { createSessionsStore } from "./sessions";
 import { sameFileChange, sameFileChanges, sameFileDiff, sameJson } from "./same";
 
@@ -38,6 +39,8 @@ type WorkspaceStore = {
     "hookStatus" | "previewInstall" | "install" | "previewUninstall" | "uninstall"
   >;
   sessions: ReturnType<typeof createSessionsStore>;
+  /** Attribution, "Why?" rationale and recovered Codex exit codes (WHY-16, WHY-53a). */
+  evidence: ReturnType<typeof createEvidenceStore>;
   repositories: AsyncState<Repository[]>;
   storage: AsyncState<StorageStatus>;
   worktrees: Queries<Worktree[]>;
@@ -246,6 +249,7 @@ export const diffModes = [
 
 export function createWorkspaceStore(source: DataSource, toasts: StoreApi<Toasts> = toastStore) {
   const sessions = createSessionsStore(source);
+  const evidence = createEvidenceStore(source);
   return createStore<WorkspaceStore>((set, get) => {
     const worktreeQueries = createQueryLoader(
       () => get().worktrees,
@@ -747,6 +751,7 @@ export function createWorkspaceStore(source: DataSource, toasts: StoreApi<Toasts
 
     return {
       sessions,
+      evidence,
       hookData: source,
       repositories: idle,
       storage: idle,

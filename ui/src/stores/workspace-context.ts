@@ -16,3 +16,10 @@ export function useSessions<T>(selector: (state: SessionsState) => T): T {
   const store = useContext(WorkspaceContext);
   return useStore(store.getState().sessions, selector);
 }
+
+type EvidenceState = ReturnType<ReturnType<Workspace["getState"]>["evidence"]["getState"]>;
+
+export function useEvidence<T>(selector: (state: EvidenceState) => T): T {
+  const store = useContext(WorkspaceContext);
+  return useStore(store.getState().evidence, selector);
+}

@@ -10,13 +10,18 @@ import type {
   RepoId,
   Repository,
   RepositoryChanged,
+  RationaleResult,
   RepositorySecurity,
   RevokeResult,
   SessionId,
   SessionsChanged,
   SessionTimeline,
+  ShellOutcomesResult,
   StorageStatus,
+  TranscriptUnavailable,
+  TurnRef,
   Worktree,
+  WorktreeAttribution,
   WorktreeChanged,
   WorktreeId,
 } from "@/contracts";
@@ -32,6 +37,15 @@ import {
   WT_WHY_MAIN,
   worktrees,
 } from "@/fixtures";
+import {
+  attributeFile,
+  fileActivity,
+  shellLeadTable,
+  shellOutcomes,
+  toolRationale,
+  turnRationale,
+  type OutcomesScenario,
+} from "@/fixtures/evidence";
 import { HookFixtures, type HookFixtureScenario } from "@/fixtures/hooks";
 import { sessionTimelines } from "@/fixtures/sessions";
 import type { DataSource } from "./data-source";
@@ -95,6 +109,18 @@ export type FixtureOptions = {
   /** What the "native" folder picker returns; `null` simulates cancelling. */
   pick?: string | null;
   hooks?: HookFixtureScenario;
+  evidence?: EvidenceScenario;
+};
+
+/**
+ * Scenario switches for the evidence commands, for looking at states by hand.
+ * `rationale` makes EVERY rationale request answer `unavailable` with that reason
+ * (the default serves a mix of every state, by turn and by call);
+ * `outcomes` picks what `get_shell_outcomes` says about the sample Codex session.
+ */
+export type EvidenceScenario = {
+  rationale?: TranscriptUnavailable | null;
+  outcomes?: OutcomesScenario;
 };
 
 /**
@@ -115,6 +141,7 @@ export class FixtureDataSource implements DataSource {
   private readonly editedDiffs = new Map<string, FileDiff>();
   private readonly options: FixtureOptions;
   private hooks: HookFixtures;
+  private evidence: EvidenceScenario;
   /** Filter drivers per repository name; a copy, so `setFilters` never touches the caller's object. */
   private readonly filters: Record<string, FixtureDriver[]>;
   private edits = 0;
@@ -124,6 +151,7 @@ export class FixtureDataSource implements DataSource {
   constructor(options: FixtureOptions = {}) {
     this.options = options;
     this.hooks = new HookFixtures(options.hooks);
+    this.evidence = { ...options.evidence };
     this.filters = structuredClone(options.filters ?? {});
     this.repos = options.empty ? [] : structuredClone(repositories);
     this.worktreeList = options.empty ? [] : structuredClone(worktrees);
@@ -473,6 +501,62 @@ export class FixtureDataSource implements DataSource {
     const hooks = this.hooks;
     await this.delay();
     return hooks.status();
+  }
+
+  setEvidenceScenario(scenario: EvidenceScenario) {
+    this.evidence = { ...scenario };
+  }
+
+  // ---- attribution, rationale, recovered outcomes (WHY-16, WHY-53a) --------------
+
+  async getWorktreeAttribution(
+    worktreeId: WorktreeId,
+    mode: DiffMode = "vsBase",
+  ): Promise<WorktreeAttribution> {
+    await this.delay();
+    const files = this.changesForMode(worktreeId, mode);
+    return structuredClone({
+      worktreeId,
+      mode,
+      files: files.map((change) => attributeFile(worktreeId, change)),
+      shellLeads: shellLeadTable[worktreeId] ?? [],
+    });
+  }
+
+  async getFileActivity(worktreeId: WorktreeId, path: string): Promise<TurnRef[]> {
+    await this.delay();
+    this.worktree(worktreeId);
+    return structuredClone(fileActivity(worktreeId, path));
+  }
+
+  async getTurnRationale(sessionId: SessionId, turnId: string): Promise<RationaleResult> {
+    await this.delay();
+    this.session(sessionId);
+    const forced = this.evidence.rationale;
+    return structuredClone(
+      forced ? { status: "unavailable", reason: forced } : turnRationale(sessionId, turnId),
+    );
+  }
+
+  async getToolRationale(sessionId: SessionId, eventId: string): Promise<RationaleResult> {
+    await this.delay();
+    this.session(sessionId);
+    const forced = this.evidence.rationale;
+    return structuredClone(
+      forced ? { status: "unavailable", reason: forced } : toolRationale(sessionId, eventId),
+    );
+  }
+
+  async getShellOutcomes(sessionId: SessionId): Promise<ShellOutcomesResult> {
+    await this.delay();
+    this.session(sessionId);
+    return structuredClone(shellOutcomes(sessionId, this.evidence.outcomes));
+  }
+
+  private session(sessionId: SessionId) {
+    const timeline = this.sessions().get(sessionId);
+    if (!timeline) throw { kind: "notFound" } satisfies IpcError;
+    return timeline;
   }
 
   // ---- agent sessions (v0.2) -------------------------------------------------

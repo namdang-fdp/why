@@ -12,13 +12,17 @@ import type {
   Repository,
   RepositoryChanged,
   RepositorySecurity,
+  RationaleResult,
   RevokeResult,
   SessionId,
   SessionsChanged,
   SessionSummary,
   SessionTimeline,
+  ShellOutcomesResult,
   StorageStatus,
+  TurnRef,
   Worktree,
+  WorktreeAttribution,
   WorktreeChanged,
   WorktreeId,
 } from "@/contracts";
@@ -138,6 +142,26 @@ export class TauriDataSource implements DataSource {
 
   hookStatus() {
     return this.call<HookStatusReport>("hook_status");
+  }
+
+  getWorktreeAttribution(worktreeId: WorktreeId, mode?: DiffMode) {
+    return this.call<WorktreeAttribution>("get_worktree_attribution", { worktreeId, mode });
+  }
+
+  getFileActivity(worktreeId: WorktreeId, path: string) {
+    return this.call<TurnRef[]>("get_file_activity", { worktreeId, path });
+  }
+
+  getTurnRationale(sessionId: SessionId, turnId: string) {
+    return this.call<RationaleResult>("get_turn_rationale", { sessionId, turnId });
+  }
+
+  getToolRationale(sessionId: SessionId, eventId: string) {
+    return this.call<RationaleResult>("get_tool_rationale", { sessionId, eventId });
+  }
+
+  getShellOutcomes(sessionId: SessionId) {
+    return this.call<ShellOutcomesResult>("get_shell_outcomes", { sessionId });
   }
 }
 
