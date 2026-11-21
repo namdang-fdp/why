@@ -199,8 +199,13 @@ base file is on the left of `→`, the final file on the right, `e1` is an op.
    state after it gets the op's reason, `payloadReduced` (the hook reduced the
    payload) or `unparsed` (the payload could not be parsed). WHY knows an edit
    happened, not what it wrote. This beats rule 5 when the next op's `before`
-   reveals the change. A `replay` scenario needs a later Claude op with
-   `before: "auto"` (or `after: "auto"`) so the engine can learn the real hashes.
+   reveals the change. The engine never sees what the unobserved op wrote, and
+   an `after: "auto"` fingerprint can verify a state but cannot supply line
+   hashes. After an unobserved op a replay can only continue faithfully from a
+   later op's `before` snapshot (the full hash sequence): a `replay` scenario
+   needs a later Claude op with `before: "auto"`. Otherwise (a trailing
+   unobserved op, any Codex op, a later op without `before`) the scenario is
+   `align`.
    `[a, b] → unobserved op turns b into c → c is unknown(payloadReduced), a stays base.`
 7. **Ambiguous Codex placement**: when a hunk's context (and `header`, if any:
    a line ABOVE the hunk) matches more than one place, every final line whose
@@ -221,7 +226,9 @@ base file is on the left of `→`, the final file on the right, `e1` is an op.
 
 A line is its text without terminator, so CRLF and LF files have the same lines
 (`a\r\n` is the line `a`) and a gained or lost final newline is not a changed
-line. A lone `\r` inside a line is content.
+line. A lone `\r` inside a line is content. Newline handling at the `align`
+stage is checked by WHY-23, which gets the real file: the `align` check here
+compares origins only (it skips hashes and the final-newline flag).
 
 ### The "unambiguous" test of rule 5
 
@@ -235,14 +242,25 @@ lines of text:
 3. Between two consecutive matched anchors (and before the first, after the
    last): if the two gaps are identical sequences, every line in the gap keeps
    its origin. Otherwise repeat steps 1-3 inside that gap, with uniqueness
-   counted inside the gap only.
-4. Any line of the new state that is never matched is `noCapture`.
+   counted inside the gap only. **Termination:** if a non-identical gap yields
+   no anchor that survives step 2 (no line unique in both sides of the gap, or
+   none common to every longest chain), STOP: the recursion makes no progress,
+   and every line of the new state in that gap is unmatched. The same stop
+   applies to the whole file at the top level.
+4. Any line of the new state that is never matched is `noCapture` (under rule 6
+   it takes the unobserved op's reason instead).
 
-Three examples (letters are distinct lines):
+Three examples (letters are distinct lines); each ends with the stop of step 3:
 
 - `A B C D E → C D E A B`: the longest chain is `C D E` (unique), so C, D, E
-  keep their origins; A and B are `noCapture`.
-- `A B C D → C D A B`: two maximal chains (`A B` and `C D`), no anchor is in
-  both, so all four are `noCapture`.
-- `A x B → A x x B`: A and B keep their origins; the gap `x` versus `x x`
-  differs and `x` is not unique inside it, so both `x` lines are `noCapture`.
+  keep their origins. The gap before `C` is `A B` versus nothing and the gap
+  after `E` is nothing versus `A B`: non-identical, no anchor in them, so step 3
+  stops; A and B are `noCapture`.
+- `A B C D → C D A B`: step 2 finds two maximal chains (`A B` and `C D`) and no
+  anchor is in both, so no anchor survives. The whole file is one non-identical
+  gap with no surviving anchor: step 3 stops at once and all four lines are
+  `noCapture`.
+- `A x B → A x x B`: `x` is not unique in the new state, so the anchors are A
+  and B. The gap between them, `x` versus `x x`, is non-identical; inside it
+  `x` is not unique on both sides, so no anchor survives, step 3 stops and both
+  `x` lines are `noCapture`.
