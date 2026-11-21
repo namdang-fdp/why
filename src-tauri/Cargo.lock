@@ -4563,7 +4563,7 @@ dependencies = [
 
 [[package]]
 name = "why"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4590,7 +4590,7 @@ dependencies = [
 
 [[package]]
 name = "why-hook"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "libc",
  "serde_json",
@@ -4600,7 +4600,7 @@ dependencies = [
 
 [[package]]
 name = "why-wire"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "libc",
  "serde",

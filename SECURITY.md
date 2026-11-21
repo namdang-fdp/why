@@ -2,8 +2,8 @@
 
 ## Supported versions
 
-WHY is early software (pre-1.0) and has no stable release yet. Only the latest commit on `main`
-and, once releases exist, the latest release receive security fixes.
+WHY is early software (pre-1.0). Only the latest commit on `main` and the latest release receive
+security fixes.
 
 ## Reporting a vulnerability
 
@@ -59,16 +59,54 @@ code.
 - Path traversal, symlink or canonicalisation problems in IPC commands that accept paths.
 - Webview or IPC issues: a content-security-policy bypass, or a way for page content to call
   privileged commands it should not reach.
-- Leaks of local data (for example agent transcripts, once WHY stores them) to anywhere outside
-  the machine.
+- Leaks of local data (hook events, transcript excerpts) to anywhere outside the machine.
+- Anything in the session-context path described in "Agent hooks and session context" below: a
+  way for the hook to stall or fail an agent, for a hook payload or another local process to make
+  the collector or the app read files it should not, or for the installer to write anything other
+  than the change you approved.
 
 **Out of scope:**
 
 - Attacks that already require the attacker to run code as your user, or to modify WHY's binary or
   its local data directory.
-- Vulnerabilities in git itself, Tauri, the OS webview or other dependencies. Please report those
-  upstream; if WHY can mitigate one, tell us.
-- Findings about the roadmap items that do not exist yet (hooks, collector, provenance engine).
+- Vulnerabilities in git itself, Tauri, the OS webview, Claude Code, Codex or other dependencies.
+  Please report those upstream; if WHY can mitigate one, tell us.
+- Findings about roadmap items that do not exist yet (line provenance, attention signals).
+
+## Agent hooks and session context
+
+Since v0.2, WHY learns what coding agents did through their hook systems. That adds three moving
+parts, each with its own boundary.
+
+**The hook (`why-hook`).** Claude Code and Codex run it for every event, inside your agent session.
+It must never get in the agent's way, so it is **fail-open**: whatever happens (WHY closed, socket
+full, bad input, a panic) it exits 0 within a short timeout and prints nothing, so its output can
+never be fed to the model. It reads the payload from stdin, drops it unless the working directory
+is inside a repository you registered in WHY (an allowlist file the app writes), and either sends it
+over a Unix socket in `$XDG_RUNTIME_DIR` (checked by peer credentials to be your own user) or
+appends it to a private spool directory (`0600`). A payload that mentions one of your agent
+credential files (for example a tool call that read `~/.claude/.credentials.json`) is cut down to
+its ids before it leaves the hook, and an oversized one is reduced the same way.
+
+**The installer.** WHY writes its hook only into your **user-level** agent config
+(`~/.claude/settings.json`, `~/.codex/hooks.json`, or the directories `CLAUDE_CONFIG_DIR` /
+`CODEX_HOME` name), never into a repository, and only after you approved an exact diff. The file is
+re-checked against what you approved right before it is replaced; a symlink, a FIFO, a file owned
+by someone else, invalid JSON or a config directory inside a git worktree is refused, never
+"repaired". Writes are atomic (temp file, `fsync`, `rename`). To restore your file exactly, WHY
+keeps a private copy of the original (`0600`, in its own data directory) and deletes it on
+uninstall. WHY never bypasses Codex's hook approval (`/hooks`) and stops when a managed policy
+forbids user hooks.
+
+**Transcripts.** The agent's own words ("Why?") are read from the harness's transcript files
+(`~/.claude/projects`, `~/.codex/sessions`) only when you ask, with reads confined to those
+directories by the kernel (`openat2`, no symlinks), bounded in size, and never copied into WHY's
+database. WHY never reads agent credentials (`~/.claude/.credentials.json`, `~/.codex/auth.json`),
+never decrypts encrypted content, and does not collect account, plan or rate-limit data. Nothing
+is sent anywhere: there is no telemetry and no network code.
+
+**Trust.** Hook payloads and transcripts are written by the agents, so they are untrusted input,
+like repository content: they are parsed defensively, capped, and never executed.
 
 ## Git filter drivers
 
@@ -140,5 +178,10 @@ a program just by *looking* at the repository.
 
 - **Git filter drivers: mitigated, with limits.** See "Git filter drivers" above for what is
   guarded and for the race and command-path limits that remain.
+- **The hook runs inside your agent sessions.** It is small and fail-open, but it is code WHY ships
+  that runs with your permissions on every agent event. Uninstall it from the _Agent hooks_ dialog
+  if you stop using WHY.
+- **The installer's last-moment check narrows, but cannot close, a race** with a program that edits
+  your agent config at the same instant without taking a lock.
 - **Early code.** Several parts of the core are still being written, and the app has had no
   external security review.

@@ -11,6 +11,70 @@ the GitHub release notes, so keep each version section self-contained. Details a
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-21
+
+Session context: WHY now sees what Claude Code and Codex did in each worktree, turn by turn, and
+shows which agent turns explain each changed file. Every piece of it is labelled by how well it is
+backed: **Observed** (the harness recorded it), **Declared** (the agent's own words) or **Unknown**
+(not enough evidence). Linux only, as before.
+
+### Added
+
+- **Agent hooks, installed with your consent.** A new _Agent hooks_ dialog (top bar, command
+  palette, or the empty session list) adds WHY's hook to your **user-level** Claude Code
+  (`~/.claude/settings.json`) and Codex (`~/.codex/hooks.json`) config. You see the exact diff
+  first, and nothing is written until you confirm. WHY edits only its own lines (the rest of the
+  file stays byte for byte), refuses symlinked, invalid or foreign-owned files, and never touches
+  project-level config. Uninstall restores your original file exactly when you have not edited it
+  since, and otherwise removes only WHY's entries. Codex asks you to approve a new hook in its own
+  `/hooks` screen; WHY never bypasses that, and it respects managed (enterprise) policy.
+- **A fail-open hook and a local collector.** The `why-hook` binary ships with the app. Agents run
+  it on every event; it forwards the event over a local Unix socket and **always exits 0 within a
+  short timeout**, so a slow, closed or broken WHY can never stall or fail your agent. Events made
+  while WHY is closed are spooled on disk and arrive when it starts. Only repositories you registered in
+  WHY are captured; everything else is dropped by the hook itself.
+- **Claude Code and Codex adapters.** Hook payloads become one event model: prompts, tool calls
+  paired start-to-finish by id, edits with the files they touched (Claude `Write`/`Edit`, Codex
+  `apply_patch`), shell commands, test runs, subagents. A tool call that started but never reported
+  a result is shown as **unknown**, never as success. A Claude edit the harness rejected is kept as a
+  failed attempt.
+- **Session timeline in the inspector.** Each worktree lists its agent sessions (harness, model,
+  task, status, turn count); a session opens as a virtualized timeline of turns and events that
+  updates live. Selecting a file highlights the turns that touched it and the other way round.
+- **Which turns explain each changed file.** The changed-files list marks each file as explained by
+  one or more agent turns, as _Agent tried, not applied_, or as _No captured agent edit_ (WHY never
+  guesses who made such a change: a human, a shell command or a lost event all look the same). A
+  worktree also lists the turns that ran shell commands there, as leads, because what a shell
+  command changed is only known to git. Attribution is never made by time.
+- **"Why?" on demand.** Each turn and tool call can show what the agent said it was doing,
+  labelled **Declared**. WHY reads it from the harness's own transcript only when you open it, never
+  copies it into its database, and tells you plainly when the transcript is gone or unreadable.
+- **Recovered Codex outcomes.** Codex hooks carry no exit code, so shell commands start as
+  _unknown_. When you open a Codex session WHY reads the exit code from the structured record in
+  Codex's own session log and shows, for example, _failed · exit 3 · from rollout_ (Observed). It
+  never infers an outcome from command output.
+- **Dev builds stay apart from the installed app.** A `pnpm dev` run uses its own data directory,
+  socket, spool and hook binary, so developing WHY cannot disturb the copy you use.
+
+### Changed
+
+- `pnpm lint` also checks formatting with Prettier. The build (`pnpm build`) bundles `why-hook`.
+
+### Known limitations
+
+- **Linux only**, unsigned builds, no auto-update (unchanged). Needs Git 2.45.1 or newer.
+- **File-level attribution only.** A file explained by an agent turn may still hold changes WHY did
+  not see; line-level provenance is planned for v0.3.
+- **Codex hook approval cannot be confirmed by WHY**: it cannot read Codex's trust store, so the
+  dialog keeps reminding you to approve the hook in `/hooks`.
+- **Long Claude transcripts** are read from the start up to a budget (about 16 MiB), so "Why?" for
+  a tool call late in a very long session may come back empty and marked as truncated.
+- **A config directory inside a git worktree is refused** (for example a `$HOME` that is itself a
+  git repository), so hooks cannot be installed there.
+- Session context was tested against Claude Code 2.1.322 and Codex 0.170.0. Newer versions are
+  read, but WHY says when a transcript's version is one it has not checked, and recovers no Codex
+  exit codes from an unchecked version.
+
 ## [0.1.0] - 2026-11-20
 
 First release: a read-only desktop viewer that shows the live diff of every repository and git
@@ -95,5 +159,6 @@ disturb them.
 - **Unsigned builds.** The release assets are not code-signed and WHY has no auto-update. Check the
   download against `SHA256SUMS`.
 
-[Unreleased]: https://github.com/namdang-fdp/why/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/namdang-fdp/why/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/namdang-fdp/why/releases/tag/v0.2.0
 [0.1.0]: https://github.com/namdang-fdp/why/releases/tag/v0.1.0
