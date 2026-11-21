@@ -1,0 +1,38 @@
+{
+  "format": 1,
+  "name": "claude-plain-edit",
+  "description": "One Claude Edit changes one line of a small file; every other line keeps its base origin.",
+  "stage": "replay",
+  "harness": "claudeCode",
+  "file": "src/main.rs",
+  "base": {
+    "lines": ["fn main() {", "    let x = 1;", "    println!(\"{}\", x);", "}"],
+    "finalNewline": true
+  },
+  "ops": [
+    {
+      "id": "e1",
+      "session": "s1",
+      "turn": "t1",
+      "kind": "update",
+      "hunks": [
+        {
+          "oldStart": 1,
+          "lines": [" fn main() {", "-    let x = 1;", "+    let x = 2;", "     println!(\"{}\", x);"]
+        }
+      ],
+      "before": "auto",
+      "after": "none"
+    }
+  ],
+  "final": {
+    "lines": ["fn main() {", "    let x = 2;", "    println!(\"{}\", x);", "}"],
+    "finalNewline": true
+  },
+  "expected": [
+    { "line": 1, "origin": "base" },
+    { "line": 2, "origin": { "op": "e1" } },
+    { "line": 3, "origin": "base" },
+    { "line": 4, "origin": "base" }
+  ]
+}
