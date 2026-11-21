@@ -30,6 +30,10 @@ import { sameFileChange, sameFileChanges, sameFileDiff, sameJson } from "./same"
 
 type Queries<T> = ReadonlyMap<string, AsyncState<T>>;
 
+export type SettingsSection = "editor" | "agent-hooks";
+type SettingsView =
+  { status: "closed"; lastSection: SettingsSection } | { status: "open"; section: SettingsSection };
+
 export type DiffLayout = "split" | "unified";
 type NavigateHunk = (direction: HunkDirection) => HunkResult;
 
@@ -56,9 +60,9 @@ type WorkspaceStore = {
   inspectorOpen: boolean;
   paletteOpen: boolean;
   addRepositoryOpen: boolean;
-  agentHooksOpen: boolean;
-  setAgentHooksOpen: (open: boolean) => void;
-  editorSettingsOpen: boolean;
+  settingsView: SettingsView;
+  openSettings: (section?: SettingsSection) => void;
+  closeSettings: () => void;
   /** The rail's filter text (substring match over repositories, worktrees and files). */
   railFilter: string;
   /** When the watcher last saw a file edit in a worktree (Unix seconds); newer than `lastActivity`. */
@@ -70,7 +74,6 @@ type WorkspaceStore = {
   loadRepositories: () => Promise<void>;
   loadStorageStatus: () => Promise<void>;
   setAddRepositoryOpen: (open: boolean) => void;
-  setEditorSettingsOpen: (open: boolean) => void;
   setRailFilter: (text: string) => void;
   pickRepositoryFolder: () => Promise<Settled<string | null>>;
   addRepository: (path: string) => Promise<Settled<Repository>>;
@@ -798,8 +801,7 @@ export function createWorkspaceStore(source: DataSource, toasts: StoreApi<Toasts
       inspectorOpen: true,
       paletteOpen: false,
       addRepositoryOpen: false,
-      agentHooksOpen: false,
-      editorSettingsOpen: false,
+      settingsView: { status: "closed", lastSection: "editor" },
       railFilter: "",
       activity: new Map(),
       pulses: new Map(),
@@ -826,7 +828,18 @@ export function createWorkspaceStore(source: DataSource, toasts: StoreApi<Toasts
       },
 
       setAddRepositoryOpen: (addRepositoryOpen) => set({ addRepositoryOpen }),
-      setEditorSettingsOpen: (editorSettingsOpen) => set({ editorSettingsOpen }),
+      openSettings: (section) => {
+        const view = get().settingsView;
+        const previous = view.status === "open" ? view.section : view.lastSection;
+        if (view.status === "open" && (!section || section === previous)) return;
+        set({ settingsView: { status: "open", section: section ?? previous } });
+      },
+      closeSettings: () => {
+        const view = get().settingsView;
+        if (view.status === "open") {
+          set({ settingsView: { status: "closed", lastSection: view.section } });
+        }
+      },
       setRailFilter: (railFilter) => set({ railFilter }),
 
       pickRepositoryFolder: () => resolveState(() => source.pickRepositoryFolder()),
@@ -1116,7 +1129,6 @@ export function createWorkspaceStore(source: DataSource, toasts: StoreApi<Toasts
         if (failure?.status === "error") notifyError("Could not open file diff", failure.error);
         else notify("No current diff for this file", path);
       },
-      setAgentHooksOpen: (agentHooksOpen) => set({ agentHooksOpen }),
       setPaletteOpen: (paletteOpen) => set({ paletteOpen }),
       loadPaletteFiles: (worktree, mode) => loadChanges(worktree.id, mode),
       watchWorktrees: () => {

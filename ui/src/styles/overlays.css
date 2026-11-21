@@ -413,45 +413,6 @@
   color: var(--foreground);
 }
 
-/* ---- editor settings popover ------------------------------------------------ */
-
-.settings-popover {
-  width: 320px;
-}
-.settings-form {
-  display: grid;
-  gap: 12px;
-}
-.settings-title {
-  font-size: 13px;
-  font-weight: 600;
-}
-.setting {
-  display: grid;
-  gap: 4px;
-  min-width: 0;
-}
-.setting label {
-  color: var(--muted-foreground);
-  font-size: 12px;
-  font-weight: 500;
-}
-.setting-pair {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-}
-.setting-check {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-}
-.setting-check input {
-  width: 14px;
-  height: 14px;
-  accent-color: oklch(0.82 0 0);
-}
 select.input {
   appearance: none;
   padding-right: 24px;

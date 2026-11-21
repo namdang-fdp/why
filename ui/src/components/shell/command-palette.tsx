@@ -26,6 +26,7 @@ import {
   CommandList,
   CommandShortcut,
 } from "@/components/ui/command";
+import { settingsKeys } from "@/hooks/use-workspace-shortcuts";
 import { useDialogFocus } from "@/hooks/use-dialog-focus";
 import {
   changesKey,
@@ -123,8 +124,7 @@ function PaletteContents({
   const toggleLayout = useWorkspace((state) => state.toggleDiffLayout);
   const moveChange = useWorkspace((state) => state.moveChange);
   const openAdd = useWorkspace((state) => state.setAddRepositoryOpen);
-  const openAgentHooks = useWorkspace((state) => state.setAgentHooksOpen);
-  const openEditorSettings = useWorkspace((state) => state.setEditorSettingsOpen);
+  const openSettings = useWorkspace((state) => state.openSettings);
   const editor = useStore(editorSettingsStore, (state) => state.settings);
   const updateEditor = useStore(editorSettingsStore, (state) => state.update);
 
@@ -205,12 +205,7 @@ function PaletteContents({
           <CommandItem
             value="action-agent-hooks"
             keywords={["Set up agent hooks", "install uninstall", "collector", "Claude Code Codex"]}
-            onSelect={() =>
-              afterClose(() => {
-                document.getElementById("shell-command")?.focus();
-                openAgentHooks(true);
-              })
-            }
+            onSelect={() => afterClose(() => openSettings("agent-hooks"))}
           >
             <Plug aria-hidden />
             Set up agent hooks
@@ -303,9 +298,20 @@ function PaletteContents({
             </CommandShortcut>
           </CommandItem>
           <CommandItem
+            value="action-open-settings"
+            keywords={["Open settings", "preferences"]}
+            onSelect={() => afterClose(() => openSettings())}
+          >
+            <Settings2 aria-hidden />
+            Open settings
+            <CommandShortcut>
+              <kbd>{settingsKeys}</kbd>
+            </CommandShortcut>
+          </CommandItem>
+          <CommandItem
             value="action-editor-settings"
             keywords={["Editor settings", "font", "theme", "whitespace", "line height"]}
-            onSelect={run(() => openEditorSettings(true))}
+            onSelect={() => afterClose(() => openSettings("editor"))}
           >
             <Settings2 aria-hidden />
             Editor settings…
@@ -479,12 +485,9 @@ export function CommandPalette() {
       onCloseAutoFocus={(event) => {
         const action = pending.current;
         pending.current = null;
-        if (!action) {
-          focus.onCloseAutoFocus(event);
-          return;
-        }
-        event.preventDefault();
-        action();
+        // Restore the palette trigger before the Settings view captures where focus came from.
+        focus.onCloseAutoFocus(event);
+        action?.();
       }}
     >
       {open && (

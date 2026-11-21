@@ -41,11 +41,17 @@ afterEach(() => {
   Reflect.deleteProperty(HTMLElement.prototype, "scrollIntoView");
 });
 
-const dialog = () => within(screen.getByRole("dialog", { name: "Agent hooks" }));
-const card = (name: "Claude Code" | "Codex") => within(dialog().getByRole("region", { name }));
-const topBar = () => screen.getByRole("button", { name: "Agent hooks" });
-const button = (name: string) => dialog().getByRole("button", { name });
-const diff = () => dialog().getByLabelText("Unified config diff");
+const page = () => within(screen.getByRole("main", { name: "Agent hooks" }));
+const card = (name: "Claude Code" | "Codex") => within(page().getByRole("region", { name }));
+const gear = () => screen.getByRole("button", { name: "Settings" });
+const title = () => page().getByRole("heading", { name: "Agent hooks", level: 2 });
+
+async function openHooks(user: ReturnType<typeof userEvent.setup>) {
+  await user.keyboard("{Control>},{/Control}");
+  await user.click(screen.getByRole("button", { name: "Agent hooks" }));
+}
+const button = (name: string) => page().getByRole("button", { name });
+const diff = () => page().getByLabelText("Unified config diff");
 
 function setup(source: FixtureDataSource, strict = false) {
   const user = userEvent.setup();
@@ -59,8 +65,8 @@ async function open(
   source = new FixtureDataSource({ hooks: scenario, empty: true }),
 ) {
   const user = setup(source);
-  await user.click(topBar());
-  await dialog().findByRole("heading", { name: "Claude Code" });
+  await openHooks(user);
+  await page().findByRole("heading", { name: "Claude Code" });
   return { user, source };
 }
 
@@ -70,7 +76,7 @@ async function preview(
   harness: "Claude Code" | "Codex" = "Claude Code",
 ) {
   await user.click(card(harness).getByRole("button", { name: action }));
-  await dialog().findByLabelText("Unified config diff");
+  await page().findByLabelText("Unified config diff");
 }
 
 const hookCases = [
@@ -124,21 +130,21 @@ describe("Agent hooks status", () => {
 
   it.each(collectorCases)("renders collector %s", async (collector, label, explanation) => {
     await open({ collector });
-    const health = within(dialog().getByRole("region", { name: "Collector and binary" }));
+    const health = within(page().getByRole("region", { name: "Collector and binary" }));
     expect(health.getByText(label)).toBeTruthy();
     expect(health.getByText(explanation, { exact: false })).toBeTruthy();
   });
 
   it.each(binaryCases)("renders binary %s", async (binary, label, explanation) => {
     await open({ binary });
-    const health = within(dialog().getByRole("region", { name: "Collector and binary" }));
+    const health = within(page().getByRole("region", { name: "Collector and binary" }));
     expect(health.getByText(label)).toBeTruthy();
     expect(health.getByText(explanation, { exact: false })).toBeTruthy();
   });
 
   it("prints unknown for unavailable facts, preserves a real zero, and copies the reported path", async () => {
     const { user } = await open({ instance: "dev:1550" });
-    const health = within(dialog().getByRole("region", { name: "Collector and binary" }));
+    const health = within(page().getByRole("region", { name: "Collector and binary" }));
     expect(health.getByText("dev:1550")).toBeTruthy();
     expect(health.getByText("Last event").parentElement?.textContent).toBe("Last eventunknown");
     expect(health.getByText("Spool files waiting").parentElement?.textContent).toBe(
@@ -162,23 +168,23 @@ describe("Agent hooks status", () => {
     const status = vi.spyOn(source, "hookStatus").mockReturnValueOnce(old.promise);
     const user = setup(source);
     expect(status).not.toHaveBeenCalled();
-    await user.click(topBar());
-    await dialog().findByText("Checking agent hooks…");
+    await openHooks(user);
+    await page().findByText("Checking agent hooks…");
     await user.keyboard("{Escape}");
-    await user.click(topBar());
-    await dialog().findByText("Listening");
+    await openHooks(user);
+    await page().findByText("Listening");
     await act(async () => old.resolve({ ...listened, instance: "installed" }));
-    expect(dialog().queryByText("installed", { selector: ".hook-instance code" })).toBeNull();
+    expect(page().queryByText("installed", { selector: ".hook-instance code" })).toBeNull();
     source.setHookScenario({ collector: "disabled" });
     await user.click(button("Refresh status"));
-    await dialog().findByText("The fixture socket could not be bound.");
+    await page().findByText("The fixture socket could not be bound.");
     expect(status).toHaveBeenCalledTimes(3);
   });
 
   it("recovers the status request after StrictMode remount", async () => {
     const user = setup(new FixtureDataSource({ empty: true }), true);
-    await user.click(topBar());
-    await dialog().findByText("Listening");
+    await openHooks(user);
+    await page().findByText("Listening");
   });
 
   it("keeps keyboard focus on Refresh status and ignores repeats while refreshing", async () => {
@@ -210,11 +216,11 @@ describe("Agent hooks consent", () => {
       if (response.result !== "refused") throw new Error("Expected a fixture refusal");
       const install = vi.spyOn(source, "install");
       await user.click(card("Claude Code").getByRole("button", { name: "Preview install" }));
-      expect(await dialog().findByText(title)).toBeTruthy();
-      expect(dialog().getByText(response.message)).toBeTruthy();
-      expect(dialog().getByText("No change was written.")).toBeTruthy();
-      expect(dialog().queryByRole("alert")).toBeNull();
-      expect(dialog().queryByRole("button", { name: /try again|confirm/i })).toBeNull();
+      expect(await page().findByText(title)).toBeTruthy();
+      expect(page().getByText(response.message)).toBeTruthy();
+      expect(page().getByText("No change was written.")).toBeTruthy();
+      expect(page().queryByRole("alert")).toBeNull();
+      expect(page().queryByRole("button", { name: /try again|confirm/i })).toBeNull();
       expect(install).not.toHaveBeenCalled();
     },
   );
@@ -226,20 +232,20 @@ describe("Agent hooks consent", () => {
     const install = vi.spyOn(source, "install");
     await preview(user);
     expect(diff().textContent).toBe(first.preview.diff);
-    const notes = within(dialog().getByRole("list", { name: "Preview notes" }));
+    const notes = within(page().getByRole("list", { name: "Preview notes" }));
     expect(notes.getAllByRole("listitem").map((item) => item.textContent)).toEqual(
       first.preview.notes,
     );
     expect(notes.getByText(/keeps a private copy/)).toBeTruthy();
     expect(document.activeElement).toBe(
-      dialog().getByRole("heading", { name: "Install Claude Code hooks" }),
+      page().getByRole("heading", { name: "Install Claude Code hooks" }),
     );
     await user.keyboard("{Enter}{Enter}");
     expect(install).not.toHaveBeenCalled();
     const firstDiff = diff();
     firstDiff.scrollTop = 2495;
     await user.click(button("Confirm install"));
-    await dialog().findByText("The file changed since your preview.");
+    await page().findByText("The file changed since your preview.");
     const second = await source.previewInstall("claudeCode");
     if (second.result !== "ready") throw new Error("Expected a refreshed fixture preview");
     expect(second.preview.fingerprint).not.toBe(first.preview.fingerprint);
@@ -250,7 +256,7 @@ describe("Agent hooks consent", () => {
     await user.keyboard("{Enter}");
     expect(install).toHaveBeenCalledTimes(1);
     await user.click(button("Confirm install"));
-    await dialog().findByText("WHY’s hook entries were written.", { exact: false });
+    await page().findByText("WHY’s hook entries were written.", { exact: false });
     expect(card("Claude Code").getByText("Installed")).toBeTruthy();
     expect(install.mock.calls).toEqual([
       ["claudeCode", first.preview.fingerprint],
@@ -264,7 +270,7 @@ describe("Agent hooks consent", () => {
     if (response.result !== "ready") throw new Error("Expected a Codex preview");
     const { notes } = response.preview;
     await preview(user, "Preview install", "Codex");
-    const previewNotes = dialog().getByRole("list", { name: "Preview notes" });
+    const previewNotes = page().getByRole("list", { name: "Preview notes" });
     expect(
       within(previewNotes)
         .getAllByRole("listitem")
@@ -292,7 +298,7 @@ describe("Agent hooks consent", () => {
         await user.keyboard("{Enter}{Enter}");
       }
       expect(install).toHaveBeenCalledTimes(1);
-      expect(dialog().getByText("Applying the reviewed change…")).toBeTruthy();
+      expect(page().getByText("Applying the reviewed change…")).toBeTruthy();
       await act(async () =>
         held.resolve({
           result: "refused",
@@ -300,48 +306,63 @@ describe("Agent hooks consent", () => {
           message: "Lock acquired by another process.",
         }),
       );
-      expect(dialog().getByText("Lock acquired by another process.")).toBeTruthy();
-      expect(dialog().queryByRole("alert")).toBeNull();
-      expect(dialog().queryByRole("button", { name: /try again|confirm/i })).toBeNull();
+      expect(page().getByText("Lock acquired by another process.")).toBeTruthy();
+      expect(page().queryByRole("alert")).toBeNull();
+      expect(page().queryByRole("button", { name: /try again|confirm/i })).toBeNull();
       expect(install).toHaveBeenCalledTimes(1);
     },
   );
 
-  it.each(["preview", "apply"] as const)(
-    "ignores a late %s response after closing and opening another harness",
-    async (stage) => {
-      const source = new FixtureDataSource({ empty: true });
-      const original = await source.previewInstall("claudeCode");
-      if (original.result !== "ready") throw new Error("Expected a fixture preview");
-      const previewRequest = deferred<PreviewResult>();
-      const applyRequest = deferred<ApplyResult>();
-      const { user } = await open(undefined, source);
-      const install = vi.spyOn(source, "install");
-      if (stage === "preview") {
-        vi.spyOn(source, "previewInstall").mockReturnValueOnce(previewRequest.promise);
-        await user.click(card("Claude Code").getByRole("button", { name: "Preview install" }));
-      } else {
-        install.mockReturnValueOnce(applyRequest.promise);
-        await preview(user);
-        await user.click(button("Confirm install"));
-      }
+  it("discards a late preview after leaving and reopens with fresh status", async () => {
+    const source = new FixtureDataSource({ empty: true });
+    const original = await source.previewInstall("claudeCode");
+    const held = deferred<PreviewResult>();
+    const status = vi.spyOn(source, "hookStatus");
+    const install = vi.spyOn(source, "install");
+    const { user } = await open(undefined, source);
+    vi.spyOn(source, "previewInstall").mockReturnValueOnce(held.promise);
+    await user.click(card("Claude Code").getByRole("button", { name: "Preview install" }));
+    await user.click(screen.getByRole("button", { name: "Editor" }));
+    expect(screen.queryByRole("main", { name: "Agent hooks" })).toBeNull();
 
-      await user.keyboard("{Escape}");
-      expect(screen.queryByRole("dialog", { name: "Agent hooks" })).toBeNull();
-      await user.click(topBar());
-      await dialog().findByRole("heading", { name: "Codex" });
-      await preview(user, "Preview install", "Codex");
-      const codexDiff = diff().textContent;
-      await act(async () => {
-        previewRequest.resolve(original);
-        applyRequest.resolve({ result: "stale", preview: original.preview });
-      });
-      expect(dialog().getByRole("heading", { name: "Install Codex hooks" })).toBeTruthy();
-      expect(diff().textContent).toBe(codexDiff);
-      expect(screen.queryByText("The file changed since your preview.")).toBeNull();
-      expect(install).toHaveBeenCalledTimes(stage === "apply" ? 1 : 0);
-    },
-  );
+    await user.click(screen.getByRole("button", { name: "Agent hooks" }));
+    await page().findByRole("heading", { name: "Codex" });
+    await preview(user, "Preview install", "Codex");
+    const codexDiff = diff().textContent;
+    await act(async () => held.resolve(original));
+
+    expect(page().getByRole("heading", { name: "Install Codex hooks" })).toBeTruthy();
+    expect(diff().textContent).toBe(codexDiff);
+    expect(status).toHaveBeenCalledTimes(2);
+    expect(install).not.toHaveBeenCalled();
+  });
+
+  it("waits for a confirmed apply on return, rereads the written state and never resubmits", async () => {
+    const source = new FixtureDataSource({ empty: true });
+    const { user } = await open(undefined, source);
+    const status = vi.spyOn(source, "hookStatus");
+    const original = source.install.bind(source);
+    const held = deferred<void>();
+    const install = vi.spyOn(source, "install").mockImplementation(async (...args) => {
+      await held.promise;
+      return original(...args);
+    });
+    await preview(user);
+    await user.click(button("Confirm install"));
+    await user.click(screen.getByRole("button", { name: "Back to workspace" }));
+    expect(screen.queryByRole("main", { name: "Agent hooks" })).toBeNull();
+
+    await openHooks(user);
+    expect(page().getByText("Checking agent hooks…")).toBeTruthy();
+    expect(page().queryByRole("button", { name: /preview install|confirm install/i })).toBeNull();
+    expect(status).not.toHaveBeenCalled();
+
+    await act(async () => held.resolve());
+    await card("Claude Code").findByText("Installed");
+    expect(status).toHaveBeenCalledTimes(1);
+    expect(install).toHaveBeenCalledTimes(1);
+    expect(page().queryByText("WHY’s hook entries were written.", { exact: false })).toBeNull();
+  });
 
   it.each([
     ["restoreOriginal", "Restore the original file exactly."],
@@ -356,7 +377,7 @@ describe("Agent hooks consent", () => {
       expect(expected.preview.outcome).toBe(uninstall);
       const apply = vi.spyOn(source, "uninstall");
       await preview(user, "Preview uninstall");
-      expect(dialog().getByText(summary)).toBeTruthy();
+      expect(page().getByText(summary)).toBeTruthy();
       expect(diff().textContent).toBe(expected.preview.diff);
       expect(apply).not.toHaveBeenCalled();
       await user.click(button("Confirm uninstall"));
@@ -372,12 +393,12 @@ describe("Agent hooks consent", () => {
     });
     const install = vi.spyOn(source, "install");
     await user.click(card("Claude Code").getByRole("button", { name: "Preview update" }));
-    expect(await dialog().findByText("No config diff to show.")).toBeTruthy();
-    expect(dialog().getByText(/reinstall the bundled hook binary/)).toBeTruthy();
+    expect(await page().findByText("No config diff to show.")).toBeTruthy();
+    expect(page().getByText(/reinstall the bundled hook binary/)).toBeTruthy();
     expect(install).not.toHaveBeenCalled();
     await user.click(button("Confirm install"));
     expect(
-      await dialog().findByText("Matches the hook binary bundled with this build."),
+      await page().findByText("Matches the hook binary bundled with this build."),
     ).toBeTruthy();
     expect(install).toHaveBeenCalledTimes(1);
   });
@@ -392,13 +413,13 @@ describe("Agent hooks consent", () => {
       .mockRejectedValueOnce({ kind: "internal", message: "Could not write config" });
     const { user } = await open(undefined, source);
     await user.click(card("Claude Code").getByRole("button", { name: "Preview install" }));
-    expect((await dialog().findByRole("alert")).textContent).toContain("Could not read config");
+    expect((await page().findByRole("alert")).textContent).toContain("Could not read config");
     await user.click(button("Try again"));
-    await dialog().findByLabelText("Unified config diff");
+    await page().findByLabelText("Unified config diff");
     await user.click(button("Confirm install"));
-    expect((await dialog().findByRole("alert")).textContent).toContain("Could not write config");
+    expect((await page().findByRole("alert")).textContent).toContain("Could not write config");
     await user.click(button("Try again"));
-    await dialog().findByLabelText("Unified config diff");
+    await page().findByLabelText("Unified config diff");
     expect(read).toHaveBeenCalledTimes(3);
     expect(install).toHaveBeenCalledTimes(1);
     await user.click(button("Confirm install"));
@@ -407,33 +428,34 @@ describe("Agent hooks consent", () => {
   });
 });
 
-it("opens from the top bar, command palette and session empty state, with focus restored on Escape", async () => {
+it("opens from Settings, the palette and the session empty state, with focus restored on Escape", async () => {
   const source = new FixtureDataSource();
   vi.spyOn(source, "listSessions").mockResolvedValue([]);
   const install = vi.spyOn(source, "install");
   const user = setup(source);
-  const empty = await screen.findByRole("button", { name: "Set up hooks" });
+  await screen.findByRole("button", { name: "Set up hooks" });
 
-  topBar().focus();
+  gear().focus();
   await user.keyboard("{Enter}");
-  expect(document.activeElement).toBe(button("Close agent hooks"));
+  await user.click(screen.getByRole("button", { name: "Agent hooks" }));
+  expect(document.activeElement).toBe(title());
   await user.keyboard("{Escape}");
-  await waitFor(() => expect(document.activeElement).toBe(topBar()));
+  await waitFor(() => expect(document.activeElement).toBe(gear()));
 
   const search = screen.getByRole("button", { name: "Search commands" });
   search.focus();
   await user.keyboard("{Enter}");
   await user.type(screen.getByRole("combobox"), "Set up agent hooks");
   await user.keyboard("{Enter}");
-  await dialog().findByRole("heading", { name: "Claude Code" });
+  await page().findByRole("heading", { name: "Claude Code" });
   await user.keyboard("{Escape}");
   await waitFor(() => expect(document.activeElement).toBe(search));
 
-  empty.focus();
+  (await screen.findByRole("button", { name: "Set up hooks" })).focus();
   await user.keyboard("{Enter}");
   await preview(user);
   await user.keyboard("{Escape}");
-  await waitFor(() => expect(document.activeElement).toBe(empty));
+  await waitFor(() => expect(document.activeElement).toBe(gear()));
   expect(install).not.toHaveBeenCalled();
 
   fireEvent.keyDown(window, { key: "?" });

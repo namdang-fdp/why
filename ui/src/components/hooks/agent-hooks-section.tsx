@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { LockKeyhole, RefreshCw, X } from "lucide-react";
+import { LockKeyhole, RefreshCw } from "lucide-react";
 import type {
+  ApplyResult,
   ChangeOutcome,
   HookHarness,
   HookPreview,
@@ -9,15 +10,8 @@ import type {
 } from "@/contracts";
 import { ErrorMessage, LoadingMessage } from "@/components/shell/async-message";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { idle, resolveState, type AsyncState } from "@/data/async-state";
-import { useDialogFocus } from "@/hooks/use-dialog-focus";
+import { idle, resolveState, type AsyncState, type Settled } from "@/data/async-state";
+import type { DataSource } from "@/data/data-source";
 import { useWorkspace } from "@/stores/workspace-context";
 import { appliedOutcomes, HookReview, type HookRequest, type ReviewState } from "./hook-review";
 import { HarnessCard, harnessNames, HookHealth } from "./hook-status";
@@ -26,6 +20,13 @@ type ReportRead = AsyncState<HookStatusReport> & { previous?: HookStatusReport }
 type Flow =
   | { view: "overview"; applied?: { request: HookRequest; outcome: ChangeOutcome } }
   | { view: "review"; state: ReviewState };
+
+// A confirmed write can outlive this panel. A returning visit waits for it
+// before reading status, so it can't offer actions based on pre-write state.
+const pendingApplies = new WeakMap<
+  Pick<DataSource, "install" | "uninstall">,
+  Promise<Settled<ApplyResult>>
+>();
 
 function HooksPanel() {
   const source = useWorkspace((state) => state.hookData);
@@ -39,8 +40,7 @@ function HooksPanel() {
   const invalidate = useCallback(() => {
     current.current = null;
   }, []);
-  // Each visit owns its requests. Closing the Radix dialog discards this
-  // panel immediately, even while its empty shell animates out.
+  // Each visit owns its UI updates, even when a request outlives the page.
   useLayoutEffect(() => invalidate, [invalidate]);
 
   const refresh = useCallback(
@@ -49,6 +49,9 @@ function HooksPanel() {
       const version = Symbol();
       current.current = version;
       setReport({ status: "loading", previous });
+      const pending = pendingApplies.get(source);
+      if (pending) await pending;
+      if (current.current !== version) return;
       const result = await resolveState(() => source.hookStatus());
       if (current.current !== version) return;
       current.current = null;
@@ -92,6 +95,7 @@ function HooksPanel() {
   async function confirm(approved: HookPreview) {
     if (
       current.current ||
+      pendingApplies.has(source) ||
       consumedPreview.current === approved ||
       flow.view !== "review" ||
       flow.state.status !== "review" ||
@@ -107,11 +111,14 @@ function HooksPanel() {
     const request = flow.state.request;
     const update = (state: ReviewState) => setFlow({ view: "review", state });
     update({ request, status: "applying", preview: approved });
-    const result = await resolveState(() =>
+    const pending = resolveState(() =>
       kind === "install"
         ? source.install(harness, fingerprint)
         : source.uninstall(harness, fingerprint),
     );
+    pendingApplies.set(source, pending);
+    const result = await pending;
+    pendingApplies.delete(source);
     if (current.current !== version) return;
     current.current = null;
     if (result.status === "error") {
@@ -213,52 +220,21 @@ function HooksPanel() {
   );
 }
 
-export function AgentHooksDialog() {
-  const open = useWorkspace((state) => state.agentHooksOpen);
-  const setOpen = useWorkspace((state) => state.setAgentHooksOpen);
-  const focus = useDialogFocus("shell-agent-hooks");
-  const closeButton = useRef<HTMLButtonElement>(null);
+export function AgentHooksSection() {
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent
-        {...focus}
-        className="agent-hooks-dialog"
-        showCloseButton={false}
-        onInteractOutside={(event) => event.preventDefault()}
-        onOpenAutoFocus={(event) => {
-          focus.onOpenAutoFocus();
-          event.preventDefault();
-          closeButton.current?.focus();
-        }}
-      >
-        <header className="hook-dialog-header">
-          <DialogTitle>Agent hooks</DialogTitle>
-          <DialogDescription>
-            Review changes to your user-level config before WHY writes them.
-          </DialogDescription>
-        </header>
-        <DialogClose asChild>
-          <Button
-            className="hook-dialog-close"
-            ref={closeButton}
-            type="button"
-            aria-label="Close agent hooks"
-            variant="ghost"
-            size="icon-sm"
-          >
-            <X aria-hidden />
-          </Button>
-        </DialogClose>
-        {open && <HooksPanel />}
-        <footer className="hook-privacy">
-          <LockKeyhole size={15} aria-hidden />
-          <p>
-            Everything stays on this machine. WHY captures activity only from repositories you
-            register and never reads agent credential stores. Uninstall restores your original file
-            when possible and preserves any later edits.
-          </p>
-        </footer>
-      </DialogContent>
-    </Dialog>
+    <div className="agent-hooks-section">
+      <p className="hook-description">
+        Review changes to your user-level config before WHY writes them.
+      </p>
+      <HooksPanel />
+      <footer className="hook-privacy">
+        <LockKeyhole size={15} aria-hidden />
+        <p>
+          Everything stays on this machine. WHY captures activity only from repositories you
+          register and never reads agent credential stores. Uninstall restores your original file
+          when possible and preserves any later edits.
+        </p>
+      </footer>
+    </div>
   );
 }

@@ -3,6 +3,7 @@ import { useGroupRef, usePanelRef } from "react-resizable-panels";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { saveLayout, usePanelLayout } from "@/hooks/use-panel-layout";
 import { ChangedFiles } from "./rail-files";
+import { RailFooter } from "./rail-footer";
 import { RailFilter } from "./rail-filter";
 import { Repositories } from "./rail-repositories";
 
@@ -120,6 +121,7 @@ export function LeftRail() {
           </ResizablePanel>
         </ResizablePanelGroup>
       </div>
+      <RailFooter />
     </nav>
   );
 }

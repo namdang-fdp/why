@@ -5,6 +5,7 @@
 @import "./styles/rail.css";
 @import "./styles/sessions.css";
 @import "./styles/agent-hooks.css";
+@import "./styles/settings.css";
 
 /* The app is dark-only for now: <html class="dark"> is set in index.html. */
 @custom-variant dark (&:is(.dark *));
@@ -681,7 +682,7 @@ kbd {
     gap: 8px;
   }
 
-  .top-controls {
+  .top-bar:not([data-settings-open="true"]) .top-controls {
     width: 100%;
     margin-left: 0;
   }
