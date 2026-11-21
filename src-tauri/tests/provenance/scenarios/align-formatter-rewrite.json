@@ -1,0 +1,60 @@
+{
+  "format": 1,
+  "name": "align-formatter-rewrite",
+  "description": "One captured Claude edit (e1 rewrites the last line). Afterwards, with no captured edit, a formatter rewrites the file: indentation changes, spacing around operators changes, and the one-line `for` is split in two. Rule 8 applies rule 5 between the replayed state and `final`. Only the two `def` lines occur exactly once and unchanged on both sides, so they keep base. Every other line exists only because of the rewrite, including `return tally(rows) / max(len(rows), 1)`, which e1 wrote but the formatter changed: it is Unknown(noCapture), never e1, because the final line is not the line e1 wrote.",
+  "stage": "align",
+  "harness": "claudeCode",
+  "file": "src/tally.py",
+  "base": {
+    "lines": [
+      "def tally(rows):",
+      "  total=0",
+      "  for r in rows: total+=r",
+      "  return total",
+      "def avg(rows):",
+      "  return tally(rows)/len(rows)"
+    ],
+    "finalNewline": true
+  },
+  "ops": [
+    {
+      "id": "e1",
+      "session": "s1",
+      "turn": "t1",
+      "kind": "update",
+      "hunks": [
+        {
+          "oldStart": 5,
+          "lines": [
+            " def avg(rows):",
+            "-  return tally(rows)/len(rows)",
+            "+  return tally(rows)/max(len(rows),1)"
+          ]
+        }
+      ],
+      "before": "auto",
+      "after": "none"
+    }
+  ],
+  "final": {
+    "lines": [
+      "def tally(rows):",
+      "    total = 0",
+      "    for r in rows:",
+      "        total += r",
+      "    return total",
+      "def avg(rows):",
+      "    return tally(rows) / max(len(rows), 1)"
+    ],
+    "finalNewline": true
+  },
+  "expected": [
+    { "line": 1, "origin": "base" },
+    { "line": 2, "origin": { "unknown": "noCapture" } },
+    { "line": 3, "origin": { "unknown": "noCapture" } },
+    { "line": 4, "origin": { "unknown": "noCapture" } },
+    { "line": 5, "origin": { "unknown": "noCapture" } },
+    { "line": 6, "origin": "base" },
+    { "line": 7, "origin": { "unknown": "noCapture" } }
+  ]
+}

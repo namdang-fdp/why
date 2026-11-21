@@ -1,0 +1,39 @@
+{
+  "format": 1,
+  "name": "claude-write-create",
+  "description": "A Claude Write creates a file that did not exist (the payload has `originalFile: null` and an empty `structuredPatch`, so the adapter presents it as one all-added hunk with no position). Every line of the new file is e1, including the blank line.",
+  "stage": "replay",
+  "harness": "claudeCode",
+  "file": "src/greet.py",
+  "base": null,
+  "ops": [
+    {
+      "id": "e1",
+      "session": "s1",
+      "turn": "t1",
+      "kind": "create",
+      "hunks": [
+        {
+          "lines": [
+            "+def greet(name):",
+            "+    return 'hello ' + name",
+            "+",
+            "+print(greet('world'))"
+          ]
+        }
+      ],
+      "before": "none",
+      "after": "auto"
+    }
+  ],
+  "final": {
+    "lines": ["def greet(name):", "    return 'hello ' + name", "", "print(greet('world'))"],
+    "finalNewline": true
+  },
+  "expected": [
+    { "line": 1, "origin": { "op": "e1" } },
+    { "line": 2, "origin": { "op": "e1" } },
+    { "line": 3, "origin": { "op": "e1" } },
+    { "line": 4, "origin": { "op": "e1" } }
+  ]
+}

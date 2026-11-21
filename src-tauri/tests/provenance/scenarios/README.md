@@ -120,10 +120,13 @@ a line is fine (it is content).
 
 - `replay`: `final` equals what applying the ops produces (the loader checks
   it). WHY-22's engine must reproduce `expected` exactly.
-- `align`: `final` differs from the replay (something changed the file after
-  the last op: a human, a shell write, a formatter, a rebase). The right answer
-  needs alignment with the real file (WHY-23). The loader refuses an `align`
-  scenario whose `final` equals the replay.
+- `align`: the engine needs the real final file to be judged, either because
+  something uncaptured changed it after the last op (a person, a shell write, a
+  formatter, a rebase), or because the ops alone do not determine its text
+  (ambiguous placement, an unobserved op that no later `before` reveals, a
+  final newline only the file shows). The right answer needs alignment with the
+  real file (WHY-23). `final` may therefore equal the oracle's replay: the
+  oracle knows `appliedAt` / `truthAfter`, the engine does not.
 
 ### Expected
 
@@ -164,3 +167,100 @@ final-newline flag, to equal the final file's.
 | `claude-plain-edit.json` | one Claude edit of one line |
 | `claude-shifted-edit.json` | a second edit whose position an earlier edit shifted |
 | `codex-ambiguous-context.json` | a Codex hunk whose context matches twice: the changed line and its twin are `unknown(ambiguousMatch)` |
+
+## Semantics (v0.3)
+
+The rules every `expected` list is derived from (decided for v0.3, WHY-21). Each
+scenario's `description` says which rule it exercises. Examples are tiny: the
+base file is on the left of `→`, the final file on the right, `e1` is an op.
+
+1. **An origin is the op that wrote the line.** Content equality never
+   transfers origin.
+   `[x, y] → e1 changes y to z, e2 changes z back to y → y is e2, not base.`
+2. **Untouched lines keep their origin.** Context lines and every line outside
+   an op's hunks keep what they had; base lines no op touched are `base`. This
+   also holds for a Claude `Write` overwrite: lines its patch shows as context
+   keep their origin, because the harness's own patch is the observed fact.
+   `[a, b, c] → e1 changes b → a and c stay base. A rename keeps origins too.`
+3. **Removed is gone.** A removed line has no origin in `final`; deleting then
+   re-adding identical text gives the re-adding op (rule 1).
+   `[a, b] → e1 deletes b, e2 adds b back → b is e2.`
+4. **Order is arrival order** (the `ops` order). Two sessions editing one file
+   interleave by arrival; each line belongs to the op that last wrote it.
+   `[a] → e1 (session A) writes a1, e2 (session B) writes a2 → a2 is e2.`
+5. **Something uncaptured changed the file** (an explicit `before: { lines }`
+   that differs from the replayed state: a formatter, a `sed`, a person, a lost
+   event: WHY cannot tell which). Lines that exist only because of that change
+   are `{ unknown: "noCapture" }`. Lines it did not change keep their origin
+   **only if they match unambiguously**; the exact test is below.
+   `[a, b] (e1 wrote b) → uncaptured adds c → [a, b, c]: a base, b e1, c noCapture.`
+6. **An unobserved op** (`observed: { unobserved: ... }`, true effect in
+   `truthAfter`): every line that differs between the state before it and the
+   state after it gets the op's reason, `payloadReduced` (the hook reduced the
+   payload) or `unparsed` (the payload could not be parsed). WHY knows an edit
+   happened, not what it wrote. This beats rule 5 when the next op's `before`
+   reveals the change. The engine never sees what the unobserved op wrote, and
+   an `after: "auto"` fingerprint can verify a state but cannot supply line
+   hashes. After an unobserved op a replay can only continue faithfully from a
+   later op's `before` snapshot (the full hash sequence): a `replay` scenario
+   needs a later Claude op with `before: "auto"`. Otherwise (a trailing
+   unobserved op, any Codex op, a later op without `before`) the scenario is
+   `align`.
+   `[a, b] → unobserved op turns b into c → c is unknown(payloadReduced), a stays base.`
+7. **Ambiguous Codex placement**: when a hunk's context (and `header`, if any:
+   a line ABOVE the hunk) matches more than one place, every final line whose
+   origin depends on which placement is true is `{ unknown: "ambiguousMatch" }`;
+   lines that are the same under every placement keep their origin. The
+   truth-only `appliedAt` says where it really went (Codex searches forward and
+   takes the first match; this is for realism only, the engine never picks a
+   placement). v0.3 scenarios keep ambiguous hunks to equal-size replacements;
+   a count-changing ambiguous hunk has no defined answer yet.
+   `[k, v, k, v] → hunk "k, -v, +w" fits twice → both v lines are ambiguousMatch, both k stay base.`
+8. **The `align` stage** (the final file differs from a faithful replay: a
+   change after the last captured op): apply rule 5 between the replayed state
+   and `final`.
+   `replay [a, b] (e1 wrote b), final [a, B] → a base, B noCapture.`
+9. **Reserved reasons**: never expect `notReplayed` or `concurrentWriter`.
+   Descriptions never say "manual" or "human": an uncaptured change may be a
+   person, a shell command or a lost event.
+
+A line is its text without terminator, so CRLF and LF files have the same lines
+(`a\r\n` is the line `a`) and a gained or lost final newline is not a changed
+line. A lone `\r` inside a line is content. Newline handling at the `align`
+stage is checked by WHY-23, which gets the real file: the `align` check here
+compares origins only (it skips hashes and the final-newline flag).
+
+### The "unambiguous" test of rule 5
+
+Compare the state BEFORE the uncaptured change with the state AFTER it, as
+lines of text:
+
+1. **Anchors** are lines whose text occurs exactly once in BOTH states.
+2. Take the longest chain of anchors that keeps the same relative order in both
+   states. If more than one chain has that maximum length, only anchors that
+   belong to EVERY maximal chain count; the rest are not matched.
+3. Between two consecutive matched anchors (and before the first, after the
+   last): if the two gaps are identical sequences, every line in the gap keeps
+   its origin. Otherwise repeat steps 1-3 inside that gap, with uniqueness
+   counted inside the gap only. **Termination:** if a non-identical gap yields
+   no anchor that survives step 2 (no line unique in both sides of the gap, or
+   none common to every longest chain), STOP: the recursion makes no progress,
+   and every line of the new state in that gap is unmatched. The same stop
+   applies to the whole file at the top level.
+4. Any line of the new state that is never matched is `noCapture` (under rule 6
+   it takes the unobserved op's reason instead).
+
+Three examples (letters are distinct lines); each ends with the stop of step 3:
+
+- `A B C D E → C D E A B`: the longest chain is `C D E` (unique), so C, D, E
+  keep their origins. The gap before `C` is `A B` versus nothing and the gap
+  after `E` is nothing versus `A B`: non-identical, no anchor in them, so step 3
+  stops; A and B are `noCapture`.
+- `A B C D → C D A B`: step 2 finds two maximal chains (`A B` and `C D`) and no
+  anchor is in both, so no anchor survives. The whole file is one non-identical
+  gap with no surviving anchor: step 3 stops at once and all four lines are
+  `noCapture`.
+- `A x B → A x x B`: `x` is not unique in the new state, so the anchors are A
+  and B. The gap between them, `x` versus `x x`, is non-identical; inside it
+  `x` is not unique on both sides, so no anchor survives, step 3 stops and both
+  `x` lines are `noCapture`.

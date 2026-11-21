@@ -1,0 +1,104 @@
+{
+  "format": 1,
+  "name": "claude-two-sessions-interleave",
+  "description": "Two Claude sessions (sA and sB) edit one file in alternating order: e1 (sA), e2 (sB), e3 (sA), e4 (sB). Order is arrival order (rule 4). e4 rewrites the line e1 wrote, so that line is e4; e2 and e3 each own the line they wrote; untouched lines stay base. Each op's `before` is the true file at that moment, which already contains the other session's work.",
+  "stage": "replay",
+  "harness": "claudeCode",
+  "file": "src/menu.py",
+  "base": {
+    "lines": [
+      "ITEMS = []",
+      "def add(x):",
+      "    ITEMS.append(x)",
+      "def clear():",
+      "    ITEMS.clear()",
+      "def size():",
+      "    return len(ITEMS)"
+    ],
+    "finalNewline": true
+  },
+  "ops": [
+    {
+      "id": "e1",
+      "session": "sA",
+      "turn": "tA1",
+      "kind": "update",
+      "hunks": [
+        {
+          "oldStart": 2,
+          "lines": [" def add(x):", "-    ITEMS.append(x)", "+    ITEMS.append(str(x))", " def clear():"]
+        }
+      ],
+      "before": "auto",
+      "after": "none"
+    },
+    {
+      "id": "e2",
+      "session": "sB",
+      "turn": "tB1",
+      "kind": "update",
+      "hunks": [
+        {
+          "oldStart": 4,
+          "lines": [" def clear():", "-    ITEMS.clear()", "+    ITEMS[:] = []", " def size():"]
+        }
+      ],
+      "before": "auto",
+      "after": "none"
+    },
+    {
+      "id": "e3",
+      "session": "sA",
+      "turn": "tA2",
+      "kind": "update",
+      "hunks": [
+        {
+          "oldStart": 6,
+          "lines": [" def size():", "-    return len(ITEMS)", "+    return len(set(ITEMS))"]
+        }
+      ],
+      "before": "auto",
+      "after": "none"
+    },
+    {
+      "id": "e4",
+      "session": "sB",
+      "turn": "tB2",
+      "kind": "update",
+      "hunks": [
+        {
+          "oldStart": 2,
+          "lines": [
+            " def add(x):",
+            "-    ITEMS.append(str(x))",
+            "+    ITEMS.append(str(x).strip())",
+            " def clear():"
+          ]
+        }
+      ],
+      "before": "auto",
+      "after": "none"
+    }
+  ],
+  "final": {
+    "lines": [
+      "ITEMS = []",
+      "def add(x):",
+      "    ITEMS.append(str(x).strip())",
+      "def clear():",
+      "    ITEMS[:] = []",
+      "def size():",
+      "    return len(set(ITEMS))"
+    ],
+    "finalNewline": true
+  },
+  "expected": [
+    { "line": 1, "origin": "base" },
+    { "line": 2, "origin": "base" },
+    { "line": 3, "origin": { "op": "e4" } },
+    { "line": 4, "origin": "base" },
+    { "line": 5, "origin": { "op": "e2" } },
+    { "line": 6, "origin": "base" },
+    { "line": 7, "origin": { "op": "e3" } }
+  ]
+}

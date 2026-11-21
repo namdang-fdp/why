@@ -1,0 +1,62 @@
+{
+  "format": 1,
+  "name": "claude-replace-block",
+  "description": "One Claude Edit replaces a four-line loop body with a two-line version. All four removed lines are gone (rule 3); the two lines that replace them are e1 (rule 1); the function header above and the next function below are context and keep base (rule 2).",
+  "stage": "replay",
+  "harness": "claudeCode",
+  "file": "src/prices.py",
+  "base": {
+    "lines": [
+      "def total(items):",
+      "    s = 0",
+      "    for i in items:",
+      "        s += i.price",
+      "    return s",
+      "def count(items):",
+      "    return len(items)"
+    ],
+    "finalNewline": true
+  },
+  "ops": [
+    {
+      "id": "e1",
+      "session": "s1",
+      "turn": "t1",
+      "kind": "update",
+      "hunks": [
+        {
+          "oldStart": 1,
+          "lines": [
+            " def total(items):",
+            "-    s = 0",
+            "-    for i in items:",
+            "-        s += i.price",
+            "-    return s",
+            "+    prices = [i.price for i in items]",
+            "+    return sum(prices)",
+            " def count(items):"
+          ]
+        }
+      ],
+      "before": "auto",
+      "after": "none"
+    }
+  ],
+  "final": {
+    "lines": [
+      "def total(items):",
+      "    prices = [i.price for i in items]",
+      "    return sum(prices)",
+      "def count(items):",
+      "    return len(items)"
+    ],
+    "finalNewline": true
+  },
+  "expected": [
+    { "line": 1, "origin": "base" },
+    { "line": 2, "origin": { "op": "e1" } },
+    { "line": 3, "origin": { "op": "e1" } },
+    { "line": 4, "origin": "base" },
+    { "line": 5, "origin": "base" }
+  ]
+}

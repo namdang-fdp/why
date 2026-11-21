@@ -1,0 +1,80 @@
+{
+  "format": 1,
+  "name": "claude-write-overwrite-keeps-context",
+  "description": "A Claude Write overwrites a whole file (`type: update`, the payload carries the old file and a patch). e1 first edits `PORT`. The Write then re-sends the file with `HOST` changed, `LEVEL` dropped and two settings added; its patch shows `import os`, `DEBUG`, `PORT` and `NAME` as CONTEXT. Rule 2 wins over the fact that a Write rewrites everything: lines the harness's own patch shows unchanged keep their origin, so `PORT = 8080` stays e1 and the others stay base. Only the lines the patch marks added are e2.",
+  "stage": "replay",
+  "harness": "claudeCode",
+  "file": "src/settings.py",
+  "base": {
+    "lines": [
+      "import os",
+      "DEBUG = False",
+      "PORT = 8000",
+      "HOST = 'localhost'",
+      "NAME = 'demo'",
+      "LEVEL = 1"
+    ],
+    "finalNewline": true
+  },
+  "ops": [
+    {
+      "id": "e1",
+      "session": "s1",
+      "turn": "t1",
+      "kind": "update",
+      "hunks": [
+        {
+          "oldStart": 2,
+          "lines": [" DEBUG = False", "-PORT = 8000", "+PORT = 8080", " HOST = 'localhost'"]
+        }
+      ],
+      "before": "auto",
+      "after": "none"
+    },
+    {
+      "id": "e2",
+      "session": "s1",
+      "turn": "t2",
+      "kind": "update",
+      "hunks": [
+        {
+          "oldStart": 1,
+          "lines": [
+            " import os",
+            " DEBUG = False",
+            " PORT = 8080",
+            "-HOST = 'localhost'",
+            "+HOST = '0.0.0.0'",
+            " NAME = 'demo'",
+            "-LEVEL = 1",
+            "+TIMEOUT = 30",
+            "+RETRIES = 3"
+          ]
+        }
+      ],
+      "before": "auto",
+      "after": "auto"
+    }
+  ],
+  "final": {
+    "lines": [
+      "import os",
+      "DEBUG = False",
+      "PORT = 8080",
+      "HOST = '0.0.0.0'",
+      "NAME = 'demo'",
+      "TIMEOUT = 30",
+      "RETRIES = 3"
+    ],
+    "finalNewline": true
+  },
+  "expected": [
+    { "line": 1, "origin": "base" },
+    { "line": 2, "origin": "base" },
+    { "line": 3, "origin": { "op": "e1" } },
+    { "line": 4, "origin": { "op": "e2" } },
+    { "line": 5, "origin": "base" },
+    { "line": 6, "origin": { "op": "e2" } },
+    { "line": 7, "origin": { "op": "e2" } }
+  ]
+}

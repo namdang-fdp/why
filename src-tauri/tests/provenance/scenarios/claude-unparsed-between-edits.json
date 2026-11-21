@@ -1,0 +1,75 @@
+{
+  "format": 1,
+  "name": "claude-unparsed-between-edits",
+  "description": "Like claude-unobserved-between-edits, but the middle op `u` is unobserved because its payload could not be parsed (observed: unparsed). Same rule 6 with its own reason: the one line `u` changed is Unknown(unparsed), not payloadReduced and not noCapture. e1 and e2 are observed; e2's `before` is the real file after `u`. Lines `u` did not change keep their origin (`return sum(cart.values())` stays e1), and e2 rewrites the first line (e2).",
+  "stage": "replay",
+  "harness": "claudeCode",
+  "file": "src/cart.py",
+  "base": {
+    "lines": ["def total(cart):", "    return sum(cart)", "def count(cart):", "    return len(cart)"],
+    "finalNewline": true
+  },
+  "ops": [
+    {
+      "id": "e1",
+      "session": "s1",
+      "turn": "t1",
+      "kind": "update",
+      "hunks": [
+        {
+          "oldStart": 1,
+          "lines": [" def total(cart):", "-    return sum(cart)", "+    return sum(cart.values())", " def count(cart):"]
+        }
+      ],
+      "before": "auto",
+      "after": "none"
+    },
+    {
+      "id": "u",
+      "session": "s1",
+      "turn": "t2",
+      "kind": "update",
+      "observed": { "unobserved": "unparsed" },
+      "before": "none",
+      "after": "none",
+      "truthAfter": {
+        "lines": [
+          "def total(cart):",
+          "    return sum(cart.values())",
+          "def count(cart):",
+          "    return len(cart.keys())"
+        ],
+        "finalNewline": true
+      }
+    },
+    {
+      "id": "e2",
+      "session": "s1",
+      "turn": "t3",
+      "kind": "update",
+      "hunks": [
+        {
+          "oldStart": 1,
+          "lines": ["-def total(cart):", "+def total(cart, tax=0):", "     return sum(cart.values())"]
+        }
+      ],
+      "before": "auto",
+      "after": "none"
+    }
+  ],
+  "final": {
+    "lines": [
+      "def total(cart, tax=0):",
+      "    return sum(cart.values())",
+      "def count(cart):",
+      "    return len(cart.keys())"
+    ],
+    "finalNewline": true
+  },
+  "expected": [
+    { "line": 1, "origin": { "op": "e2" } },
+    { "line": 2, "origin": { "op": "e1" } },
+    { "line": 3, "origin": "base" },
+    { "line": 4, "origin": { "unknown": "unparsed" } }
+  ]
+}

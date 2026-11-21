@@ -1,0 +1,57 @@
+{
+  "format": 1,
+  "name": "claude-revert-to-base-text",
+  "description": "e1 changes two constants; e2 puts one of them back to its exact base text. The final file is identical to base on that line, but the origin is the op that wrote it: `MAX_ITEMS = 50` is e2, not base (rule 1: content equality never transfers origin). `MAX_DEPTH` is still e1's, and the untouched first line stays base.",
+  "stage": "replay",
+  "harness": "claudeCode",
+  "file": "src/limits.py",
+  "base": {
+    "lines": ["MAX_USERS = 100", "MAX_ITEMS = 50", "MAX_DEPTH = 8"],
+    "finalNewline": true
+  },
+  "ops": [
+    {
+      "id": "e1",
+      "session": "s1",
+      "turn": "t1",
+      "kind": "update",
+      "hunks": [
+        {
+          "oldStart": 1,
+          "lines": [
+            " MAX_USERS = 100",
+            "-MAX_ITEMS = 50",
+            "-MAX_DEPTH = 8",
+            "+MAX_ITEMS = 500",
+            "+MAX_DEPTH = 16"
+          ]
+        }
+      ],
+      "before": "auto",
+      "after": "none"
+    },
+    {
+      "id": "e2",
+      "session": "s1",
+      "turn": "t2",
+      "kind": "update",
+      "hunks": [
+        {
+          "oldStart": 1,
+          "lines": [" MAX_USERS = 100", "-MAX_ITEMS = 500", "+MAX_ITEMS = 50", " MAX_DEPTH = 16"]
+        }
+      ],
+      "before": "auto",
+      "after": "none"
+    }
+  ],
+  "final": {
+    "lines": ["MAX_USERS = 100", "MAX_ITEMS = 50", "MAX_DEPTH = 16"],
+    "finalNewline": true
+  },
+  "expected": [
+    { "line": 1, "origin": "base" },
+    { "line": 2, "origin": { "op": "e2" } },
+    { "line": 3, "origin": { "op": "e1" } }
+  ]
+}

@@ -1,0 +1,44 @@
+{
+  "format": 1,
+  "name": "codex-delete-then-recreate",
+  "description": "Codex deletes a file in one turn and adds a file with the same path in the next. The new file starts from nothing: no line inherits the deleted file's origin (rule 3). One of the new lines has exactly the text of a base line (`return 1`), but content equality never transfers origin (rule 1), so every line of the final file is p2. Stage `align`: the Codex create reports neither `after` nor a newline, so the new file's final newline is known only from the real file; the origins are what this fixture checks.",
+  "stage": "align",
+  "harness": "codex",
+  "file": "src/probe.py",
+  "base": {
+    "lines": ["def probe():", "    return 1"],
+    "finalNewline": true
+  },
+  "ops": [
+    {
+      "id": "p1",
+      "session": "x1",
+      "turn": "u1",
+      "kind": "delete",
+      "before": "none",
+      "after": "none"
+    },
+    {
+      "id": "p2",
+      "session": "x1",
+      "turn": "u2",
+      "kind": "create",
+      "hunks": [
+        {
+          "lines": ["+def probe(verbose=False):", "+    return 1", "+"]
+        }
+      ],
+      "before": "none",
+      "after": "none"
+    }
+  ],
+  "final": {
+    "lines": ["def probe(verbose=False):", "    return 1", ""],
+    "finalNewline": true
+  },
+  "expected": [
+    { "line": 1, "origin": { "op": "p2" } },
+    { "line": 2, "origin": { "op": "p2" } },
+    { "line": 3, "origin": { "op": "p2" } }
+  ]
+}

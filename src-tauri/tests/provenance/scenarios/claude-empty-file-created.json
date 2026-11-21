@@ -1,0 +1,24 @@
+{
+  "format": 1,
+  "name": "claude-empty-file-created",
+  "description": "A Claude Write creates an EMPTY file (`__init__.py`). The file exists with zero lines and no final newline: it is neither a deleted file nor a file with one blank line. There is no line to attribute, so `expected` is empty; the point is that WHY accepts the create (no hunks) and that the final state is an empty file, not an absent one.",
+  "stage": "replay",
+  "harness": "claudeCode",
+  "file": "src/__init__.py",
+  "base": null,
+  "ops": [
+    {
+      "id": "e1",
+      "session": "s1",
+      "turn": "t1",
+      "kind": "create",
+      "before": "none",
+      "after": "auto"
+    }
+  ],
+  "final": {
+    "lines": [],
+    "finalNewline": false
+  },
+  "expected": []
+}

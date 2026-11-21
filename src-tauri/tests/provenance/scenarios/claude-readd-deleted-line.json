@@ -1,0 +1,52 @@
+{
+  "format": 1,
+  "name": "claude-readd-deleted-line",
+  "description": "e1 deletes `clean()`; e2, a later turn, types the SAME text back in the same place. A removed line has no origin (rule 3) and content equality never transfers origin (rule 1), so the restored line is e2, not base. The lines around it were never touched and stay base.",
+  "stage": "replay",
+  "harness": "claudeCode",
+  "file": "src/pipeline.py",
+  "base": {
+    "lines": ["def run():", "    fetch()", "    clean()", "    store()"],
+    "finalNewline": true
+  },
+  "ops": [
+    {
+      "id": "e1",
+      "session": "s1",
+      "turn": "t1",
+      "kind": "update",
+      "hunks": [
+        {
+          "oldStart": 2,
+          "lines": ["     fetch()", "-    clean()", "     store()"]
+        }
+      ],
+      "before": "auto",
+      "after": "none"
+    },
+    {
+      "id": "e2",
+      "session": "s1",
+      "turn": "t2",
+      "kind": "update",
+      "hunks": [
+        {
+          "oldStart": 2,
+          "lines": ["     fetch()", "+    clean()", "     store()"]
+        }
+      ],
+      "before": "auto",
+      "after": "none"
+    }
+  ],
+  "final": {
+    "lines": ["def run():", "    fetch()", "    clean()", "    store()"],
+    "finalNewline": true
+  },
+  "expected": [
+    { "line": 1, "origin": "base" },
+    { "line": 2, "origin": "base" },
+    { "line": 3, "origin": { "op": "e2" } },
+    { "line": 4, "origin": "base" }
+  ]
+}

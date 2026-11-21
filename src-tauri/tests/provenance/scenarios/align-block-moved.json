@@ -1,0 +1,39 @@
+{
+  "format": 1,
+  "name": "align-block-moved",
+  "description": "e1 rewrites the second import line. Afterwards something uncaptured cuts the two import lines and pastes them below the constants (`A B C D E` becomes `C D E A B`). Rule 5 procedure: all five texts are unique on both sides; the longest chain of anchors in the same relative order is C D E (three lines, unique: the other candidate, A B, has only two), so C D E keep their origin (base). The moved block does not keep its relative order against them, so it is not matched: both moved lines are Unknown(noCapture), including the one e1 wrote.",
+  "stage": "align",
+  "harness": "claudeCode",
+  "file": "src/order.py",
+  "base": {
+    "lines": ["import os", "import sys", "LIMIT = 10", "NAME = 'job'", "DEBUG = False"],
+    "finalNewline": true
+  },
+  "ops": [
+    {
+      "id": "e1",
+      "session": "s1",
+      "turn": "t1",
+      "kind": "update",
+      "hunks": [
+        {
+          "oldStart": 1,
+          "lines": [" import os", "-import sys", "+import sys, json", " LIMIT = 10"]
+        }
+      ],
+      "before": "auto",
+      "after": "none"
+    }
+  ],
+  "final": {
+    "lines": ["LIMIT = 10", "NAME = 'job'", "DEBUG = False", "import os", "import sys, json"],
+    "finalNewline": true
+  },
+  "expected": [
+    { "line": 1, "origin": "base" },
+    { "line": 2, "origin": "base" },
+    { "line": 3, "origin": "base" },
+    { "line": 4, "origin": { "unknown": "noCapture" } },
+    { "line": 5, "origin": { "unknown": "noCapture" } }
+  ]
+}

@@ -1,0 +1,57 @@
+{
+  "format": 1,
+  "name": "align-appended-function",
+  "description": "After the last captured edit (e1 rewrites the last line), something uncaptured appends a blank line and a new function at the end of the file (a person, a shell command or a lost event: WHY cannot tell). Rule 8 / rule 5: the three appended lines exist only because of that change: Unknown(noCapture). All five earlier lines occur once and unchanged on both sides, so they keep their origin (e1 stays e1).",
+  "stage": "align",
+  "harness": "claudeCode",
+  "file": "src/areas.py",
+  "base": {
+    "lines": [
+      "import math",
+      "def circle(r):",
+      "    return math.pi * r * r",
+      "def square(s):",
+      "    return s * s"
+    ],
+    "finalNewline": true
+  },
+  "ops": [
+    {
+      "id": "e1",
+      "session": "s1",
+      "turn": "t1",
+      "kind": "update",
+      "hunks": [
+        {
+          "oldStart": 4,
+          "lines": [" def square(s):", "-    return s * s", "+    return s ** 2"]
+        }
+      ],
+      "before": "auto",
+      "after": "none"
+    }
+  ],
+  "final": {
+    "lines": [
+      "import math",
+      "def circle(r):",
+      "    return math.pi * r * r",
+      "def square(s):",
+      "    return s ** 2",
+      "",
+      "def triangle(b, h):",
+      "    return b * h / 2"
+    ],
+    "finalNewline": true
+  },
+  "expected": [
+    { "line": 1, "origin": "base" },
+    { "line": 2, "origin": "base" },
+    { "line": 3, "origin": "base" },
+    { "line": 4, "origin": "base" },
+    { "line": 5, "origin": { "op": "e1" } },
+    { "line": 6, "origin": { "unknown": "noCapture" } },
+    { "line": 7, "origin": { "unknown": "noCapture" } },
+    { "line": 8, "origin": { "unknown": "noCapture" } }
+  ]
+}

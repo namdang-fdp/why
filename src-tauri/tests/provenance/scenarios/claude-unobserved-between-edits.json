@@ -1,0 +1,95 @@
+{
+  "format": 1,
+  "name": "claude-unobserved-between-edits",
+  "description": "e1 and e3 are observed. The middle op `u` is an edit whose payload the hook reduced (observed: payloadReduced): WHY knows an edit happened but not what it wrote. Its true effect (truthAfter) rewrote one line and inserted a comment line. Rule 6: every line that differs between the state before and after `u` is Unknown(payloadReduced): `return 2 * math.pi * r` and `# shapes below`. This holds even though e3's `before` (the real file) reveals the change, because a known edit beats an uncaptured change (rule 6 over rule 5). Untouched lines keep their origin, including e1's. e3 is the last op and rewrites one more line (e3). The scenario is `replay` because e3's `before` shows the engine the real hashes.",
+  "stage": "replay",
+  "harness": "claudeCode",
+  "file": "src/shape.py",
+  "base": {
+    "lines": [
+      "import math",
+      "def area(r):",
+      "    return 3.14 * r * r",
+      "def perimeter(r):",
+      "    return 2 * 3.14 * r",
+      "def label(r):",
+      "    return 'circle'"
+    ],
+    "finalNewline": true
+  },
+  "ops": [
+    {
+      "id": "e1",
+      "session": "s1",
+      "turn": "t1",
+      "kind": "update",
+      "hunks": [
+        {
+          "oldStart": 2,
+          "lines": [" def area(r):", "-    return 3.14 * r * r", "+    return math.pi * r * r", " def perimeter(r):"]
+        }
+      ],
+      "before": "auto",
+      "after": "none"
+    },
+    {
+      "id": "u",
+      "session": "s1",
+      "turn": "t2",
+      "kind": "update",
+      "observed": { "unobserved": "payloadReduced" },
+      "before": "none",
+      "after": "none",
+      "truthAfter": {
+        "lines": [
+          "import math",
+          "def area(r):",
+          "    return math.pi * r * r",
+          "def perimeter(r):",
+          "    return 2 * math.pi * r",
+          "# shapes below",
+          "def label(r):",
+          "    return 'circle'"
+        ],
+        "finalNewline": true
+      }
+    },
+    {
+      "id": "e3",
+      "session": "s1",
+      "turn": "t3",
+      "kind": "update",
+      "hunks": [
+        {
+          "oldStart": 7,
+          "lines": [" def label(r):", "-    return 'circle'", "+    return 'round'"]
+        }
+      ],
+      "before": "auto",
+      "after": "none"
+    }
+  ],
+  "final": {
+    "lines": [
+      "import math",
+      "def area(r):",
+      "    return math.pi * r * r",
+      "def perimeter(r):",
+      "    return 2 * math.pi * r",
+      "# shapes below",
+      "def label(r):",
+      "    return 'round'"
+    ],
+    "finalNewline": true
+  },
+  "expected": [
+    { "line": 1, "origin": "base" },
+    { "line": 2, "origin": "base" },
+    { "line": 3, "origin": { "op": "e1" } },
+    { "line": 4, "origin": "base" },
+    { "line": 5, "origin": { "unknown": "payloadReduced" } },
+    { "line": 6, "origin": { "unknown": "payloadReduced" } },
+    { "line": 7, "origin": "base" },
+    { "line": 8, "origin": { "op": "e3" } }
+  ]
+}

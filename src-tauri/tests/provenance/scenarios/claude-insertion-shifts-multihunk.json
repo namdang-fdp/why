@@ -1,0 +1,102 @@
+{
+  "format": 1,
+  "name": "claude-insertion-shifts-multihunk",
+  "description": "e1 inserts three imports above everything else. e2, a later turn, is ONE edit with TWO hunks whose `oldStart` values (6 and 12) already count e1's three extra lines. The first hunk replaces one line with two. The lines e1 pushed down keep their origin (rule 2); only the lines e2 wrote are e2.",
+  "stage": "replay",
+  "harness": "claudeCode",
+  "file": "src/report.py",
+  "base": {
+    "lines": [
+      "import sys",
+      "import json",
+      "def load(p):",
+      "    return open(p).read()",
+      "def parse(t):",
+      "    return json.loads(t)",
+      "def render(d):",
+      "    return str(d)",
+      "def main():",
+      "    print(render(parse(load(sys.argv[1]))))"
+    ],
+    "finalNewline": true
+  },
+  "ops": [
+    {
+      "id": "e1",
+      "session": "s1",
+      "turn": "t1",
+      "kind": "update",
+      "hunks": [
+        {
+          "oldStart": 1,
+          "lines": [" import sys", " import json", "+import os", "+import re", "+import time", " def load(p):"]
+        }
+      ],
+      "before": "auto",
+      "after": "none"
+    },
+    {
+      "id": "e2",
+      "session": "s1",
+      "turn": "t2",
+      "kind": "update",
+      "hunks": [
+        {
+          "oldStart": 6,
+          "lines": [
+            " def load(p):",
+            "-    return open(p).read()",
+            "+    with open(p) as f:",
+            "+        return f.read()",
+            " def parse(t):"
+          ]
+        },
+        {
+          "oldStart": 12,
+          "lines": [
+            " def main():",
+            "-    print(render(parse(load(sys.argv[1]))))",
+            "+    sys.stdout.write(render(parse(load(sys.argv[1]))))"
+          ]
+        }
+      ],
+      "before": "auto",
+      "after": "none"
+    }
+  ],
+  "final": {
+    "lines": [
+      "import sys",
+      "import json",
+      "import os",
+      "import re",
+      "import time",
+      "def load(p):",
+      "    with open(p) as f:",
+      "        return f.read()",
+      "def parse(t):",
+      "    return json.loads(t)",
+      "def render(d):",
+      "    return str(d)",
+      "def main():",
+      "    sys.stdout.write(render(parse(load(sys.argv[1]))))"
+    ],
+    "finalNewline": true
+  },
+  "expected": [
+    { "line": 1, "origin": "base" },
+    { "line": 2, "origin": "base" },
+    { "line": 3, "origin": { "op": "e1" } },
+    { "line": 4, "origin": { "op": "e1" } },
+    { "line": 5, "origin": { "op": "e1" } },
+    { "line": 6, "origin": "base" },
+    { "line": 7, "origin": { "op": "e2" } },
+    { "line": 8, "origin": { "op": "e2" } },
+    { "line": 9, "origin": "base" },
+    { "line": 10, "origin": "base" },
+    { "line": 11, "origin": "base" },
+    { "line": 12, "origin": "base" },
+    { "line": 13, "origin": "base" },
+    { "line": 14, "origin": { "op": "e2" } }
+  ]
+}

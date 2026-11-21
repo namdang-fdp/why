@@ -1,0 +1,90 @@
+{
+  "format": 1,
+  "name": "claude-uncaptured-change-between-edits",
+  "description": "Between e1 and e2 something that WHY did not capture changes the file: a comment line appears at the top and `def sub` is renamed to `def minus` (a formatter, a sed, a person, or a lost event: WHY cannot tell). e2's `before` shows the file the harness really read, which differs from the replay of e1. Rule 5: `# helpers` and `def minus` exist only because of the uncaptured change, so they are Unknown(noCapture). Lines the change did not touch match unambiguously (each text occurs once on both sides, same order) and keep their origin: `def add` base, `return int(a) + int(b)` e1 (the change did not rewrite it), `return a - b` base. e2 then rewrites the last body line (e2).",
+  "stage": "replay",
+  "harness": "claudeCode",
+  "file": "src/calc.py",
+  "base": {
+    "lines": [
+      "def add(a, b):",
+      "    return a + b",
+      "def sub(a, b):",
+      "    return a - b",
+      "def mul(a, b):",
+      "    return a * b"
+    ],
+    "finalNewline": true
+  },
+  "ops": [
+    {
+      "id": "e1",
+      "session": "s1",
+      "turn": "t1",
+      "kind": "update",
+      "hunks": [
+        {
+          "oldStart": 1,
+          "lines": [
+            " def add(a, b):",
+            "-    return a + b",
+            "+    return int(a) + int(b)",
+            " def sub(a, b):"
+          ]
+        }
+      ],
+      "before": "auto",
+      "after": "none"
+    },
+    {
+      "id": "e2",
+      "session": "s1",
+      "turn": "t2",
+      "kind": "update",
+      "hunks": [
+        {
+          "oldStart": 6,
+          "lines": [
+            " def mul(a, b):",
+            "-    return a * b",
+            "+    return int(a) * int(b)"
+          ]
+        }
+      ],
+      "before": {
+        "lines": [
+          "# helpers",
+          "def add(a, b):",
+          "    return int(a) + int(b)",
+          "def minus(a, b):",
+          "    return a - b",
+          "def mul(a, b):",
+          "    return a * b"
+        ],
+        "finalNewline": true
+      },
+      "after": "none"
+    }
+  ],
+  "final": {
+    "lines": [
+      "# helpers",
+      "def add(a, b):",
+      "    return int(a) + int(b)",
+      "def minus(a, b):",
+      "    return a - b",
+      "def mul(a, b):",
+      "    return int(a) * int(b)"
+    ],
+    "finalNewline": true
+  },
+  "expected": [
+    { "line": 1, "origin": { "unknown": "noCapture" } },
+    { "line": 2, "origin": "base" },
+    { "line": 3, "origin": { "op": "e1" } },
+    { "line": 4, "origin": { "unknown": "noCapture" } },
+    { "line": 5, "origin": "base" },
+    { "line": 6, "origin": "base" },
+    { "line": 7, "origin": { "op": "e2" } }
+  ]
+}

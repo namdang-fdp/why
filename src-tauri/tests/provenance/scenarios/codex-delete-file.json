@@ -1,0 +1,24 @@
+{
+  "format": 1,
+  "name": "codex-delete-file",
+  "description": "A Codex `*** Delete File` removes the file. The final state is no file at all (`final: null`), which has no lines, so `expected` is empty: a removed line has no origin (rule 3).",
+  "stage": "replay",
+  "harness": "codex",
+  "file": "scripts/old_task.sh",
+  "base": {
+    "lines": ["#!/bin/sh", "echo old", "exit 0"],
+    "finalNewline": true
+  },
+  "ops": [
+    {
+      "id": "p1",
+      "session": "x1",
+      "turn": "u1",
+      "kind": "delete",
+      "before": "none",
+      "after": "none"
+    }
+  ],
+  "final": null,
+  "expected": []
+}

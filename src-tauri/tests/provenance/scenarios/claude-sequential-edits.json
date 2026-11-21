@@ -1,0 +1,67 @@
+{
+  "format": 1,
+  "name": "claude-sequential-edits",
+  "description": "Three Claude edits in three turns hit one small file. e1 and e3 both rewrite the `port` line, e2 rewrites `timeout`. Each line belongs to the op that LAST wrote it (rules 1 and 4): `port` is e3 (e1's version was overwritten), `timeout` is e2, and the three lines nobody touched stay base (rule 2).",
+  "stage": "replay",
+  "harness": "claudeCode",
+  "file": "settings.ini",
+  "base": {
+    "lines": ["debug=false", "port=8000", "host=localhost", "timeout=30", "retries=3"],
+    "finalNewline": true
+  },
+  "ops": [
+    {
+      "id": "e1",
+      "session": "s1",
+      "turn": "t1",
+      "kind": "update",
+      "hunks": [
+        {
+          "oldStart": 1,
+          "lines": [" debug=false", "-port=8000", "+port=8080", " host=localhost"]
+        }
+      ],
+      "before": "auto",
+      "after": "none"
+    },
+    {
+      "id": "e2",
+      "session": "s1",
+      "turn": "t2",
+      "kind": "update",
+      "hunks": [
+        {
+          "oldStart": 3,
+          "lines": [" host=localhost", "-timeout=30", "+timeout=60", " retries=3"]
+        }
+      ],
+      "before": "auto",
+      "after": "none"
+    },
+    {
+      "id": "e3",
+      "session": "s1",
+      "turn": "t3",
+      "kind": "update",
+      "hunks": [
+        {
+          "oldStart": 1,
+          "lines": [" debug=false", "-port=8080", "+port=9090", " host=localhost"]
+        }
+      ],
+      "before": "auto",
+      "after": "none"
+    }
+  ],
+  "final": {
+    "lines": ["debug=false", "port=9090", "host=localhost", "timeout=60", "retries=3"],
+    "finalNewline": true
+  },
+  "expected": [
+    { "line": 1, "origin": "base" },
+    { "line": 2, "origin": { "op": "e3" } },
+    { "line": 3, "origin": "base" },
+    { "line": 4, "origin": { "op": "e2" } },
+    { "line": 5, "origin": "base" }
+  ]
+}

@@ -278,11 +278,16 @@ fn refuses_a_replay_scenario_whose_final_is_not_the_replay() {
         1,
     );
     Scenario::from_json(&align).unwrap();
-    // ...but an `align` scenario equal to the replay is mislabelled.
-    refused(
-        &variant(r#""stage": "replay""#, r#""stage": "align""#),
-        "use stage `replay`",
-    );
+}
+
+/// `align` means "the engine cannot be judged without the real final file",
+/// not "the replay differs from `final`": an `align` scenario whose `final`
+/// equals the oracle's replay is valid (ambiguous placement, an unobserved op
+/// no later `before` reveals, a final newline only the file shows).
+#[test]
+fn an_align_scenario_may_equal_the_oracle_replay() {
+    let s = Scenario::from_json(&variant(r#""stage": "replay""#, r#""stage": "align""#)).unwrap();
+    assert_eq!(s.stage(), Stage::Align);
 }
 
 #[test]
