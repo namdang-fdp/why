@@ -33,6 +33,10 @@ export type DiffLayout = "split" | "unified";
 type NavigateHunk = (direction: HunkDirection) => HunkResult;
 
 type WorkspaceStore = {
+  hookData: Pick<
+    DataSource,
+    "hookStatus" | "previewInstall" | "install" | "previewUninstall" | "uninstall"
+  >;
   sessions: ReturnType<typeof createSessionsStore>;
   repositories: AsyncState<Repository[]>;
   storage: AsyncState<StorageStatus>;
@@ -49,6 +53,8 @@ type WorkspaceStore = {
   inspectorOpen: boolean;
   paletteOpen: boolean;
   addRepositoryOpen: boolean;
+  agentHooksOpen: boolean;
+  setAgentHooksOpen: (open: boolean) => void;
   editorSettingsOpen: boolean;
   /** The rail's filter text (substring match over repositories, worktrees and files). */
   railFilter: string;
@@ -741,6 +747,7 @@ export function createWorkspaceStore(source: DataSource, toasts: StoreApi<Toasts
 
     return {
       sessions,
+      hookData: source,
       repositories: idle,
       storage: idle,
       worktrees: new Map(),
@@ -755,6 +762,7 @@ export function createWorkspaceStore(source: DataSource, toasts: StoreApi<Toasts
       inspectorOpen: true,
       paletteOpen: false,
       addRepositoryOpen: false,
+      agentHooksOpen: false,
       editorSettingsOpen: false,
       railFilter: "",
       activity: new Map(),
@@ -1069,6 +1077,7 @@ export function createWorkspaceStore(source: DataSource, toasts: StoreApi<Toasts
         if (failure?.status === "error") notifyError("Could not open file diff", failure.error);
         else notify("No current diff for this file", path);
       },
+      setAgentHooksOpen: (agentHooksOpen) => set({ agentHooksOpen }),
       setPaletteOpen: (paletteOpen) => set({ paletteOpen }),
       loadPaletteFiles: (worktree, mode) => loadChanges(worktree.id, mode),
       watchWorktrees: () => {

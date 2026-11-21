@@ -1,0 +1,426 @@
+/* The review uses the app's Radix enter/exit animation with the transitions.dev
+   modal scale and easing. Closing the request scope never waits on animation. */
+[data-slot="dialog-content"].agent-hooks-dialog {
+  --modal-open-dur: 250ms;
+  --modal-close-dur: 150ms;
+  --modal-scale: 0.96;
+  --modal-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  width: min(760px, calc(100vw - 32px));
+  max-width: none;
+  max-height: calc(100dvh - 32px);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 0;
+  padding: 0;
+  background: var(--surface-overlay);
+  box-shadow: var(--shadow-float);
+  font-size: 13px;
+}
+
+[data-slot="dialog-content"].agent-hooks-dialog[data-state="open"] {
+  animation: hook-dialog-in var(--modal-open-dur) var(--modal-ease);
+}
+
+[data-slot="dialog-content"].agent-hooks-dialog[data-state="closed"] {
+  animation: hook-dialog-out var(--modal-close-dur) var(--modal-ease) forwards;
+}
+
+@keyframes hook-dialog-in {
+  from {
+    opacity: 0;
+    scale: var(--modal-scale);
+  }
+}
+
+@keyframes hook-dialog-out {
+  to {
+    opacity: 0;
+    scale: var(--modal-scale);
+  }
+}
+
+.hook-dialog-header {
+  padding: 17px 166px 15px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.hook-dialog-header p {
+  margin-top: 3px;
+}
+
+.hook-dialog-close,
+.hook-refresh {
+  position: absolute;
+  top: 12px;
+}
+
+.hook-dialog-close {
+  right: 12px;
+}
+
+.hook-refresh {
+  right: 48px;
+}
+
+.hook-body {
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 16px 20px;
+}
+
+.hook-body,
+.hook-diff {
+  scrollbar-width: thin;
+  scrollbar-color: oklch(1 0 0 / 25%) transparent;
+}
+
+.hook-body > .async-error,
+.hook-applied {
+  margin-bottom: 12px;
+}
+
+.hook-harnesses,
+.hook-health-states {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.hook-harnesses {
+  gap: 12px;
+}
+
+.hook-harness,
+.hook-health {
+  overflow-wrap: anywhere;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--shell-pane);
+}
+
+.hook-harness {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+  padding: 12px;
+}
+
+.hook-harness-title,
+.hook-health-title,
+.hook-health-label,
+.hook-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.hook-harness-title h3,
+.hook-health-title h3,
+.hook-review h3 {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.hook-harness-title svg,
+.hook-harness p,
+.hook-health p,
+.hook-harness-config span,
+.hook-instance,
+.hook-metrics dt,
+.hook-socket dt,
+.hook-events summary,
+.hook-refusal p,
+.hook-review > p,
+.hook-binary-note p {
+  color: var(--muted-foreground);
+}
+
+.hook-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 7px;
+  border-radius: 5px;
+  background: var(--muted);
+  color: var(--foreground);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.hook-state::before {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  content: "";
+}
+
+.hook-state:is([data-kind="installed"], [data-kind="listening"]) {
+  color: var(--git-added);
+}
+
+.hook-state:is(
+  [data-kind="outdated"],
+  [data-kind="disabledByPolicy"],
+  [data-kind="configInvalid"]
+) {
+  color: var(--git-modified);
+}
+
+.hook-harness-config,
+.hook-socket,
+.hook-health p {
+  font-size: 12px;
+}
+
+.hook-harness-config code,
+.hook-preview-file code,
+.hook-binary-note code {
+  display: block;
+}
+
+.hook-harness-config code,
+.hook-preview-file code,
+.hook-binary-note code,
+.hook-socket code,
+.hook-events li {
+  font-size: 12px;
+  user-select: text;
+}
+
+.hook-events summary {
+  display: flex;
+  min-height: 24px;
+  align-items: center;
+  gap: 4px;
+  width: fit-content;
+  padding: 2px 5px 2px 1px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  list-style: none;
+}
+
+.hook-events summary::-webkit-details-marker {
+  display: none;
+}
+
+.hook-events summary:hover {
+  color: var(--foreground);
+}
+
+.hook-events summary:focus-visible {
+  outline: 2px solid var(--foreground);
+}
+
+.hook-events[open] svg {
+  rotate: 90deg;
+}
+
+.hook-events ul {
+  margin: 3px 0 0 16px;
+  color: var(--muted-foreground);
+}
+
+.hook-actions {
+  margin-top: auto;
+}
+
+.hook-actions button,
+.hook-review-actions button,
+.hook-refresh {
+  font-size: 12px;
+}
+
+.hook-health {
+  margin-top: 12px;
+  padding: 12px;
+}
+
+.hook-health-title {
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.hook-instance code {
+  margin-left: 2px;
+  padding: 2px 5px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--foreground);
+}
+
+.hook-health-states {
+  gap: 12px;
+}
+
+.hook-health p {
+  margin-top: 3px;
+}
+
+.hook-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(124px, 1fr));
+  gap: 8px 12px;
+  margin: 12px 0 8px;
+  border-block-start: 1px solid var(--border);
+  padding-block-start: 10px;
+  font-size: 12px;
+}
+
+.hook-metrics dd {
+  font: 12px/1.6 var(--font-mono);
+}
+
+.hook-socket dd {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+}
+
+.hook-socket button {
+  width: 26px;
+  height: 26px;
+}
+
+.hook-socket [role="status"] {
+  color: var(--muted-foreground);
+}
+
+.hook-review {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.hook-review h3 {
+  font-size: 16px;
+}
+
+.hook-review h3:focus,
+.hook-harness-title h3:focus {
+  outline: none;
+}
+
+.hook-preview-file,
+.hook-applied,
+.hook-refusal,
+.hook-binary-note {
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px 10px;
+  background: var(--shell-pane);
+  overflow-wrap: anywhere;
+}
+
+.hook-preview-file {
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+}
+
+.hook-preview-file svg {
+  margin-top: 2px;
+  color: var(--muted-foreground);
+}
+
+.hook-diff {
+  max-height: 290px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding-block: 6px;
+  background: var(--background);
+  font: 12px/1.65 var(--font-mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.hook-diff span {
+  display: block;
+  padding-inline: 10px;
+}
+
+.hook-diff [data-kind="meta"] {
+  color: var(--muted-foreground);
+}
+
+.hook-diff [data-kind="add"] {
+  background: color-mix(in oklch, var(--git-added) 10%, transparent);
+  color: var(--git-added);
+}
+
+.hook-diff [data-kind="remove"] {
+  background: color-mix(in oklch, var(--git-deleted) 10%, transparent);
+  color: var(--git-deleted);
+}
+
+.hook-notes {
+  display: grid;
+  gap: 4px;
+  padding-left: 17px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  list-style: disc;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.hook-refusal p {
+  white-space: pre-wrap;
+}
+
+.hook-refusal[data-stale] {
+  border-color: color-mix(in oklch, var(--git-modified) 40%, var(--border));
+}
+
+.hook-review-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.hook-privacy {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  border-top: 1px solid var(--border);
+  padding: 12px 20px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+
+.hook-privacy svg {
+  flex: none;
+  margin-top: 2px;
+}
+
+@media (max-width: 600px) {
+  .hook-trigger {
+    width: 32px;
+  }
+
+  .hook-trigger span {
+    display: none;
+  }
+
+  .hook-harnesses {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .hook-dialog-header {
+    padding-right: 88px;
+  }
+
+  .hook-refresh span {
+    display: none;
+  }
+}

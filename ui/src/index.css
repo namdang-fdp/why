@@ -4,6 +4,7 @@
 @import "./styles/surfaces.css";
 @import "./styles/rail.css";
 @import "./styles/sessions.css";
+@import "./styles/agent-hooks.css";
 
 /* The app is dark-only for now: <html class="dark"> is set in index.html. */
 @custom-variant dark (&:is(.dark *));
@@ -710,8 +711,28 @@ kbd {
   .top-controls .command-trigger {
     margin-left: auto;
   }
-  .search-label {
+  .search-label,
+  .command-trigger kbd {
     display: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .top-controls {
+    flex-wrap: wrap;
+  }
+
+  .top-controls .command-trigger {
+    width: 32px;
+    padding-inline: 0;
+  }
+
+  .mode-control {
+    flex-basis: 100%;
+  }
+
+  .mode-control button {
+    flex: 1;
   }
 }
 
