@@ -12,6 +12,8 @@ pub mod ipc;
 pub mod state;
 pub mod store;
 pub mod watch;
+// WHY-64: line provenance (v0.3).
+pub mod provenance;
 
 use std::path::Path;
 use std::sync::Arc;
