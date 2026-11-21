@@ -286,12 +286,14 @@ describe("remove repository", () => {
 });
 
 describe("base override", () => {
-  it("rejects an unknown ref inline, then accepts a suggestion and updates the top bar", async () => {
+  it("keeps worktree and branch names out of the top bar while supporting base overrides", async () => {
     const { user } = setup();
     const topBar = within(await screen.findByRole("banner"));
-    await user.click(
-      await topBar.findByRole("button", { name: /agent\/WHY-4-git-cli.*origin\/main/ }),
-    );
+    const base = await topBar.findByRole("button", { name: "Change the base branch" });
+    expect(topBar.queryByText("WHY-4-git")).toBeNull();
+    expect(topBar.queryByText("agent/WHY-4-git-cli")).toBeNull();
+    expect(topBar.queryByText("origin/main")).toBeNull();
+    await user.click(base);
     const input = await screen.findByLabelText("Compare against");
 
     await user.clear(input);
@@ -310,9 +312,9 @@ describe("base override", () => {
   it("offers to set a base when the worktree has none", async () => {
     const { user } = setup();
     await user.click(await screen.findByRole("button", { name: /^main\b/i }));
-    await user.click(
-      await within(screen.getByRole("banner")).findByRole("button", { name: /Set base/ }),
-    );
+    const topBar = within(screen.getByRole("banner"));
+    const base = await topBar.findByRole("button", { name: "Set base" });
+    await user.click(base);
     await user.type(await screen.findByLabelText("Compare against"), "origin/main{Enter}");
     await waitFor(() => expect(screen.queryByLabelText("Compare against")).toBeNull());
     expect(screen.getByRole<HTMLButtonElement>("button", { name: "Vs base" }).disabled).toBe(false);
