@@ -4,6 +4,7 @@
 // click on a turn in the rail finds that turn in the timeline.
 import type {
   FileAttribution,
+  LineOriginsResult,
   RationaleResult,
   ShellLead,
   ShellOutcomesResult,
@@ -11,6 +12,8 @@ import type {
   TurnRef,
   WorktreeId,
 } from "@/contracts";
+import { buildLongFileOrigins } from "@/dev-fixtures/long-file-origins";
+import { lineOriginsByFile } from "./provenance";
 import { WT_WHY_AGENT, WT_WHY_MAIN } from "./repos";
 import { SESSION_CLAUDE, SESSION_CODEX, SESSION_SUBAGENT } from "./sessions";
 
@@ -85,7 +88,7 @@ export type AttributionEntry = { explainedBy: TurnRef[]; attempts: TurnRef[] };
  * rename (the edit named the OLD path), attempts that never applied, and files
  * nothing explains.
  */
-export const attributionTable: Record<WorktreeId, Record<string, AttributionEntry>> = {
+const handWrittenAttribution: Record<WorktreeId, Record<string, AttributionEntry>> = {
   [WT_WHY_AGENT]: {
     // Edited by Claude, then again by Codex.
     [`${GIT}/mod.rs`]: {
@@ -184,6 +187,45 @@ export const attributionTable: Record<WorktreeId, Record<string, AttributionEntr
     },
   },
 };
+
+/**
+ * The sample files that have line origins (`./provenance.ts`, plus the 2,000-line one) are
+ * explained by exactly the turns their `edit` runs name: the same session, turn id and tool
+ * call. Derived rather than copied, so the file's evidence chip and its gutter can never
+ * disagree in the fixtures (a file the gutter attributes to two turns must not read "no
+ * captured agent edit" in the rail).
+ */
+function explainedByRuns(result: LineOriginsResult): TurnRef[] {
+  if (result.status !== "ok") return [];
+  const seen = new Map<string, TurnRef>();
+  for (const run of result.origins.runs) {
+    if (run.origin.kind !== "edit") continue;
+    const ref = run.origin.turn;
+    seen.set(JSON.stringify([ref.sessionId, ref.turnId, ref.agentId, ref.toolUseId]), ref);
+  }
+  return [...seen.values()].sort((a, b) => b.at.localeCompare(a.at));
+}
+
+function withLineOriginSamples(
+  table: Record<WorktreeId, Record<string, AttributionEntry>>,
+): Record<WorktreeId, Record<string, AttributionEntry>> {
+  const samples: Array<[WorktreeId, LineOriginsResult]> = [
+    ...Object.entries(lineOriginsByFile).flatMap(([worktreeId, files]) =>
+      Object.values(files).map((result): [WorktreeId, LineOriginsResult] => [worktreeId, result]),
+    ),
+    [WT_WHY_AGENT, buildLongFileOrigins(WT_WHY_AGENT)],
+  ];
+  const merged = structuredClone(table);
+  for (const [worktreeId, result] of samples) {
+    if (result.status !== "ok") continue;
+    const explainedBy = explainedByRuns(result);
+    if (explainedBy.length === 0) continue;
+    (merged[worktreeId] ??= {})[result.origins.path] = { explainedBy, attempts: [] };
+  }
+  return merged;
+}
+
+export const attributionTable = withLineOriginSamples(handWrittenAttribution);
 
 /** Shell turns per worktree: a lead for "look here", never an attribution. */
 export const shellLeadTable: Record<WorktreeId, ShellLead[]> = {
