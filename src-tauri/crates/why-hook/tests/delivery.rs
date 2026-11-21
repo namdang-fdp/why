@@ -414,7 +414,11 @@ fn an_oversized_payload_becomes_a_truncated_envelope() {
     assert_eq!(env.payload["tool_name"], "Write");
     assert_eq!(env.payload["tool_use_id"], "t1");
     assert!(env.payload["original_bytes"].as_u64().unwrap() > 2 * 1024 * 1024);
-    assert!(env.payload.get("tool_input").is_none());
+    // WHY-65: the edited file's path survives (and nothing else of the input).
+    assert_eq!(
+        env.payload["tool_input"],
+        serde_json::json!({"file_path": "/x"})
+    );
 }
 
 /// Bigger than the hook will even buffer (8 MiB): still a timeline event, from
