@@ -82,6 +82,11 @@ pub struct FileEdit {
     /// `*** Move to:` (a rename), for `Update` only.
     pub move_to: Option<String>,
     pub hunks: Vec<Hunk>,
+    /// The parser reported a problem INSIDE this section (an unknown line, a
+    /// misplaced `*** Move to:`, a missing path, a cut-off section). Its hunks
+    /// may be missing lines, so an edit built from it must not be trusted
+    /// (the problem list alone cannot say which file a problem belongs to).
+    pub flawed: bool,
 }
 
 impl FileEdit {
@@ -232,6 +237,7 @@ pub fn parse_patch(text: &str) -> ParsedPatch {
                 op,
                 move_to: None,
                 hunks: Vec::new(),
+                flawed: path.is_empty(),
             });
             continue;
         }
@@ -248,6 +254,7 @@ pub fn parse_patch(text: &str) -> ParsedPatch {
             if file.op == PatchOp::Update && file.hunks.is_empty() && hunk.is_none() {
                 file.move_to = Some(dest.to_owned());
             } else {
+                file.flawed = true;
                 out.problem(|| "`*** Move to:` outside an Update header".into());
             }
             continue;
@@ -267,6 +274,7 @@ pub fn parse_patch(text: &str) -> ParsedPatch {
             continue;
         }
         if line.starts_with("***") {
+            file.flawed = true;
             out.problem(|| format!("unknown directive {:?}", preview(line)));
             continue;
         }
@@ -284,20 +292,25 @@ pub fn parse_patch(text: &str) -> ParsedPatch {
         };
         match parsed {
             Some(l) => target.lines.push(l),
-            None => out.problem(|| {
-                format!(
-                    "unrecognised line in {:?}: {:?}",
-                    preview(&file.path),
-                    preview(line)
-                )
-            }),
+            None => {
+                file.flawed = true;
+                out.problem(|| {
+                    format!(
+                        "unrecognised line in {:?}: {:?}",
+                        preview(&file.path),
+                        preview(line)
+                    )
+                });
+            }
         }
     }
 
     // Reached the end of input without `*** End Patch`: keep what was read.
     if !out.complete {
         flush_hunk(&mut current, &mut hunk);
-        if let Some(file) = current.take() {
+        if let Some(mut file) = current.take() {
+            // Cut off: the last section may be missing lines.
+            file.flawed = true;
             out.edits.push(file);
         }
         out.problem(|| "missing `*** End Patch`".into());
