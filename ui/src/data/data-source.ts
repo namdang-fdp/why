@@ -1,7 +1,11 @@
 import type {
+  ApplyResult,
   DiffMode,
   FileChange,
   FileDiff,
+  HookHarness,
+  HookStatusReport,
+  PreviewResult,
   RepoId,
   Repository,
   RepositoryChanged,
@@ -58,4 +62,10 @@ export interface DataSource {
   getSessionTimeline(sessionId: SessionId): Promise<SessionTimeline>;
   /** Subscribe to new hook events for a worktree's sessions; returns the unsubscribe. */
   onSessionsChanged(callback: (event: SessionsChanged) => void): () => void;
+  /** Read-only preview of the exact user-level config change. */
+  previewInstall(harness: HookHarness): Promise<PreviewResult>;
+  install(harness: HookHarness, fingerprint: string): Promise<ApplyResult>;
+  previewUninstall(harness: HookHarness): Promise<PreviewResult>;
+  uninstall(harness: HookHarness, fingerprint: string): Promise<ApplyResult>;
+  hookStatus(): Promise<HookStatusReport>;
 }

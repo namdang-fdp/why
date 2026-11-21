@@ -1,9 +1,13 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
+  ApplyResult,
   DiffMode,
   FileChange,
   FileDiff,
+  HookHarness,
+  HookStatusReport,
+  PreviewResult,
   RepoId,
   Repository,
   RepositoryChanged,
@@ -115,6 +119,25 @@ export class TauriDataSource implements DataSource {
 
   onSessionsChanged(callback: (event: SessionsChanged) => void) {
     return subscribe(SESSIONS_CHANGED_EVENT, callback);
+  }
+  previewInstall(harness: HookHarness) {
+    return this.call<PreviewResult>("preview_install", { harness });
+  }
+
+  install(harness: HookHarness, fingerprint: string) {
+    return this.call<ApplyResult>("install", { harness, fingerprint });
+  }
+
+  previewUninstall(harness: HookHarness) {
+    return this.call<PreviewResult>("preview_uninstall", { harness });
+  }
+
+  uninstall(harness: HookHarness, fingerprint: string) {
+    return this.call<ApplyResult>("uninstall", { harness, fingerprint });
+  }
+
+  hookStatus() {
+    return this.call<HookStatusReport>("hook_status");
   }
 }
 
