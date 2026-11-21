@@ -310,43 +310,6 @@
   opacity: 0.8;
 }
 
-/* ---- top bar: the base readout is a button ------------------------------- */
-
-button.branch-summary {
-  position: relative;
-  flex: 1 1 0;
-  min-width: 0;
-  margin-left: 0;
-  padding: 4px 8px;
-  border: 1px solid transparent;
-  border-left: none;
-  border-radius: 6px;
-  text-align: left;
-  transition:
-    background-color var(--dur-fast) var(--ease-out),
-    border-color var(--dur-fast) var(--ease-out);
-}
-button.branch-summary::before {
-  content: "";
-  position: absolute;
-  left: -9px;
-  top: 4px;
-  bottom: 4px;
-  width: 1px;
-  background: var(--border);
-}
-button.branch-summary:hover,
-button.branch-summary[data-state="open"] {
-  background: var(--shell-hover);
-  border-color: var(--border);
-}
-.branch-summary-empty {
-  color: var(--muted-foreground);
-  text-decoration: underline;
-  text-decoration-color: oklch(1 0 0 / 25%);
-  text-underline-offset: 3px;
-}
-
 /* Digits keep their width while counts and line totals update live. */
 .count-badge,
 .line-counts,

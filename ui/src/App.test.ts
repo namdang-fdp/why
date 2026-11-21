@@ -8,6 +8,7 @@ import type { FileDiff, IpcError } from "@/contracts";
 import type { HunkDirection, HunkResult } from "@/components/diff/hunk-navigation";
 import { FixtureDataSource } from "@/data/fixture-data-source";
 import { ipcErrors, WT_WHY_AGENT } from "@/fixtures";
+import { shortcutGroups } from "@/hooks/use-workspace-shortcuts";
 import { createWorkspaceStore } from "@/stores/workspace";
 import { useWorkspace } from "@/stores/workspace-context";
 import { App } from "./App";
@@ -66,6 +67,40 @@ afterEach(() => {
 });
 
 describe("review shell", () => {
+  it("keeps a screen-reader heading and puts Search first in the top bar's tab order", async () => {
+    const user = userEvent.setup();
+    render(createElement(App, { store: createWorkspaceStore(new FixtureDataSource()) }));
+    const topBar = within(screen.getByRole("banner"));
+    expect(
+      topBar.getByRole("heading", { level: 1, name: "WHY" }).classList.contains("sr-only"),
+    ).toBe(true);
+
+    const search = topBar.getByRole("button", { name: "Search commands" });
+    expect(search.id).toBe("shell-command");
+    await user.tab();
+    expect(document.activeElement).toBe(search);
+    await user.keyboard("{Control>}k{/Control}");
+    await screen.findByRole("dialog", { name: "Command palette" });
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(document.activeElement).toBe(search));
+    expect(screen.queryByRole("dialog", { name: "Command palette" })).toBeNull();
+  });
+
+  it("shows each shortcut group once in the named dialog and closes on Escape", async () => {
+    const user = userEvent.setup();
+    render(createElement(App, { store: createWorkspaceStore(new FixtureDataSource()) }));
+    await user.keyboard("?");
+
+    const dialog = within(await screen.findByRole("dialog", { name: "Keyboard shortcuts" }));
+    expect(
+      dialog.getAllByRole("heading", { level: 3 }).map((heading) => heading.textContent),
+    ).toEqual(shortcutGroups.map(({ title }) => title));
+    await user.keyboard("{Escape}");
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "Keyboard shortcuts" })).toBeNull(),
+    );
+  });
+
   it("opens all repositories by default and remembers independent disclosure states", async () => {
     const user = userEvent.setup();
     const renderShell = () =>

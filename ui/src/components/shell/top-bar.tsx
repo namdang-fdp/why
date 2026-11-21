@@ -1,19 +1,14 @@
-import { ChevronRight, CircleHelp, GitPullRequest, PanelRight, Plug, Search } from "lucide-react";
+import { CircleHelp, PanelRight, Plug, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tip } from "@/components/ui/overlays";
 import { paletteKeys } from "@/hooks/use-workspace-shortcuts";
 import { diffModes, selectDiffMode, selectWorktree } from "@/stores/workspace";
 import { useWorkspace } from "@/stores/workspace-context";
-import { BaseSummary } from "./base-popover";
+import { BasePopover } from "./base-popover";
+import { BrandMark } from "./brand-mark";
 import { EditorSettingsPopover } from "./editor-settings-popover";
-import { worktreeName } from "./change-labels";
 
 export function TopBar({ onHelp }: { onHelp: () => void }) {
-  const repository = useWorkspace((state) =>
-    state.repositories.status === "ok"
-      ? state.repositories.data.find((repo) => repo.id === state.repoId)
-      : undefined,
-  );
   const worktree = useWorkspace(selectWorktree);
   const mode = useWorkspace(selectDiffMode);
   const setMode = useWorkspace((state) => state.setDiffMode);
@@ -26,26 +21,24 @@ export function TopBar({ onHelp }: { onHelp: () => void }) {
     <header className="top-bar">
       <div className="brand">
         <span className="brand-icon">
-          <GitPullRequest size={15} aria-hidden />
+          <BrandMark />
         </span>
-        <h1>WHY</h1>
+        <h1 className="sr-only">WHY</h1>
       </div>
-      <nav className="breadcrumbs" aria-label="Current location">
-        {repository && (
-          <span title={repository.rootPath} className="truncate">
-            {repository.name}
-          </span>
-        )}
-        {worktree && (
-          <>
-            <ChevronRight size={13} aria-hidden />
-            <span aria-current="location" title={worktree.path} className="truncate">
-              {worktreeName(worktree)}
-            </span>
-          </>
-        )}
-      </nav>
-      {worktree && <BaseSummary worktree={worktree} />}
+      <Button
+        id="shell-command"
+        aria-label="Search commands"
+        aria-haspopup="dialog"
+        aria-keyshortcuts="Meta+K Control+K"
+        variant="ghost"
+        size="sm"
+        className="command-trigger"
+        onClick={() => setPaletteOpen(true)}
+      >
+        <Search className="size-3.5" aria-hidden />
+        <span className="search-label">Search</span>
+        <kbd aria-hidden>{paletteKeys}</kbd>
+      </Button>
       <div className="top-controls">
         <div className="mode-control" role="group" aria-label="Diff mode">
           {diffModes.map(({ mode: value, label, key }) => (
@@ -66,20 +59,7 @@ export function TopBar({ onHelp }: { onHelp: () => void }) {
             </button>
           ))}
         </div>
-        <Button
-          id="shell-command"
-          aria-label="Search commands"
-          aria-haspopup="dialog"
-          aria-keyshortcuts="Meta+K Control+K"
-          variant="ghost"
-          size="sm"
-          className="command-trigger"
-          onClick={() => setPaletteOpen(true)}
-        >
-          <Search className="size-3.5" aria-hidden />
-          <span className="search-label">Search</span>
-          <kbd aria-hidden>{paletteKeys}</kbd>
-        </Button>
+        {worktree && <BasePopover worktree={worktree} />}
         <Tip label="Agent hooks">
           <Button
             id="shell-agent-hooks"

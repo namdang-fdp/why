@@ -153,8 +153,6 @@ kbd {
 }
 
 .brand,
-.breadcrumbs,
-.branch-summary,
 .top-controls {
   display: flex;
   align-items: center;
@@ -162,10 +160,6 @@ kbd {
 
 .brand {
   flex: none;
-  gap: 8px;
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
 }
 
 .brand-icon,
@@ -182,35 +176,6 @@ kbd {
   border-radius: 6px;
 }
 
-.breadcrumbs,
-.branch-summary {
-  flex: 1 1 0;
-  min-width: 0;
-  white-space: nowrap;
-  color: var(--muted-foreground);
-}
-
-.breadcrumbs {
-  gap: 6px;
-  border-left: 1px solid var(--border);
-  padding-left: 16px;
-}
-
-.breadcrumbs [aria-current] {
-  color: var(--foreground);
-  font-weight: 550;
-}
-
-.branch-summary {
-  min-width: 0;
-  gap: 7px;
-  border-left: 1px solid var(--border);
-  padding-left: 16px;
-  font: 11px var(--font-mono);
-}
-
-.breadcrumbs svg,
-.branch-summary svg,
 .top-controls,
 .pane-heading > svg {
   flex: none;
@@ -226,13 +191,13 @@ kbd {
   padding: 2px;
   gap: 1px;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 999px;
   background: var(--background);
 }
 
 .mode-control button {
-  padding: 4px 8px;
-  border-radius: 4px;
+  padding: 4px 10px;
+  border-radius: 999px;
   color: var(--muted-foreground);
   font-size: 12px;
   line-height: 16px;
@@ -250,13 +215,29 @@ kbd {
   opacity: 0.55;
 }
 
-.top-controls .command-trigger {
+.command-trigger {
+  width: 180px;
+  justify-content: flex-start;
   gap: 7px;
   border: 1px solid var(--border);
-  padding-inline: 8px;
-  margin-left: 5px;
+  border-radius: 999px;
+  padding-inline: 11px;
   color: var(--muted-foreground);
   font-size: 12px;
+}
+
+.command-trigger:not(:hover) {
+  background: var(--background);
+}
+
+.command-trigger:focus-visible {
+  border-color: var(--ring);
+}
+
+.command-trigger kbd {
+  margin-inline-start: auto;
+  border: 0;
+  background: transparent;
 }
 
 .workspace-scroll {
@@ -656,15 +637,23 @@ kbd {
 }
 
 .shortcuts-dialog {
-  max-width: min(430px, calc(100vw - 32px));
+  max-width: min(752px, calc(100vw - 32px));
   max-height: calc(100dvh - 32px);
   overflow: auto;
   background: var(--shell-chrome);
 }
 
 .shortcut-groups {
-  display: grid;
-  gap: 13px;
+  columns: 2;
+  column-gap: 24px;
+}
+
+.shortcut-groups section {
+  break-inside: avoid;
+}
+
+.shortcut-groups section + section {
+  margin-top: 13px;
 }
 
 .shortcut-groups h3 {
@@ -683,34 +672,34 @@ kbd {
 .shortcut-row {
   justify-content: space-between;
   min-height: 28px;
-  font-size: 13px;
+  font-size: 14px;
 }
 
-@media (max-width: 950px) {
-  .branch-summary {
-    display: none;
-  }
-}
-
-@media (max-width: 600px) {
+@media (max-width: 840px) {
   .top-bar {
     flex-wrap: wrap;
     gap: 8px;
-  }
-
-  .breadcrumbs {
-    flex: 1;
-    padding-left: 8px;
   }
 
   .top-controls {
     width: 100%;
     margin-left: 0;
   }
+}
 
-  .top-controls .command-trigger {
-    margin-left: auto;
+@media (max-width: 640px) {
+  .shortcut-groups {
+    columns: 1;
   }
+}
+
+@media (max-width: 600px) {
+  .command-trigger {
+    width: 32px;
+    justify-content: center;
+    padding-inline: 0;
+  }
+
   .search-label,
   .command-trigger kbd {
     display: none;
@@ -720,11 +709,6 @@ kbd {
 @media (max-width: 480px) {
   .top-controls {
     flex-wrap: wrap;
-  }
-
-  .top-controls .command-trigger {
-    width: 32px;
-    padding-inline: 0;
   }
 
   .mode-control {

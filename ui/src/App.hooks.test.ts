@@ -437,5 +437,5 @@ it("opens from the top bar, command palette and session empty state, with focus 
   expect(install).not.toHaveBeenCalled();
 
   fireEvent.keyDown(window, { key: "?" });
-  expect(await screen.findByText("Set up agent hooks")).toBeTruthy();
+  expect(await screen.findByRole("dialog", { name: "Keyboard shortcuts" })).toBeTruthy();
 });

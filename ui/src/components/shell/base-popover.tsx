@@ -1,11 +1,10 @@
 import { useState, type FormEvent } from "react";
-import { ArrowRight, GitBranch, Loader2 } from "lucide-react";
+import { GitBranch, Loader2 } from "lucide-react";
 import type { IpcError, Worktree } from "@/contracts";
 import { Button } from "@/components/ui/button";
 import { PopoverContent, PopoverRoot, PopoverTrigger } from "@/components/ui/overlays";
 import { describeBaseError } from "@/lib/error-text";
 import { useWorkspace } from "@/stores/workspace-context";
-import { BranchDivergence, branchLabel } from "./change-labels";
 
 /** Refs worth offering whatever the repository: the usual trunks. */
 const suggestedRefs = ["origin/main", "main"];
@@ -82,34 +81,17 @@ function BaseForm({ worktree, close }: { worktree: Worktree; close: () => void }
   );
 }
 
-/**
- * The `branch -> base` readout in the top bar, as a button that opens a small
- * form to change the base. With no base it reads "Set base".
- */
-export function BaseSummary({ worktree }: { worktree: Worktree }) {
+export function BasePopover({ worktree }: { worktree: Worktree }) {
   const [open, setOpen] = useState(false);
+  const label = worktree.base ? "Change the base branch" : "Set base";
   return (
     <PopoverRoot open={open} onOpenChange={setOpen}>
       {/* `title`, not a Tooltip: closing the popover returns focus to this button,
           and a focus-opened tooltip would then stay on screen. */}
       <PopoverTrigger asChild>
-        <button type="button" className="branch-summary" title="Change the base branch">
-          <GitBranch size={14} aria-hidden />
-          <span className="truncate" title={branchLabel(worktree)}>
-            {branchLabel(worktree)}
-          </span>
-          {worktree.base ? (
-            <>
-              <ArrowRight size={13} aria-hidden />
-              <span className="truncate" title={worktree.base.baseRef}>
-                {worktree.base.baseRef}
-              </span>
-              <BranchDivergence base={worktree.base} />
-            </>
-          ) : (
-            <span className="branch-summary-empty">Set base</span>
-          )}
-        </button>
+        <Button type="button" variant="ghost" size="icon-sm" title={label} aria-label={label}>
+          <GitBranch aria-hidden />
+        </Button>
       </PopoverTrigger>
       <PopoverContent align="start" className="base-popover">
         <BaseForm worktree={worktree} close={() => setOpen(false)} />
