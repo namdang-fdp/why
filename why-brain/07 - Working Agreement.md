@@ -27,7 +27,7 @@ Kaneo ticket ─► worktree + brief ─► worker builds (uncommitted)
    ─► coordinator re-verifies ─► owner says "commit" ─► coordinator commits, PR ─► CI green ─► merge ─► Done
 ```
 - **Kaneo** (project `WHY`): one epic per slice; tasks as subtasks; `blocks` relations for order; follow-ups as comments on the task they belong to; backlog items prefixed `[backlog]`. Kaneo = task state, brain = decisions, repo = code + evidence. (Labels exist but listing them is huge; put the actor in the title when in a hurry.)
-- **Worktree**: `~/Projects/personal/why-worktrees/WHY-N-slug`, branch **`feature/WHY-N-slug`** (never `why/`), cut from the latest `main` **after** pending merges are done and `main` is pulled, `.env` with its own `WHY_DEV_PORT` (next free: 1590), `pnpm i --frozen-lockfile`. Warm the Rust build (`cargo test --workspace --no-run`) before a Rust worker starts.
+- **Worktree**: `~/Projects/personal/why-worktrees/WHY-N-slug`, branch **`feature/WHY-N-slug`** (never `why/`), cut from the latest `main` **after** pending merges are done and `main` is pulled, `.env` with its own `WHY_DEV_PORT` (next free: 1640), `pnpm i --frozen-lockfile`. Warm the Rust build (`cargo test --workspace --no-run`) before a Rust worker starts.
 - **Brief**: background (product, what is on main with file paths and function names, parallel tasks, owner learns from diffs) · owned and forbidden paths (shared wiring files are **append-only**) · numbered build list with the design decisions already made · tests with **concrete hostile/edge scenarios** · acceptance with evidence to paste · final report in Vietnamese with 5–10 learning notes and an explicit "not verified" list · "do not commit". Read the real code before writing a brief; a field name in a brief that does not exist in the contract costs a round trip.
 - **Verification by the coordinator, every time**: re-run `pnpm lint` + `pnpm test` in the worktree yourself; read the risky parts of the diff (file writes, paths, git calls, contracts, stale-response guards); check the worker stayed inside its paths (`git status`). When one PR merged after another PR's CI ran, test the combination in a scratch `git worktree add --detach … main` + `git merge --no-commit` before merging the second.
 - **Two review layers**: coordinator review + Codex review (`/codex:review`, run by the owner). They catch different bugs (design/fit vs runtime/edge cases). Triage each finding: accept / defer to a named task / reject with a reason.
@@ -57,10 +57,10 @@ Kaneo ticket ─► worktree + brief ─► worker builds (uncommitted)
 ## Release
 `docs/release-checklist.md`: bump versions (`node scripts/check-versions.mjs --tag vX.Y.Z`) → CHANGELOG section (`node scripts/release-notes.mjs X.Y.Z --strict`) + README + SECURITY.md in one PR → merge → dry run (`gh workflow run release.yml --ref main`), download artifacts, check `SHA256SUMS` and that the `.deb` holds `usr/bin/why` and `usr/bin/why-hook` → annotated tag on main → draft (3 assets, not pre-release, notes without TODO) → owner's word → `gh release edit vX.Y.Z --draft=false --latest` → check the assets publicly without auth. AppImages are not byte-reproducible: verify downloads against the **draft's** `SHA256SUMS`, not the dry run's. The owner's machine runs the AppImage from `~/Applications` with `~/.local/share/applications/why.desktop` pointing at it.
 
-## State after v0.2.0 (2026-11-21)
-- Released: v0.1.0 (live diff), **v0.2.0 (session context)**, public and Latest.
-- Now: WHY-19 dogfood on the installed release (checklist `why-worktrees/prompts/WHY-19-dogfood-checklist.md`), WHY-55 UI polish from the owner's notes (→ v0.2.1), WHY-56 owner reads the code, WHY-57 landing page (brief `why-worktrees/prompts/WHY-site-landing-page.md`), WHY-58 post-release follow-ups and backlog candidates.
-- Next slice: v0.3 line provenance (WHY-20 epic).
+## State after v0.2.1 (2026-11-21)
+- Released: v0.1.0 (live diff), **v0.2.0 (session context)**, public and Latest. **v0.2.1** (UI polish: settings page, top bar, inspector phase A; WHY-62) is tagged and its release workflow passed; verifying the draft's assets and publishing it wait for the owner's word.
+- Open: WHY-19 dogfood (still In Progress), WHY-56 owner reads the code, WHY-58 follow-ups. Cleanup (2026-11-21): 22 of the 25 merged worktrees and their local and remote branches are gone; WHY-53b, WHY-57-landing-page and WHY-61 stay until the processes running in them are stopped.
+- Now: **v0.3 line provenance** (WHY-20 epic), plan in decisions 29–33. Order: WHY-63 gate (this note) → WHY-64 wiring (Opus 5.5 medium, alone) → WHY-65 capture ‖ WHY-21 ground truth (a different worker than the engine) ‖ WHY-25 gutter UI (Codex, on fixtures) → WHY-22 engine → WHY-23 alignment → WHY-24 shell-write spike (timeboxed, may slip to v0.3.1) → WHY-26 benchmark → WHY-27 dogfood → release v0.3.0. Briefs go in `why-worktrees/prompts/WHY-N-slug.md`; a worker starts only on the owner's go-ahead, and the wiring worktree is cut from `main` after the gate PR is merged and pulled.
 
 ## Lessons learned
 v0.1:
@@ -78,3 +78,8 @@ v0.2:
 - Codex found runtime races the coordinator missed (racing writers, mixed versions, duplicate ids across agents); the coordinator found design gaps Codex missed (a dev instance overwriting the installed hook binary, a restore copy holding secrets, a missing `toolUseId`). Keep both layers.
 - Workers stop and report when a contract field is missing; give them the go-ahead in the same task rather than routing the change through a second one.
 - New Cargo puts test executables in `build/<pkg>/<hash>/`: never assume a fixed depth from `current_exe`.
+
+v0.2.1 and housekeeping:
+- Every worktree that built Rust carries its own `target/` (5–16 GB each): 25 merged worktrees held roughly 180 GB. Remove a worktree and its branches soon after its PR is merged (on the owner's word); `git worktree remove` without `--force` refuses a dirty tree, which is the safety net.
+- Before removing a worktree, check for live processes whose cwd is inside it (`readlink /proc/*/cwd`): a forgotten `pnpm dev:ui` or an idle agent session was sitting in three merged worktrees.
+- A stored tickets list ages: the v0.3 tickets of 2026-11-18 assumed edit data that v0.2's code never stored. Re-read the code and reconcile Kaneo (a gate task) before briefing a new slice.
