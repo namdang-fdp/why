@@ -1,8 +1,8 @@
 {
   "format": 1,
   "name": "codex-delete-then-recreate",
-  "description": "Codex deletes a file in one turn and adds a file with the same path in the next. The new file starts from nothing: no line inherits the deleted file's origin (rule 3). One of the new lines has exactly the text of a base line (`return 1`), but content equality never transfers origin (rule 1), so every line of the final file is p2.",
-  "stage": "replay",
+  "description": "Codex deletes a file in one turn and adds a file with the same path in the next. The new file starts from nothing: no line inherits the deleted file's origin (rule 3). One of the new lines has exactly the text of a base line (`return 1`), but content equality never transfers origin (rule 1), so every line of the final file is p2. Stage `align`: the Codex create reports neither `after` nor a newline, so the new file's final newline is known only from the real file; the origins are what this fixture checks.",
+  "stage": "align",
   "harness": "codex",
   "file": "src/probe.py",
   "base": {

@@ -1,8 +1,8 @@
 {
   "format": 1,
   "name": "codex-add-file",
-  "description": "A Codex `*** Add File` patch creates a new file (no line numbers, no old file: before and after are `none`). Every line of the file is p1, including the blank one.",
-  "stage": "replay",
+  "description": "A Codex `*** Add File` patch creates a new file (no line numbers, no old file: before and after are `none`). Every line of the file is p1, including the blank one. Stage `align`: a Codex create reports neither `after` nor a newline, so the file's final newline is known only from the real file; the origins (all p1) are what this fixture checks.",
+  "stage": "align",
   "harness": "codex",
   "file": "tools/seed.py",
   "base": null,
