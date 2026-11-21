@@ -1,0 +1,50 @@
+{
+  "format": 1,
+  "name": "codex-unobserved-unparsed",
+  "description": "A Codex patch p1 is observed (unique context, placed with certainty). A second patch `u` could not be parsed (observed: unparsed). Codex reports no old file, so no later op can reveal what `u` wrote: the engine can never learn the real text of the changed line, hence stage `align`. Rule 6 with its own reason: the one line `u` changed is Unknown(unparsed). p1's line and the untouched line keep their origin.",
+  "stage": "align",
+  "harness": "codex",
+  "file": "app/cfg.py",
+  "base": {
+    "lines": ["A = 1", "B = 2", "C = 3"],
+    "finalNewline": true
+  },
+  "ops": [
+    {
+      "id": "p1",
+      "session": "x1",
+      "turn": "u1",
+      "kind": "update",
+      "hunks": [
+        {
+          "appliedAt": 1,
+          "lines": ["-A = 1", "+A = 10", " B = 2"]
+        }
+      ],
+      "before": "none",
+      "after": "none"
+    },
+    {
+      "id": "u",
+      "session": "x1",
+      "turn": "u2",
+      "kind": "update",
+      "observed": { "unobserved": "unparsed" },
+      "before": "none",
+      "after": "none",
+      "truthAfter": {
+        "lines": ["A = 10", "B = 2", "C = 30"],
+        "finalNewline": true
+      }
+    }
+  ],
+  "final": {
+    "lines": ["A = 10", "B = 2", "C = 30"],
+    "finalNewline": true
+  },
+  "expected": [
+    { "line": 1, "origin": { "op": "p1" } },
+    { "line": 2, "origin": "base" },
+    { "line": 3, "origin": { "unknown": "unparsed" } }
+  ]
+}

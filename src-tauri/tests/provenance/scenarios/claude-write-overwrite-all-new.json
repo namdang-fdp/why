@@ -1,0 +1,42 @@
+{
+  "format": 1,
+  "name": "claude-write-overwrite-all-new",
+  "description": "A Claude Write replaces the whole content of a file with text that shares no line with the old file, so the patch is one hunk that removes every old line and adds every new one. Nothing of base survives (rule 3) and both final lines are e1 (rule 1).",
+  "stage": "replay",
+  "harness": "claudeCode",
+  "file": "config.txt",
+  "base": {
+    "lines": ["RETRIES = 3", "TIMEOUT = 10", "VERBOSE = True"],
+    "finalNewline": true
+  },
+  "ops": [
+    {
+      "id": "e1",
+      "session": "s1",
+      "turn": "t1",
+      "kind": "update",
+      "hunks": [
+        {
+          "oldStart": 1,
+          "lines": [
+            "-RETRIES = 3",
+            "-TIMEOUT = 10",
+            "-VERBOSE = True",
+            "+retries: 5",
+            "+timeout: 20"
+          ]
+        }
+      ],
+      "before": "auto",
+      "after": "auto"
+    }
+  ],
+  "final": {
+    "lines": ["retries: 5", "timeout: 20"],
+    "finalNewline": true
+  },
+  "expected": [
+    { "line": 1, "origin": { "op": "e1" } },
+    { "line": 2, "origin": { "op": "e1" } }
+  ]
+}

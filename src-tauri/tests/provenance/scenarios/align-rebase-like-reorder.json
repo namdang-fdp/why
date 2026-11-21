@@ -1,0 +1,52 @@
+{
+  "format": 1,
+  "name": "align-rebase-like-reorder",
+  "description": "Two captured edits (e1 rewrites step one, e2 rewrites step three). Afterwards the file is reordered as a rebase or a reset-and-reapply could do, with no captured edit: the second half moves to the top (`A B C D` becomes `C D A B`). Rule 5 procedure: all four texts are unique on both sides, but there are two chains of the same maximal length (A B and C D) and no anchor belongs to EVERY maximal chain, so nothing is matched. All four lines are Unknown(noCapture), even though the text of every line is exactly a line the replay had. Claiming either pair as the unmoved one would be a guess.",
+  "stage": "align",
+  "harness": "claudeCode",
+  "file": "src/steps.py",
+  "base": {
+    "lines": ["step_one()", "step_two()", "step_three()", "step_four()"],
+    "finalNewline": true
+  },
+  "ops": [
+    {
+      "id": "e1",
+      "session": "s1",
+      "turn": "t1",
+      "kind": "update",
+      "hunks": [
+        {
+          "oldStart": 1,
+          "lines": ["-step_one()", "+step_one(fast)", " step_two()"]
+        }
+      ],
+      "before": "auto",
+      "after": "none"
+    },
+    {
+      "id": "e2",
+      "session": "s1",
+      "turn": "t2",
+      "kind": "update",
+      "hunks": [
+        {
+          "oldStart": 2,
+          "lines": [" step_two()", "-step_three()", "+step_three(fast)", " step_four()"]
+        }
+      ],
+      "before": "auto",
+      "after": "none"
+    }
+  ],
+  "final": {
+    "lines": ["step_three(fast)", "step_four()", "step_one(fast)", "step_two()"],
+    "finalNewline": true
+  },
+  "expected": [
+    { "line": 1, "origin": { "unknown": "noCapture" } },
+    { "line": 2, "origin": { "unknown": "noCapture" } },
+    { "line": 3, "origin": { "unknown": "noCapture" } },
+    { "line": 4, "origin": { "unknown": "noCapture" } }
+  ]
+}

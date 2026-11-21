@@ -1,0 +1,37 @@
+{
+  "format": 1,
+  "name": "claude-write-gains-final-newline",
+  "description": "The base file has no final newline. A Claude Write replaces its last line and the new content ends with a newline. Only a Write reveals this to WHY (its `after` fingerprint carries the final-newline flag), so this is a replay scenario; an Edit that gained a newline would not be. The patch shows `alpha` as context (rule 2: base) and the replaced last line as e1.",
+  "stage": "replay",
+  "harness": "claudeCode",
+  "file": "notes.txt",
+  "base": {
+    "lines": ["alpha", "beta"],
+    "finalNewline": false
+  },
+  "ops": [
+    {
+      "id": "e1",
+      "session": "s1",
+      "turn": "t1",
+      "kind": "update",
+      "hunks": [
+        {
+          "oldStart": 1,
+          "lines": [" alpha", "-beta", "+gamma"]
+        }
+      ],
+      "before": "auto",
+      "after": "auto",
+      "finalNewline": true
+    }
+  ],
+  "final": {
+    "lines": ["alpha", "gamma"],
+    "finalNewline": true
+  },
+  "expected": [
+    { "line": 1, "origin": "base" },
+    { "line": 2, "origin": { "op": "e1" } }
+  ]
+}

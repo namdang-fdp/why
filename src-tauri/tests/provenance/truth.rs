@@ -328,17 +328,14 @@ impl Scenario {
             ops.push(engine_op);
         }
 
-        match (s.stage, state == s.final_file) {
-            (Stage::Replay, false) => {
-                return err(format!(
-                    "stage `replay`, but `final` is not what the ops produce; the ops give {:?}",
-                    state.map(|t| t.lines)
-                ));
-            }
-            (Stage::Align, true) => {
-                return err("stage `align`, but `final` equals the replay: use stage `replay`");
-            }
-            _ => {}
+        // `align` accepts any `final`, including one equal to the oracle's replay:
+        // the oracle knows `appliedAt` / `truthAfter`, the engine does not, so
+        // equality here is no evidence the engine could reproduce the text.
+        if s.stage == Stage::Replay && state != s.final_file {
+            return err(format!(
+                "stage `replay`, but `final` is not what the ops produce; the ops give {:?}",
+                state.map(|t| t.lines)
+            ));
         }
 
         let final_len = s.final_file.as_ref().map_or(0, |f| f.lines.len());

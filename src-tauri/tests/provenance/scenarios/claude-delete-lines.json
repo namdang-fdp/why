@@ -1,0 +1,57 @@
+{
+  "format": 1,
+  "name": "claude-delete-lines",
+  "description": "e1 deletes two lines and adds nothing: no line of the final file is e1's, because a removed line has no origin (rule 3) and the survivors keep base (rule 2). A later edit e2 rewrites the last constant at its NEW position (line 3, shifted up by the deletion); only that line is e2.",
+  "stage": "replay",
+  "harness": "claudeCode",
+  "file": "src/flags.rs",
+  "base": {
+    "lines": [
+      "const A: u32 = 1;",
+      "const B: u32 = 2;",
+      "const C: u32 = 3;",
+      "const D: u32 = 4;",
+      "const E: u32 = 5;"
+    ],
+    "finalNewline": true
+  },
+  "ops": [
+    {
+      "id": "e1",
+      "session": "s1",
+      "turn": "t1",
+      "kind": "update",
+      "hunks": [
+        {
+          "oldStart": 1,
+          "lines": [" const A: u32 = 1;", "-const B: u32 = 2;", "-const C: u32 = 3;", " const D: u32 = 4;"]
+        }
+      ],
+      "before": "auto",
+      "after": "none"
+    },
+    {
+      "id": "e2",
+      "session": "s1",
+      "turn": "t2",
+      "kind": "update",
+      "hunks": [
+        {
+          "oldStart": 2,
+          "lines": [" const D: u32 = 4;", "-const E: u32 = 5;", "+const E: u32 = 50;"]
+        }
+      ],
+      "before": "auto",
+      "after": "none"
+    }
+  ],
+  "final": {
+    "lines": ["const A: u32 = 1;", "const D: u32 = 4;", "const E: u32 = 50;"],
+    "finalNewline": true
+  },
+  "expected": [
+    { "line": 1, "origin": "base" },
+    { "line": 2, "origin": "base" },
+    { "line": 3, "origin": { "op": "e2" } }
+  ]
+}

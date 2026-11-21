@@ -1,0 +1,39 @@
+{
+  "format": 1,
+  "name": "codex-add-file",
+  "description": "A Codex `*** Add File` patch creates a new file (no line numbers, no old file: before and after are `none`). Every line of the file is p1, including the blank one.",
+  "stage": "replay",
+  "harness": "codex",
+  "file": "tools/seed.py",
+  "base": null,
+  "ops": [
+    {
+      "id": "p1",
+      "session": "x1",
+      "turn": "u1",
+      "kind": "create",
+      "hunks": [
+        {
+          "lines": [
+            "+import random",
+            "+",
+            "+def seed(n):",
+            "+    random.seed(n)"
+          ]
+        }
+      ],
+      "before": "none",
+      "after": "none"
+    }
+  ],
+  "final": {
+    "lines": ["import random", "", "def seed(n):", "    random.seed(n)"],
+    "finalNewline": true
+  },
+  "expected": [
+    { "line": 1, "origin": { "op": "p1" } },
+    { "line": 2, "origin": { "op": "p1" } },
+    { "line": 3, "origin": { "op": "p1" } },
+    { "line": 4, "origin": { "op": "p1" } }
+  ]
+}

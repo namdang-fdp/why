@@ -1,8 +1,8 @@
 {
   "format": 1,
   "name": "codex-ambiguous-context",
-  "description": "A Codex apply_patch hunk (no line numbers) whose context matches two identical blocks. It really applied to the second (appliedAt 6, truth only). The engine cannot tell which block changed, so the changed line and its twin are Unknown(ambiguousMatch); the context lines are base either way.",
-  "stage": "replay",
+  "description": "A Codex apply_patch hunk (no line numbers) whose context matches two identical blocks. Codex applies it to the first match (appliedAt 2, truth only). The engine cannot tell which block changed, so the changed line and its twin are Unknown(ambiguousMatch); the context lines are base either way. Stage `align`: the ops alone do not determine the final text (which block changed), so the engine is judged against the real file.",
+  "stage": "align",
   "harness": "codex",
   "file": "stats.py",
   "base": {
@@ -25,7 +25,7 @@
       "kind": "update",
       "hunks": [
         {
-          "appliedAt": 6,
+          "appliedAt": 2,
           "lines": ["     xs = clean(xs)", "-    return len(xs)", "+    return len(set(xs))"]
         }
       ],
@@ -37,11 +37,11 @@
     "lines": [
       "def a(xs):",
       "    xs = clean(xs)",
-      "    return len(xs)",
+      "    return len(set(xs))",
       "",
       "def b(xs):",
       "    xs = clean(xs)",
-      "    return len(set(xs))"
+      "    return len(xs)"
     ],
     "finalNewline": true
   },

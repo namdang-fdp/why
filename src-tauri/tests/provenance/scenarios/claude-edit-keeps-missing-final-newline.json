@@ -1,0 +1,37 @@
+{
+  "format": 1,
+  "name": "claude-edit-keeps-missing-final-newline",
+  "description": "The base file has no final newline and a Claude Edit changes its FIRST line only. The final newline flag stays false (an edit that does not touch the last line does not add one) and the last line, whose text is unchanged, stays base. The edit never touches the last line on purpose: how a hunk shows a last line without a newline has not been observed.",
+  "stage": "replay",
+  "harness": "claudeCode",
+  "file": "src/lines.txt",
+  "base": {
+    "lines": ["one", "two", "three"],
+    "finalNewline": false
+  },
+  "ops": [
+    {
+      "id": "e1",
+      "session": "s1",
+      "turn": "t1",
+      "kind": "update",
+      "hunks": [
+        {
+          "oldStart": 1,
+          "lines": ["-one", "+uno", " two"]
+        }
+      ],
+      "before": "auto",
+      "after": "none"
+    }
+  ],
+  "final": {
+    "lines": ["uno", "two", "three"],
+    "finalNewline": false
+  },
+  "expected": [
+    { "line": 1, "origin": { "op": "e1" } },
+    { "line": 2, "origin": "base" },
+    { "line": 3, "origin": "base" }
+  ]
+}

@@ -1,0 +1,64 @@
+{
+  "format": 1,
+  "name": "claude-unobserved-trailing",
+  "description": "e1 is observed. The LAST op `u` is an edit whose payload the hook reduced, and no later op's `before` reveals what it wrote, so the engine can never learn the real text of the lines it changed (hence stage `align`: WHY-23 has the real file). Rule 6: every line that differs between the state before and after `u` is Unknown(payloadReduced): the rewritten `q.insert` line and the new `# end` line. Lines `u` did not change keep their origin, including e1's.",
+  "stage": "align",
+  "harness": "claudeCode",
+  "file": "src/queue.py",
+  "base": {
+    "lines": ["def push(q, x):", "    q.append(x)", "def pop(q):", "    return q.pop(0)"],
+    "finalNewline": true
+  },
+  "ops": [
+    {
+      "id": "e1",
+      "session": "s1",
+      "turn": "t1",
+      "kind": "update",
+      "hunks": [
+        {
+          "oldStart": 3,
+          "lines": [" def pop(q):", "-    return q.pop(0)", "+    return q.pop(0) if q else None"]
+        }
+      ],
+      "before": "auto",
+      "after": "none"
+    },
+    {
+      "id": "u",
+      "session": "s1",
+      "turn": "t2",
+      "kind": "update",
+      "observed": { "unobserved": "payloadReduced" },
+      "before": "none",
+      "after": "none",
+      "truthAfter": {
+        "lines": [
+          "def push(q, x):",
+          "    q.insert(len(q), x)",
+          "def pop(q):",
+          "    return q.pop(0) if q else None",
+          "# end"
+        ],
+        "finalNewline": true
+      }
+    }
+  ],
+  "final": {
+    "lines": [
+      "def push(q, x):",
+      "    q.insert(len(q), x)",
+      "def pop(q):",
+      "    return q.pop(0) if q else None",
+      "# end"
+    ],
+    "finalNewline": true
+  },
+  "expected": [
+    { "line": 1, "origin": "base" },
+    { "line": 2, "origin": { "unknown": "payloadReduced" } },
+    { "line": 3, "origin": "base" },
+    { "line": 4, "origin": { "op": "e1" } },
+    { "line": 5, "origin": { "unknown": "payloadReduced" } }
+  ]
+}

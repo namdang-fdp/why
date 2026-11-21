@@ -1,0 +1,39 @@
+{
+  "format": 1,
+  "name": "claude-crlf-file",
+  "description": "The file on disk uses CRLF line endings, but the scenario lists lines WITHOUT terminators, as the line policy defines them: `a\\r\\n` is the line `a`, so CRLF and LF files have the same lines and the same hashes. A Claude edit changes one line; the neighbours are context, the rest is base. The last base line holds a lone `\\r` in the middle (`progress=10%` carriage-returned over `20%`): that is content, not a terminator, so it is an ordinary untouched base line. Whether the edit wrote CRLF or LF is invisible by policy and does not change any origin.",
+  "stage": "replay",
+  "harness": "claudeCode",
+  "file": "conf/server.ini",
+  "base": {
+    "lines": ["[server]", "port=80", "host=a", "[client]", "progress=10%\r20%"],
+    "finalNewline": true
+  },
+  "ops": [
+    {
+      "id": "e1",
+      "session": "s1",
+      "turn": "t1",
+      "kind": "update",
+      "hunks": [
+        {
+          "oldStart": 2,
+          "lines": [" port=80", "-host=a", "+host=b", " [client]"]
+        }
+      ],
+      "before": "auto",
+      "after": "none"
+    }
+  ],
+  "final": {
+    "lines": ["[server]", "port=80", "host=b", "[client]", "progress=10%\r20%"],
+    "finalNewline": true
+  },
+  "expected": [
+    { "line": 1, "origin": "base" },
+    { "line": 2, "origin": "base" },
+    { "line": 3, "origin": { "op": "e1" } },
+    { "line": 4, "origin": "base" },
+    { "line": 5, "origin": "base" }
+  ]
+}

@@ -1,0 +1,58 @@
+{
+  "format": 1,
+  "name": "align-sed-substitution",
+  "description": "After the last captured edit (e1 rewrites the last line), a shell `sed` replaces the identifier `user` with `account` everywhere. Rule 8 / rule 5: the three lines that contained `user` now have new text and exist only because of the substitution: Unknown(noCapture). The three lines the substitution did not touch occur once and unchanged on both sides, so they keep their origin: `return token` and the `def close_session` line stay base, and e1's line stays e1 (a change that did not rewrite it does not take it away).",
+  "stage": "align",
+  "harness": "claudeCode",
+  "file": "src/session.py",
+  "base": {
+    "lines": [
+      "def open_session(user):",
+      "    token = issue(user)",
+      "    log('open', user)",
+      "    return token",
+      "def close_session(token):",
+      "    revoke(token)"
+    ],
+    "finalNewline": true
+  },
+  "ops": [
+    {
+      "id": "e1",
+      "session": "s1",
+      "turn": "t1",
+      "kind": "update",
+      "hunks": [
+        {
+          "oldStart": 5,
+          "lines": [
+            " def close_session(token):",
+            "-    revoke(token)",
+            "+    revoke(token, now())"
+          ]
+        }
+      ],
+      "before": "auto",
+      "after": "none"
+    }
+  ],
+  "final": {
+    "lines": [
+      "def open_session(account):",
+      "    token = issue(account)",
+      "    log('open', account)",
+      "    return token",
+      "def close_session(token):",
+      "    revoke(token, now())"
+    ],
+    "finalNewline": true
+  },
+  "expected": [
+    { "line": 1, "origin": { "unknown": "noCapture" } },
+    { "line": 2, "origin": { "unknown": "noCapture" } },
+    { "line": 3, "origin": { "unknown": "noCapture" } },
+    { "line": 4, "origin": "base" },
+    { "line": 5, "origin": "base" },
+    { "line": 6, "origin": { "op": "e1" } }
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "format": 1,
+  "name": "align-duplicate-line-added",
+  "description": "e1 rewrites the middle line to `wait`. Afterwards something uncaptured adds a second, identical `wait` line next to it. Rule 5's unambiguous test: `start` and `stop` occur once on both sides and keep base. Between them the replayed state has one `wait` and the final file has two, so `wait` is not unique in the gap and the pairing is a coin flip (either line could be e1's). Both final `wait` lines are Unknown(noCapture); neither may keep e1.",
+  "stage": "align",
+  "harness": "claudeCode",
+  "file": "src/steps.txt",
+  "base": {
+    "lines": ["start", "pause", "stop"],
+    "finalNewline": true
+  },
+  "ops": [
+    {
+      "id": "e1",
+      "session": "s1",
+      "turn": "t1",
+      "kind": "update",
+      "hunks": [
+        {
+          "oldStart": 1,
+          "lines": [" start", "-pause", "+wait", " stop"]
+        }
+      ],
+      "before": "auto",
+      "after": "none"
+    }
+  ],
+  "final": {
+    "lines": ["start", "wait", "wait", "stop"],
+    "finalNewline": true
+  },
+  "expected": [
+    { "line": 1, "origin": "base" },
+    { "line": 2, "origin": { "unknown": "noCapture" } },
+    { "line": 3, "origin": { "unknown": "noCapture" } },
+    { "line": 4, "origin": "base" }
+  ]
+}

@@ -1,0 +1,58 @@
+{
+  "format": 1,
+  "name": "codex-update-header-still-ambiguous",
+  "description": "The Codex hunk carries the header `@@ class Svc:`, but that line sits at the top and is ABOVE both candidate places, so it does not narrow anything: the context (`step()` then `done()`) still fits at lines 3-4 and 6-7. Codex applies it to the first match (appliedAt 3, truth only). Equal-size replacement, so the placements are comparable: the `done`/`finish` lines at 4 and 7 are Unknown(ambiguousMatch); the context lines, `def` lines and the class line are base under every placement. Stage `align`: the ops alone do not determine the final text. Contrast with codex-update-header-disambiguates, where the header sits between the twins.",
+  "stage": "align",
+  "harness": "codex",
+  "file": "svc.py",
+  "base": {
+    "lines": [
+      "class Svc:",
+      "    def start(self):",
+      "        step()",
+      "        done()",
+      "    def stop(self):",
+      "        step()",
+      "        done()"
+    ],
+    "finalNewline": true
+  },
+  "ops": [
+    {
+      "id": "p1",
+      "session": "x1",
+      "turn": "u1",
+      "kind": "update",
+      "hunks": [
+        {
+          "appliedAt": 3,
+          "header": "class Svc:",
+          "lines": ["         step()", "-        done()", "+        finish()"]
+        }
+      ],
+      "before": "none",
+      "after": "none"
+    }
+  ],
+  "final": {
+    "lines": [
+      "class Svc:",
+      "    def start(self):",
+      "        step()",
+      "        finish()",
+      "    def stop(self):",
+      "        step()",
+      "        done()"
+    ],
+    "finalNewline": true
+  },
+  "expected": [
+    { "line": 1, "origin": "base" },
+    { "line": 2, "origin": "base" },
+    { "line": 3, "origin": "base" },
+    { "line": 4, "origin": { "unknown": "ambiguousMatch" } },
+    { "line": 5, "origin": "base" },
+    { "line": 6, "origin": "base" },
+    { "line": 7, "origin": { "unknown": "ambiguousMatch" } }
+  ]
+}

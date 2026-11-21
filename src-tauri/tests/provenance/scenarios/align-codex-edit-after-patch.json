@@ -1,0 +1,38 @@
+{
+  "format": 1,
+  "name": "align-codex-edit-after-patch",
+  "description": "A Codex patch (p1) rewrites `pub fn b`, with a unique context so it is placed with certainty. Afterwards something uncaptured rewrites that same line again and appends one more function. Rule 8 / rule 5: `a` and `c` occur once and unchanged on both sides and stay base; the rewritten `b` line (p1 wrote the earlier version) and the appended `d` exist only because of the uncaptured change: Unknown(noCapture). The line is not p1's any more, since the text in the file is not the text p1 wrote.",
+  "stage": "align",
+  "harness": "codex",
+  "file": "src/lib.rs",
+  "base": {
+    "lines": ["pub fn a() {}", "pub fn b() {}", "pub fn c() {}"],
+    "finalNewline": true
+  },
+  "ops": [
+    {
+      "id": "p1",
+      "session": "x1",
+      "turn": "u1",
+      "kind": "update",
+      "hunks": [
+        {
+          "appliedAt": 1,
+          "lines": [" pub fn a() {}", "-pub fn b() {}", "+pub fn b() -> u8 { 1 }", " pub fn c() {}"]
+        }
+      ],
+      "before": "none",
+      "after": "none"
+    }
+  ],
+  "final": {
+    "lines": ["pub fn a() {}", "pub fn b() -> u8 { 2 }", "pub fn c() {}", "pub fn d() {}"],
+    "finalNewline": true
+  },
+  "expected": [
+    { "line": 1, "origin": "base" },
+    { "line": 2, "origin": { "unknown": "noCapture" } },
+    { "line": 3, "origin": "base" },
+    { "line": 4, "origin": { "unknown": "noCapture" } }
+  ]
+}

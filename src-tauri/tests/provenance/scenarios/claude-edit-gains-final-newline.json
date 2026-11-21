@@ -1,0 +1,38 @@
+{
+  "format": 1,
+  "name": "claude-edit-gains-final-newline",
+  "description": "The base file has no final newline. A Claude Edit rewrites the FIRST line and the file ends up with a final newline (the tool wrote one). An Edit carries no `after` fingerprint, so the engine cannot learn that the newline appeared: only the real file shows it (stage `align`). A final newline is not part of any line (the line policy), so the last line `blue` is untouched text and stays base; only line 1 is e1.",
+  "stage": "align",
+  "harness": "claudeCode",
+  "file": "palette.txt",
+  "base": {
+    "lines": ["red", "green", "blue"],
+    "finalNewline": false
+  },
+  "ops": [
+    {
+      "id": "e1",
+      "session": "s1",
+      "turn": "t1",
+      "kind": "update",
+      "hunks": [
+        {
+          "oldStart": 1,
+          "lines": ["-red", "+crimson", " green"]
+        }
+      ],
+      "before": "auto",
+      "after": "none",
+      "finalNewline": true
+    }
+  ],
+  "final": {
+    "lines": ["crimson", "green", "blue"],
+    "finalNewline": true
+  },
+  "expected": [
+    { "line": 1, "origin": { "op": "e1" } },
+    { "line": 2, "origin": "base" },
+    { "line": 3, "origin": "base" }
+  ]
+}

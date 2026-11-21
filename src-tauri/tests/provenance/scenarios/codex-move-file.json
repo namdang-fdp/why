@@ -1,0 +1,49 @@
+{
+  "format": 1,
+  "name": "codex-move-file",
+  "description": "A Codex `*** Update File: src/util.py` with `*** Move to: src/text_utils.py` and one hunk. The scenario's `file` is the NEW path; `base` is the content the file had under its old name. Rule 2: a rename is not a rewrite, so every line the hunk does not touch keeps `base` across the move; only the rewritten line is p1.",
+  "stage": "replay",
+  "harness": "codex",
+  "file": "src/text_utils.py",
+  "base": {
+    "lines": [
+      "def slug(s):",
+      "    return s.lower().replace(' ', '-')",
+      "def title(s):",
+      "    return s.title()"
+    ],
+    "finalNewline": true
+  },
+  "ops": [
+    {
+      "id": "p1",
+      "session": "x1",
+      "turn": "u1",
+      "kind": "update",
+      "renamedFrom": "src/util.py",
+      "hunks": [
+        {
+          "appliedAt": 3,
+          "lines": [" def title(s):", "-    return s.title()", "+    return s.title().strip()"]
+        }
+      ],
+      "before": "none",
+      "after": "none"
+    }
+  ],
+  "final": {
+    "lines": [
+      "def slug(s):",
+      "    return s.lower().replace(' ', '-')",
+      "def title(s):",
+      "    return s.title().strip()"
+    ],
+    "finalNewline": true
+  },
+  "expected": [
+    { "line": 1, "origin": "base" },
+    { "line": 2, "origin": "base" },
+    { "line": 3, "origin": "base" },
+    { "line": 4, "origin": { "op": "p1" } }
+  ]
+}

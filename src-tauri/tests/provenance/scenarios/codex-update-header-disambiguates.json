@@ -1,0 +1,58 @@
+{
+  "format": 1,
+  "name": "codex-update-header-disambiguates",
+  "description": "Two functions have an identical body, so the hunk's context alone fits two places (lines 2-3 and 6-7). The patch carries the header `@@ def spread(xs):`; that line occurs once, at line 5, and a hunk is searched for only BELOW its header, so the only possible placement is lines 6-7. WHY locates it with certainty: the rewritten line 7 is p1 and its twin at line 3 stays base. No Unknown (contrast with codex-ambiguous-context, which has no header).",
+  "stage": "replay",
+  "harness": "codex",
+  "file": "stats.py",
+  "base": {
+    "lines": [
+      "def mean(xs):",
+      "    xs = clean(xs)",
+      "    return total(xs)",
+      "",
+      "def spread(xs):",
+      "    xs = clean(xs)",
+      "    return total(xs)"
+    ],
+    "finalNewline": true
+  },
+  "ops": [
+    {
+      "id": "p1",
+      "session": "x1",
+      "turn": "u1",
+      "kind": "update",
+      "hunks": [
+        {
+          "appliedAt": 6,
+          "header": "def spread(xs):",
+          "lines": ["     xs = clean(xs)", "-    return total(xs)", "+    return total(xs) / 2"]
+        }
+      ],
+      "before": "none",
+      "after": "none"
+    }
+  ],
+  "final": {
+    "lines": [
+      "def mean(xs):",
+      "    xs = clean(xs)",
+      "    return total(xs)",
+      "",
+      "def spread(xs):",
+      "    xs = clean(xs)",
+      "    return total(xs) / 2"
+    ],
+    "finalNewline": true
+  },
+  "expected": [
+    { "line": 1, "origin": "base" },
+    { "line": 2, "origin": "base" },
+    { "line": 3, "origin": "base" },
+    { "line": 4, "origin": "base" },
+    { "line": 5, "origin": "base" },
+    { "line": 6, "origin": "base" },
+    { "line": 7, "origin": { "op": "p1" } }
+  ]
+}

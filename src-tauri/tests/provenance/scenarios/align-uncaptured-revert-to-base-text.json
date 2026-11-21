@@ -1,0 +1,37 @@
+{
+  "format": 1,
+  "name": "align-uncaptured-revert-to-base-text",
+  "description": "e1 changes `LEVEL = 3` to `LEVEL = 4`. Afterwards, with no captured edit, something puts the original text back, so the final file is byte for byte the base file. The final `LEVEL = 3` is Unknown(noCapture), NOT base: content equality never transfers origin (rule 1), and the line exists only because of the uncaptured change (rule 5). The two untouched lines stay base.",
+  "stage": "align",
+  "harness": "claudeCode",
+  "file": "src/mode.py",
+  "base": {
+    "lines": ["MODE = 'fast'", "LEVEL = 3", "NAME = 'x'"],
+    "finalNewline": true
+  },
+  "ops": [
+    {
+      "id": "e1",
+      "session": "s1",
+      "turn": "t1",
+      "kind": "update",
+      "hunks": [
+        {
+          "oldStart": 1,
+          "lines": [" MODE = 'fast'", "-LEVEL = 3", "+LEVEL = 4", " NAME = 'x'"]
+        }
+      ],
+      "before": "auto",
+      "after": "none"
+    }
+  ],
+  "final": {
+    "lines": ["MODE = 'fast'", "LEVEL = 3", "NAME = 'x'"],
+    "finalNewline": true
+  },
+  "expected": [
+    { "line": 1, "origin": "base" },
+    { "line": 2, "origin": { "unknown": "noCapture" } },
+    { "line": 3, "origin": "base" }
+  ]
+}

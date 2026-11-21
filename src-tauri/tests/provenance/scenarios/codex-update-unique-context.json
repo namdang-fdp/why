@@ -1,0 +1,66 @@
+{
+  "format": 1,
+  "name": "codex-update-unique-context",
+  "description": "A Codex `*** Update File` patch with two hunks and no line numbers. Each hunk's context lines occur exactly once in the file, so each hunk has one possible placement and WHY locates it with certainty: the two rewritten lines are p1, everything else stays base (rule 2). No Unknown.",
+  "stage": "replay",
+  "harness": "codex",
+  "file": "app/render.py",
+  "base": {
+    "lines": [
+      "import html",
+      "def render(title, body):",
+      "    head = html.escape(title)",
+      "    text = html.escape(body)",
+      "    return head + text",
+      "def shout(s):",
+      "    return s.upper()"
+    ],
+    "finalNewline": true
+  },
+  "ops": [
+    {
+      "id": "p1",
+      "session": "x1",
+      "turn": "u1",
+      "kind": "update",
+      "hunks": [
+        {
+          "appliedAt": 3,
+          "lines": [
+            "     head = html.escape(title)",
+            "     text = html.escape(body)",
+            "-    return head + text",
+            "+    return head + ' ' + text"
+          ]
+        },
+        {
+          "appliedAt": 6,
+          "lines": [" def shout(s):", "-    return s.upper()", "+    return s.upper() + '!'"]
+        }
+      ],
+      "before": "none",
+      "after": "none"
+    }
+  ],
+  "final": {
+    "lines": [
+      "import html",
+      "def render(title, body):",
+      "    head = html.escape(title)",
+      "    text = html.escape(body)",
+      "    return head + ' ' + text",
+      "def shout(s):",
+      "    return s.upper() + '!'"
+    ],
+    "finalNewline": true
+  },
+  "expected": [
+    { "line": 1, "origin": "base" },
+    { "line": 2, "origin": "base" },
+    { "line": 3, "origin": "base" },
+    { "line": 4, "origin": "base" },
+    { "line": 5, "origin": { "op": "p1" } },
+    { "line": 6, "origin": "base" },
+    { "line": 7, "origin": { "op": "p1" } }
+  ]
+}

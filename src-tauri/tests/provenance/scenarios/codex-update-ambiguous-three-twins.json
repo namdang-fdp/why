@@ -1,0 +1,69 @@
+{
+  "format": 1,
+  "name": "codex-update-ambiguous-three-twins",
+  "description": "Three functions share an identical body and the Codex hunk (no line numbers, no header) fits all three: `prepare()` then `execute()` at lines 2-3, 6-7 and 10-11. Codex applies it to the first match (appliedAt 2, truth only), but WHY cannot know that. The replacement keeps the line count, so the three placements are comparable line by line: the `execute` line of each block is p1's under one placement and base under the others, so all three (lines 3, 7, 11) are Unknown(ambiguousMatch). The `prepare()` lines, the `def` lines and the blank lines are base under every placement. Stage `align`: the ops alone do not determine the final text.",
+  "stage": "align",
+  "harness": "codex",
+  "file": "jobs.py",
+  "base": {
+    "lines": [
+      "def run_a():",
+      "    prepare()",
+      "    execute()",
+      "",
+      "def run_b():",
+      "    prepare()",
+      "    execute()",
+      "",
+      "def run_c():",
+      "    prepare()",
+      "    execute()"
+    ],
+    "finalNewline": true
+  },
+  "ops": [
+    {
+      "id": "p1",
+      "session": "x1",
+      "turn": "u1",
+      "kind": "update",
+      "hunks": [
+        {
+          "appliedAt": 2,
+          "lines": ["     prepare()", "-    execute()", "+    execute(retry=True)"]
+        }
+      ],
+      "before": "none",
+      "after": "none"
+    }
+  ],
+  "final": {
+    "lines": [
+      "def run_a():",
+      "    prepare()",
+      "    execute(retry=True)",
+      "",
+      "def run_b():",
+      "    prepare()",
+      "    execute()",
+      "",
+      "def run_c():",
+      "    prepare()",
+      "    execute()"
+    ],
+    "finalNewline": true
+  },
+  "expected": [
+    { "line": 1, "origin": "base" },
+    { "line": 2, "origin": "base" },
+    { "line": 3, "origin": { "unknown": "ambiguousMatch" } },
+    { "line": 4, "origin": "base" },
+    { "line": 5, "origin": "base" },
+    { "line": 6, "origin": "base" },
+    { "line": 7, "origin": { "unknown": "ambiguousMatch" } },
+    { "line": 8, "origin": "base" },
+    { "line": 9, "origin": "base" },
+    { "line": 10, "origin": "base" },
+    { "line": 11, "origin": { "unknown": "ambiguousMatch" } }
+  ]
+}
