@@ -68,6 +68,17 @@ const binaryLabels: Record<BinaryInfo["status"], string> = {
   unverified: "Unverified",
 };
 
+/**
+ * WHY cannot read Codex's trust state (it never touches `config.toml`), so a
+ * Codex card would say "Review in Codex" forever. The one real evidence is an
+ * event that arrived: once this instance has received one, say so, with its time.
+ */
+function receivingSince(status: HarnessHookStatus) {
+  if (status.state.kind !== "needsReview" || status.lastEventAt === null) return null;
+  const at = new Date(status.lastEventAt);
+  return Number.isNaN(at.getTime()) ? status.lastEventAt : at.toLocaleString();
+}
+
 export function HarnessCard({
   status,
   binary,
@@ -81,6 +92,7 @@ export function HarnessCard({
 }) {
   const { state, harness, events, configPath } = status;
   const name = harnessNames[harness];
+  const receiving = receivingSince(status);
   const update =
     state.kind === "outdated" ||
     (state.kind !== "notInstalled" &&
@@ -98,11 +110,15 @@ export function HarnessCard({
         <h3 id={`hook-${harness}-title`} tabIndex={-1}>
           {name}
         </h3>
-        <span className="hook-state" data-kind={state.kind}>
-          {hookLabels[state.kind]}
+        <span className="hook-state" data-kind={receiving === null ? state.kind : "installed"}>
+          {receiving === null ? hookLabels[state.kind] : "Receiving events"}
         </span>
       </div>
-      <p>{hookExplanation(state)}</p>
+      <p>
+        {receiving === null
+          ? hookExplanation(state)
+          : `WHY has received events from ${name}. Last event ${receiving}.`}
+      </p>
       {state.kind === "outdated" && state.reasons.length > 0 && (
         <ul className="hook-notes">
           {state.reasons.map((reason, index) => (

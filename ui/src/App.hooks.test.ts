@@ -132,6 +132,41 @@ describe("Agent hooks status", () => {
     ).toBeTruthy();
   });
 
+  it("keeps the Codex review hint while no Codex event was received, even if Claude sent some", async () => {
+    await open({
+      states: { codex: "needsReview" },
+      lastEvents: { claudeCode: "2026-11-21T10:00:00.000Z" },
+    });
+    expect(card("Codex").getByText("Review in Codex")).toBeTruthy();
+    expect(card("Codex").getByText(/approve WHY's hooks in `\/hooks`/)).toBeTruthy();
+    expect(card("Codex").queryByText("Receiving events")).toBeNull();
+  });
+
+  it("shows 'Receiving events' with the last event time once a Codex event arrived", async () => {
+    await open({
+      states: { codex: "needsReview" },
+      lastEvents: { codex: "2026-11-21T10:05:00.000Z" },
+    });
+    const section = card("Codex");
+    expect(section.getByText("Receiving events")).toBeTruthy();
+    expect(section.getByText(/Last event/)).toBeTruthy();
+    expect(section.queryByText("Review in Codex")).toBeNull();
+    expect(section.queryByText(/approve WHY's hooks/)).toBeNull();
+    // The other harness is untouched.
+    expect(card("Claude Code").queryByText("Receiving events")).toBeNull();
+    // The metrics row no longer says the last event is unknown.
+    expect(page().queryByText("Last event")).toBeNull();
+  });
+
+  it("keeps an installed or not-installed Codex card as it is even with events", async () => {
+    await open({
+      states: { codex: "installed" },
+      lastEvents: { codex: "2026-11-21T10:05:00.000Z" },
+    });
+    expect(card("Codex").getByText("Installed")).toBeTruthy();
+    expect(card("Codex").queryByText("Receiving events")).toBeNull();
+  });
+
   it.each(collectorCases)("renders collector %s", async (collector, label, explanation) => {
     await open({ collector });
     const health = within(page().getByRole("region", { name: "Collector and binary" }));
