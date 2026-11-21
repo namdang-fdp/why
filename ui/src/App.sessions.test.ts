@@ -11,6 +11,7 @@ import { mockTimelineViewport } from "@/test/timeline-viewport";
 import { FixtureDataSource } from "@/data/fixture-data-source";
 import { SESSION_LONG } from "@/dev-fixtures/long-session";
 import { SESSION_CODEX, SESSION_SUBAGENT } from "@/fixtures/sessions";
+import { inspectorViewStore, resetInspectorView, type InspectorTab } from "@/stores/inspector-view";
 import { createWorkspaceStore } from "@/stores/workspace";
 import { App } from "./App";
 
@@ -30,6 +31,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  resetInspectorView();
   cleanup();
   vi.restoreAllMocks();
   localStorage.clear();
@@ -37,7 +39,9 @@ afterEach(() => {
   Reflect.deleteProperty(HTMLElement.prototype, "scrollIntoView");
 });
 
-function setup(source = new FixtureDataSource()) {
+function setup(source = new FixtureDataSource(), tab: InspectorTab = "worktree") {
+  // The inspector opens on its File tab; most of these tests look at the session list.
+  inspectorViewStore.getState().setTab(tab);
   const store = createWorkspaceStore(source);
   const user = userEvent.setup();
   render(createElement(App, { store }));
@@ -136,7 +140,9 @@ describe("session states in the inspector", () => {
     act(() => {
       source.simulateSessionActivity(SESSION_CODEX, "refresh only this turn");
     });
-    await within(region).findByText("refresh only this turn");
+    // The new call may fold into a closed shell run, so wait on the render, not on its text.
+    await waitFor(() => expect(renderRow).toHaveBeenCalledTimes(1));
+    await act(async () => {});
     expect(renderRow).toHaveBeenCalledTimes(1);
   });
 });
@@ -240,16 +246,21 @@ describe("recorded events", () => {
       ),
     ).toBe(true);
     expect(firstTurn.getByText("Failed").getAttribute("data-outcome")).toBe("failed");
+    // An unknown outcome is the default, so it gets no chip (the call below has none)...
     expect(
-      firstTurn.getAllByText("Unknown").map((node) => node.getAttribute("data-outcome")),
-    ).toContain("unknown");
+      firstTurn.getByText("Tool result missing").closest("li")?.querySelector("[data-outcome]"),
+    ).toBeNull();
+    expect(region.querySelector('[data-outcome="unknown"]')).toBeNull();
+    // ...while an unknown EVIDENCE label is still shown.
     expect(
       firstTurn.getAllByText("Unknown").map((node) => node.getAttribute("data-evidence")),
     ).toContain("unknown");
     expect(
       firstTurn.getAllByText("OK").every((node) => node.getAttribute("data-outcome") === "ok"),
     ).toBe(true);
-    expect(firstTurn.getByText("Observed", { selector: ".session-turn-head span" })).toBeTruthy();
+    // Observed is the default: no chip on observed rows, one legend line says so.
+    expect(region.querySelector('[data-evidence="observed"]')).toBeNull();
+    expect(why().getByText(/Rows are observed by the agent.s hooks unless marked/)).toBeTruthy();
     for (const path of ["/tmp/why-agent/test-helper.log", "../x", "~/x"]) {
       expect(firstTurn.getByText(path).hasAttribute("data-external")).toBe(true);
       expect(firstTurn.queryByRole("button", { name: path })).toBeNull();

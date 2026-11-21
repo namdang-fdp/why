@@ -13,6 +13,7 @@ import { SESSION_CLAUDE, SESSION_CODEX } from "@/fixtures/sessions";
 import { unavailableText } from "@/components/sessions/rationale-model";
 import { deferred } from "@/test/deferred";
 import { mockTimelineViewport } from "@/test/timeline-viewport";
+import { inspectorViewStore, resetInspectorView, type InspectorTab } from "@/stores/inspector-view";
 import { createWorkspaceStore } from "@/stores/workspace";
 import { openTurn } from "@/components/sessions/session-controls";
 import { selectWorktree } from "@/stores/workspace";
@@ -34,6 +35,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  resetInspectorView();
   cleanup();
   vi.restoreAllMocks();
   localStorage.clear();
@@ -41,7 +43,9 @@ afterEach(() => {
   Reflect.deleteProperty(HTMLElement.prototype, "scrollIntoView");
 });
 
-function setup(options: FixtureOptions | FixtureDataSource = {}) {
+function setup(options: FixtureOptions | FixtureDataSource = {}, tab: InspectorTab = "worktree") {
+  // The inspector opens on its File tab; most of these tests look at the session list.
+  inspectorViewStore.getState().setTab(tab);
   const source = options instanceof FixtureDataSource ? options : new FixtureDataSource(options);
   const store = createWorkspaceStore(source);
   const user = userEvent.setup();
@@ -57,6 +61,8 @@ const chip = async (name: RegExp, path: RegExp) => {
   return within(row).findByRole("button", { name });
 };
 async function openSession(user: ReturnType<typeof userEvent.setup>, name: RegExp) {
+  // The session list lives on the Worktree tab.
+  act(() => inspectorViewStore.getState().setTab("worktree"));
   const rows = await why().findByRole("list", { name: "Worktree sessions" });
   await user.click(within(rows).getByRole("button", { name }));
   return why().findByRole("region", { name: "Session turns" });
@@ -160,10 +166,10 @@ describe("attribution in the changed-files rail", () => {
   });
 
   it("highlights turns from the core's edit history even when events name another path", async () => {
-    const { user } = setup();
+    const { user } = setup({}, "file");
     // The Claude turn wrote the file under its OLD name; its events list only src/calc.py.
     await user.click(await within(await fileList()).findByRole("button", { name: /parse\.rs/ }));
-    const edits = await why().findByRole("region", { name: /Edit history of/ });
+    const edits = await why().findByRole("region", { name: /Captured edits to/ });
     expect(await within(edits).findByText("Applied")).toBeTruthy();
     const region = await openSession(user, /Claude Code.*subtract/);
     const turn = region.querySelector('[data-turn-id="c3a1f0e2-0001"] .session-turn-body');
@@ -176,9 +182,9 @@ describe("attribution in the changed-files rail", () => {
   });
 
   it("lists the selected file's turns in the inspector, newest first, with outcome chips", async () => {
-    const { user } = setup();
+    const { user } = setup({}, "file");
     await user.click(await within(await fileList()).findByRole("button", { name: /mod\.rs/ }));
-    const edits = await why().findByRole("region", { name: /Edit history of/ });
+    const edits = await why().findByRole("region", { name: /Captured edits to/ });
     const lines = await within(edits).findAllByRole("button");
     const text = lines.map((line) => line.textContent ?? "");
     expect(text).toHaveLength(3);
@@ -357,10 +363,11 @@ describe("recovered Codex exit codes", () => {
     await within(region).findByText("Failed · exit 1");
     expect(within(region).getByText("OK · exit 0")).toBeTruthy();
     expect(within(region).getAllByText("Observed · from rollout")).toHaveLength(2);
-    // The third shell call has no matching record: still Unknown, no code.
+    // The third shell call has no matching record: still unknown, so no outcome chip and no code.
     const mystery = within(region).getByText("./scripts/check.sh --all").closest("li");
-    expect(within(mystery as HTMLElement).getByText("Unknown")).toBeTruthy();
+    expect(within(mystery as HTMLElement).queryByText("Unknown")).toBeNull();
     expect(mystery?.textContent).not.toMatch(/exit/);
+    await user.click(why().getByRole("button", { name: /Session details/ }));
     expect(why().getByText(/1 shell call stays unknown/)).toBeTruthy();
     // Calls the hooks DID report keep the hook's word and get no rollout label.
     const patch = within(region).getAllByText("OK");
@@ -404,7 +411,8 @@ describe("recovered Codex exit codes", () => {
     await within(region).findByText("Run the tests.");
     await act(async () => {});
     expect(region.textContent).not.toMatch(/exit 9|from rollout/);
-    expect(within(region).getAllByText("Unknown").length).toBeGreaterThan(0);
+    // Unknown is never a chip per row.
+    expect(within(region).queryAllByText("Unknown")).toHaveLength(0);
   });
 
   it.each([
@@ -416,6 +424,8 @@ describe("recovered Codex exit codes", () => {
     async (outcomes, text) => {
       const { user } = setup({ evidence: { outcomes } });
       await codexSession(user);
+      // The recovery note sits behind the collapsed "Session details" disclosure.
+      await user.click(await why().findByRole("button", { name: /Session details/ }));
       const note = await why().findByText(text);
       expect(note.closest(".session-outcomes-note")).toBeTruthy();
       expect(why().getAllByText(text)).toHaveLength(1);
@@ -471,7 +481,7 @@ describe("review follow-ups", () => {
   });
 
   it("keeps lossy paths out of evidence: no marker, no history lookup", async () => {
-    const { user, source } = setup();
+    const { user, source } = setup({}, "file");
     const history = vi.spyOn(source, "getFileActivity");
     await user.click(await screen.findByRole("button", { name: /detached @ 1a2b3c4/ }));
     const files = await fileList();
@@ -481,7 +491,7 @@ describe("review follow-ups", () => {
     await user.click(within(lossy as HTMLElement).getByRole("button", { name: /caf/ }));
     await act(async () => {});
     expect(history).not.toHaveBeenCalledWith("wt-billing-detached", "docs/caf�.txt");
-    expect(screen.queryByRole("region", { name: /Edit history of/ })).toBeNull();
+    expect(screen.queryByRole("region", { name: /Captured edits to/ })).toBeNull();
   });
 
   it("keeps the unexplained toggle while it hides everything, and says why the list is empty", async () => {
