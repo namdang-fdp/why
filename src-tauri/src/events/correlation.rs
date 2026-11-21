@@ -25,16 +25,17 @@ use std::path::Path;
 
 use super::model::{EventKind, NormalizedEvent, SessionKey, ToolClass};
 use super::timeline::TurnIndices;
-use crate::contracts::{EvidenceLabel, ToolOutcome};
+use crate::contracts::{EvidenceLabel, ToolOutcome, WorktreeId};
 
 /// The ONE spelling in which git paths and event paths are compared:
 /// worktree-relative, `/`-separated, no empty or `.` components, `..` resolved
 /// lexically. `None` when the path cannot be a place inside a worktree:
 ///
 /// - empty, or containing a NUL byte;
-/// - absolute. The ingest step already rewrote every file inside the root to a
-///   relative path, so a file that is still absolute lies outside the root (or
-///   was recorded before the worktree was registered). It is kept in the event
+/// - absolute. The ingest step already rewrote every edited file that lies in a
+///   registered worktree to a path relative to ITS OWN root, so a file that is
+///   still absolute lies in no registered worktree (or was recorded before the
+///   worktree was registered). It is kept in the event
 ///   but **never matched by prefix guessing**: a `starts_with` between two
 ///   directories happily matches `/work/app` against `/work/app-other`;
 /// - a path whose `..` climbs out of the root (`../x`).
@@ -96,16 +97,46 @@ pub fn canonical_paths(files: &[String]) -> Vec<String> {
     unique.into_iter().collect()
 }
 
-/// The canonical paths an event is indexed under: only OBSERVED events of
-/// edit-class tool calls inside a registered worktree. This is the single
-/// definition of "what goes in the index" for new events; the migration's
-/// backfill applies the same guards in SQL (`WHERE` clause) and the same
-/// [`canonical_paths`].
-pub fn indexed_paths(ev: &NormalizedEvent) -> Vec<String> {
-    if ev.worktree_id.is_none() || tool_event_class(ev) != Some(ToolClass::Edit) {
+/// Every (worktree, canonical path) an event is indexed under: only OBSERVED
+/// events of edit-class tool calls. This is the single definition of "what goes
+/// in the index" for new events; the migration's backfill applies the same
+/// guards in SQL (`WHERE` clause) and the same [`canonical_paths`].
+///
+/// Where a file is indexed is decided by ingest (decision 32): each edited file
+/// under the worktree that owns it, so one event can be indexed under several
+/// worktrees. An event ingest did not look at (`edited_files` is `None`) falls
+/// back to the v0.2 rule: all its files under the event's own worktree.
+pub fn indexed_files(ev: &NormalizedEvent) -> Vec<(WorktreeId, String)> {
+    if tool_event_class(ev) != Some(ToolClass::Edit) {
         return Vec::new();
     }
-    canonical_paths(&ev.files)
+    let mut found: Vec<(WorktreeId, String)> = match &ev.edited_files {
+        Some(files) => files
+            .iter()
+            .filter_map(|f| Some((f.worktree_id.clone(), canonical_path(&f.path)?)))
+            .collect(),
+        None => match &ev.worktree_id {
+            Some(wt) => canonical_paths(&ev.files)
+                .into_iter()
+                .map(|path| (wt.clone(), path))
+                .collect(),
+            None => Vec::new(),
+        },
+    };
+    // Sorted and deduplicated, so every caller sees one order.
+    found.sort_by(|a, b| (&a.0.0, &a.1).cmp(&(&b.0.0, &b.1)));
+    found.dedup();
+    found
+}
+
+/// The canonical paths of `ev` that live in worktree `wt` (see
+/// [`indexed_files`]), sorted.
+pub fn files_in(ev: &NormalizedEvent, wt: &WorktreeId) -> Vec<String> {
+    indexed_files(ev)
+        .into_iter()
+        .filter(|(owner, _)| owner == wt)
+        .map(|(_, path)| path)
+        .collect()
 }
 
 /// One start or finish event of a tool call, reduced to what correlation needs.
@@ -128,8 +159,10 @@ pub struct CallEvent {
 }
 
 impl CallEvent {
-    /// `None` unless `ev` is a tool start or finish.
-    pub fn from_event(ev: &NormalizedEvent) -> Option<Self> {
+    /// `None` unless `ev` is a tool start or finish. `paths` are the files of
+    /// worktree `wt` only (see [`files_in`]): a multi-file call that touched
+    /// two worktrees lists in each one just its own files.
+    pub fn from_event(ev: &NormalizedEvent, wt: &WorktreeId) -> Option<Self> {
         tool_event_class(ev)?;
         Some(Self {
             session: ev.session.clone(),
@@ -142,7 +175,7 @@ impl CallEvent {
             },
             at_ms: ev.at_ms,
             reported_paths: !ev.files.is_empty(),
-            paths: canonical_paths(&ev.files),
+            paths: files_in(ev, wt),
         })
     }
 }

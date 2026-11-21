@@ -7,6 +7,9 @@
 //!   again on both stores. Includes the acceptance scenario, whose output table is
 //!   printed (run with `-- --nocapture` to see it).
 //!
+//! - `cross_worktree.rs`: decision 32 (WHY-65), an edit belongs to the edited
+//!   file's own worktree, on both stores.
+//!
 //! Everything lives in temp dirs; nothing touches `$HOME` or the network.
 
 // The git fixtures (temp repos, env scrubbing), included by path because each
@@ -14,6 +17,7 @@
 #[path = "../git/common.rs"]
 mod common;
 
+mod cross_worktree;
 mod rig;
 mod scenarios;
 mod store;

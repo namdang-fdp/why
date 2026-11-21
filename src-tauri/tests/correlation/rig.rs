@@ -12,7 +12,7 @@ use why_lib::contracts::{
     WorktreeId,
 };
 use why_lib::events::ingest::ingest;
-use why_lib::events::{EventStore, MemoryEventStore, SqliteEventStore};
+use why_lib::events::{AppendOutcome, EventStore, MemoryEventStore, SqliteEventStore};
 use why_lib::ipc::changes::list_worktrees_impl;
 use why_lib::ipc::repos::add_repository_impl;
 use why_lib::state::AppState;
@@ -106,6 +106,17 @@ impl Rig {
 
     /// Feed one hook delivery; returns the envelope so a test can redeliver it.
     pub async fn send(&self, harness: Harness, hook: &str, cwd: &Path, payload: Value) -> Envelope {
+        self.send_outcome(harness, hook, cwd, payload).await.0
+    }
+
+    /// Like [`Rig::send`], and what the store reported for the delivery.
+    pub async fn send_outcome(
+        &self,
+        harness: Harness,
+        hook: &str,
+        cwd: &Path,
+        payload: Value,
+    ) -> (Envelope, AppendOutcome) {
         let env = Envelope {
             v: PROTOCOL_VERSION,
             harness,
@@ -117,14 +128,14 @@ impl Rig {
             pid: 1,
             payload,
         };
-        self.deliver(&env).await;
-        env
+        let outcome = self.deliver(&env).await;
+        (env, outcome)
     }
 
-    pub async fn deliver(&self, env: &Envelope) {
+    pub async fn deliver(&self, env: &Envelope) -> AppendOutcome {
         ingest(env, &self.resolver, self.state.events.as_ref())
             .await
-            .unwrap();
+            .unwrap()
     }
 
     // ---- Claude Code --------------------------------------------------

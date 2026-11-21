@@ -81,8 +81,9 @@ async fn acceptance_two_agents_two_worktrees_and_one_unexplained_file() {
         )
         .await;
         // The same agent also reaches into worktree B's file by absolute path.
-        // The event belongs to worktree A (its cwd), and the file lies outside
-        // A's root: it must explain nothing, in A or in B.
+        // The event belongs to worktree A (its cwd), but the FILE belongs to B
+        // (decision 32, WHY-65): it explains nothing in A and is one of the
+        // turns that explain `only_b.rs` in B.
         rig.c_edit(
             "claude-a",
             "p2",
@@ -128,7 +129,7 @@ async fn acceptance_two_agents_two_worktrees_and_one_unexplained_file() {
         assert_eq!(mystery.evidence, EvidenceLabel::Unknown);
         assert!(mystery.explained_by.is_empty() && mystery.attempts.is_empty());
 
-        // --- worktree B: only Codex, never Claude's reach-across
+        // --- worktree B: Codex, and Claude's reach-across (the file is B's)
         assert_eq!(
             in_b.files
                 .iter()
@@ -142,23 +143,27 @@ async fn acceptance_two_agents_two_worktrees_and_one_unexplained_file() {
         );
         assert_eq!(
             labels(&file(&in_b, "only_b.rs").explained_by),
-            ["codex:codex-b#1(t2)"]
+            ["codex:codex-b#1(t2)", "claude-code:claude-a#1(p2)"]
         );
         assert!(in_a.shell_leads.is_empty() && in_b.shell_leads.is_empty());
 
-        // The turn index in a reference is the turn's index in the timeline.
-        for (wt_attr, sid) in [(&in_a, "claude-code:claude-a"), (&in_b, "codex:codex-b")] {
-            let timeline = get_session_timeline_impl(&rig.state, &SessionId(sid.into()))
+        // The turn index in a reference is the turn's index in the timeline
+        // OF THE REFERENCE'S OWN session (B lists a Claude turn too).
+        for r in in_a
+            .files
+            .iter()
+            .chain(&in_b.files)
+            .flat_map(|f| &f.explained_by)
+        {
+            let timeline = get_session_timeline_impl(&rig.state, &r.session_id)
                 .await
                 .unwrap();
-            for r in wt_attr.files.iter().flat_map(|f| &f.explained_by) {
-                assert_eq!(
-                    timeline.turns[r.turn_index as usize].id,
-                    r.turn_id,
-                    "{}",
-                    label(r)
-                );
-            }
+            assert_eq!(
+                timeline.turns[r.turn_index as usize].id,
+                r.turn_id,
+                "{}",
+                label(r)
+            );
         }
 
         // `get_file_activity` answers the same question for one path, per worktree.
