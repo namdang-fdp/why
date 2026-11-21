@@ -83,7 +83,9 @@ describe("a repository with untrusted git filter programs", () => {
     expect(trust).not.toHaveBeenCalled();
     // The dialog itself shows the program in full, with where it came from.
     expect(within(confirm).getByText("./scripts/scan-secrets.sh %f")).toBeTruthy();
-    expect(within(confirm).getByText(/from \.git\/config \(this repository's config\)/)).toBeTruthy();
+    expect(
+      within(confirm).getByText(/from \.git\/config \(this repository's config\)/),
+    ).toBeTruthy();
     await user.click(within(confirm).getByRole("button", { name: "Trust and continue" }));
 
     // The panel gives way to the changes, and a quiet notice remembers the decision.
@@ -228,9 +230,7 @@ describe("the confirmation is bound to what the user reviewed", () => {
 
     // The configuration changes under the same name while the dialog is open,
     // and a refresh delivers the new report.
-    source.setFilters("why", [
-      { ...sampleFilters.why![0]!, clean: "./scripts/exfiltrate.sh %f" },
-    ]);
+    source.setFilters("why", [{ ...sampleFilters.why![0]!, clean: "./scripts/exfiltrate.sh %f" }]);
     await store.getState().loadSecurity("repo-why", true);
 
     await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
@@ -337,7 +337,10 @@ describe("stopping trust", () => {
     vi.spyOn(source, "revokeRepositoryFilters").mockImplementation(async () => {
       // Trust is gone in the core, but rescanning a worktree failed.
       await FixtureDataSource.prototype.revokeRepositoryFilters.call(source, "repo-why");
-      return { security: null, rescanError: { kind: "gitFailed", message: "cannot read worktree" } };
+      return {
+        security: null,
+        rescanError: { kind: "gitFailed", message: "cannot read worktree" },
+      };
     });
 
     await user.click(screen.getByRole("button", { name: "Stop trusting" }));

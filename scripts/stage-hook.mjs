@@ -34,7 +34,8 @@ if (at !== -1 && !target) {
 }
 
 // Argument vectors, never a shell: nothing here is interpolated into a command line.
-const run = (cmd, argv) => execFileSync(cmd, argv, { cwd: root, stdio: ["ignore", "pipe", "inherit"] }).toString();
+const run = (cmd, argv) =>
+  execFileSync(cmd, argv, { cwd: root, stdio: ["ignore", "pipe", "inherit"] }).toString();
 
 const host = /^host: (.+)$/m.exec(run("rustc", ["-vV"]))?.[1];
 const triple = target ?? host;
@@ -43,7 +44,14 @@ if (!triple) {
   process.exit(1);
 }
 
-const build = ["build", "--release", "--manifest-path", resolve(tauriDir, "Cargo.toml"), "-p", "why-hook"];
+const build = [
+  "build",
+  "--release",
+  "--manifest-path",
+  resolve(tauriDir, "Cargo.toml"),
+  "-p",
+  "why-hook",
+];
 if (target) build.push("--target", target);
 execFileSync("cargo", build, { cwd: root, stdio: "inherit" });
 

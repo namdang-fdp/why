@@ -258,17 +258,19 @@ export function createWorkspaceStore(source: DataSource, toasts: StoreApi<Toasts
     const loadSecurityOf = (id: RepoId, refresh = false) =>
       securityQueries.load(id, () => source.getRepositorySecurity(id), refresh, sameJson);
     const loadChanges = (id: WorktreeId, mode: DiffMode) =>
-      changeQueries.load(changesKey(id, mode), () => source.getChanges(id, mode)).then((state) => {
-        // The core just refused to read this repository. The security report we
-        // may have cached says otherwise (the driver arrived through a file the
-        // watcher does not route, say), and the explanation panel would then sit
-        // on "Reading changes…". Ask again, past the cache.
-        if (state.status === "error" && state.error.kind === "untrustedFilters") {
-          const owner = ownerOf(id);
-          if (owner !== undefined) void loadSecurityOf(owner, true);
-        }
-        return state;
-      });
+      changeQueries
+        .load(changesKey(id, mode), () => source.getChanges(id, mode))
+        .then((state) => {
+          // The core just refused to read this repository. The security report we
+          // may have cached says otherwise (the driver arrived through a file the
+          // watcher does not route, say), and the explanation panel would then sit
+          // on "Reading changes…". Ask again, past the cache.
+          if (state.status === "error" && state.error.kind === "untrustedFilters") {
+            const owner = ownerOf(id);
+            if (owner !== undefined) void loadSecurityOf(owner, true);
+          }
+          return state;
+        });
     const notify = (title: string, detail?: string) =>
       toasts.getState().push({ tone: "info", title, detail });
     const notifyError = (title: string, error: IpcError) =>
@@ -917,7 +919,8 @@ export function createWorkspaceStore(source: DataSource, toasts: StoreApi<Toasts
         // everything read under the old decision is stale either way.
         securityQueries.supersede([repo.id]);
         const { security, rescanError } = result.data;
-        if (security) set({ security: new Map(get().security).set(repo.id, { status: "ok", data: security }) });
+        if (security)
+          set({ security: new Map(get().security).set(repo.id, { status: "ok", data: security }) });
         else securityQueries.invalidate([repo.id]);
         await rereadAfterTrustChange(repo.id);
         if (rescanError) {

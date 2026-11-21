@@ -198,10 +198,7 @@ export function FilterTrustPanel({ repo }: { repo: Repository }) {
       </p>
 
       <div className="filter-panel-actions">
-        <Button
-          disabled={busy}
-          onClick={() => setReview(report)}
-        >
+        <Button disabled={busy} onClick={() => setReview(report)}>
           Trust and continue
         </Button>
         <Button variant="ghost" onClick={() => setKept(true)}>
@@ -225,7 +222,10 @@ export function FilterTrustPanel({ repo }: { repo: Repository }) {
           confirmLabel="Trust and continue"
           onConfirm={() => reviewValid && void trust(review)}
         >
-          <ul className="filter-drivers filter-drivers-confirm" aria-label="Programs you are trusting">
+          <ul
+            className="filter-drivers filter-drivers-confirm"
+            aria-label="Programs you are trusting"
+          >
             {reviewed.map((driver) => (
               <DriverCard key={driver.fingerprint} driver={driver} />
             ))}
