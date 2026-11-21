@@ -15,7 +15,7 @@ export function SessionList({
   onSelect: (id: string) => void;
 }) {
   const now = useNowSeconds();
-  const setAgentHooksOpen = useWorkspace((state) => state.setAgentHooksOpen);
+  const openSettings = useWorkspace((state) => state.openSettings);
   if (sessions.length === 0) {
     return (
       <div className="inspector-empty">
@@ -28,11 +28,7 @@ export function SessionList({
           type="button"
           size="sm"
           variant="outline"
-          aria-haspopup="dialog"
-          onClick={(event) => {
-            event.currentTarget.focus({ preventScroll: true });
-            setAgentHooksOpen(true);
-          }}
+          onClick={() => openSettings("agent-hooks")}
         >
           Set up hooks
         </Button>

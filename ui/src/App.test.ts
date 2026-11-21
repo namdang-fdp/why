@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { createElement, useEffect } from "react";
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FileDiff, IpcError } from "@/contracts";
@@ -9,6 +9,8 @@ import type { HunkDirection, HunkResult } from "@/components/diff/hunk-navigatio
 import { FixtureDataSource } from "@/data/fixture-data-source";
 import { ipcErrors, WT_WHY_AGENT } from "@/fixtures";
 import { shortcutGroups } from "@/hooks/use-workspace-shortcuts";
+import { createToastStore } from "@/stores/toasts";
+import { deferred } from "@/test/deferred";
 import { createWorkspaceStore } from "@/stores/workspace";
 import { useWorkspace } from "@/stores/workspace-context";
 import { App } from "./App";
@@ -247,6 +249,68 @@ describe("review shell", () => {
   });
 });
 
+describe("Settings navigation", () => {
+  it("focuses the title, marks the section and closes overlays before Settings", async () => {
+    const store = createWorkspaceStore(new FixtureDataSource());
+    const user = userEvent.setup();
+    render(createElement(App, { store }));
+    await screen.findByRole("list", { name: "Changed files" });
+    const gear = () => screen.getByRole("button", { name: "Settings" });
+    await user.click(gear());
+
+    const nav = within(screen.getByRole("navigation", { name: "Settings navigation" }));
+    expect(nav.getByRole("button", { name: "Editor" }).getAttribute("aria-current")).toBe("page");
+    const title = screen.getByRole("heading", { name: "Editor", level: 2 });
+    expect(screen.getAllByRole("heading", { level: 2 })).toEqual([title]);
+    expect(document.activeElement).toBe(title);
+    expect(screen.queryByRole("group", { name: "Diff mode" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Why inspector" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Change the base branch" })).toBeNull();
+
+    await user.keyboard("?");
+    await screen.findByRole("dialog", { name: "Keyboard shortcuts" });
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(document.activeElement).toBe(title));
+
+    await user.keyboard("{Control>}k{/Control}");
+    await screen.findByRole("dialog", { name: "Command palette" });
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(document.activeElement).toBe(title));
+    expect(store.getState().settingsView).toEqual({ status: "open", section: "editor" });
+
+    await user.keyboard("{Escape}");
+    expect(document.activeElement).toBe(gear());
+  });
+
+  it("opens on the last section from both modifier keys and the palette on first run", async () => {
+    const user = userEvent.setup();
+    render(
+      createElement(App, { store: createWorkspaceStore(new FixtureDataSource({ empty: true })) }),
+    );
+    const onboarding = () =>
+      screen.findByRole("heading", { name: "Review what your agents wrote" });
+    await onboarding();
+    await user.keyboard("{Meta>},{/Meta}");
+    expect(screen.getByRole("heading", { name: "Editor", level: 2 })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Agent hooks" }));
+    const back = () => screen.getByRole("button", { name: "Back to workspace" });
+    await user.click(back());
+    await onboarding();
+
+    await user.keyboard("{Control>},{/Control}");
+    expect(screen.getByRole("heading", { name: "Agent hooks", level: 2 })).toBeTruthy();
+    await user.click(back());
+    await onboarding();
+
+    await user.keyboard("{Control>}k{/Control}");
+    await user.type(await screen.findByRole("combobox"), "Open settings");
+    await user.keyboard("{Enter}");
+    await screen.findByRole("heading", { name: "Agent hooks", level: 2 });
+    await user.click(back());
+    await onboarding();
+  });
+});
+
 describe("review diff", () => {
   function setup(source = new FixtureDataSource()) {
     const store = createWorkspaceStore(source);
@@ -260,6 +324,113 @@ describe("review diff", () => {
     };
     return { store, user, view, rail, main, select };
   }
+
+  it("returns to the same selection and rendered diff without requesting it again", async () => {
+    const source = new FixtureDataSource();
+    const read = vi.spyOn(source, "getFileDiff");
+    const { store, select, main, user } = setup(source);
+    await user.keyboard("2u");
+    await select(/mod\.rs/);
+    await main().findByRole("textbox", { name: "Diff editor" });
+    const content = main().getByLabelText("Modified").textContent;
+    const selection = store.getState();
+    const requests = read.mock.calls.length;
+
+    await user.click(screen.getByRole("button", { name: "Settings" }));
+    expect(screen.queryByRole("main", { name: "Diff" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Back to workspace" }));
+    await main().findByRole("textbox", { name: "Diff editor" });
+
+    expect(store.getState()).toMatchObject({
+      repoId: selection.repoId,
+      worktreeId: selection.worktreeId,
+      filePath: selection.filePath,
+      preferredMode: "uncommitted",
+      diffLayout: "unified",
+      inspectorOpen: selection.inspectorOpen,
+    });
+    expect(store.getState().fileDiff).toBe(selection.fileDiff);
+    expect(main().getByLabelText("Modified").textContent).toBe(content);
+    expect(read).toHaveBeenCalledTimes(requests);
+  });
+
+  it("blocks review shortcuts in Settings and re-enables them after Back", async () => {
+    const { store, select, main, user } = setup();
+    await select(/mod\.rs/);
+    await main().findByRole("textbox", { name: "Diff editor" });
+    await user.click(screen.getByRole("button", { name: "Settings" }));
+    const inSettings = store.getState();
+    await user.keyboard("jknp[[]iau/123");
+    expect(store.getState()).toBe(inSettings);
+    expect(moveHunk).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Back to workspace" }));
+    await main().findByRole("textbox", { name: "Diff editor" });
+
+    await user.keyboard("np");
+    expect(moveHunk.mock.calls).toEqual([["next"], ["previous"]]);
+    await user.keyboard("j");
+    expect(store.getState().filePath).toBe("src-tauri/src/git/worktree.rs");
+    await user.keyboard("k");
+    expect(store.getState().filePath).toBe(inSettings.filePath);
+    await user.keyboard("[[");
+    expect(store.getState().worktreeId).not.toBe(inSettings.worktreeId);
+    await user.keyboard("]");
+    expect(store.getState().worktreeId).toBe(inSettings.worktreeId);
+    await user.keyboard("ui2");
+    expect(store.getState()).toMatchObject({
+      inspectorOpen: false,
+      diffLayout: "unified",
+      preferredMode: "uncommitted",
+    });
+    await user.keyboard("a");
+    expect(await screen.findByRole("dialog", { name: "Add repository" })).toBeTruthy();
+  });
+
+  it.each(["success", "timeout"])(
+    "keeps an in-flight diff across Settings and ignores an obsolete %s",
+    async (outcome) => {
+      const source = new FixtureDataSource();
+      const older = deferred<FileDiff>();
+      const current = deferred<FileDiff>();
+      const content = await source.getFileDiff(
+        WT_WHY_AGENT,
+        "src-tauri/src/git/worktree.rs",
+        "vsBase",
+      );
+      const original = source.getFileDiff.bind(source);
+      const read = vi
+        .spyOn(source, "getFileDiff")
+        .mockReturnValueOnce(older.promise)
+        .mockReturnValueOnce(current.promise);
+      const toasts = createToastStore();
+      const store = createWorkspaceStore(source, toasts);
+      const user = userEvent.setup();
+      render(createElement(App, { store }));
+      const files = within(await screen.findByRole("list", { name: "Changed files" }));
+      await user.click(await files.findByRole("button", { name: /mod\.rs/ }));
+      await user.click(files.getByRole("button", { name: /worktree\.rs/ }));
+      await user.keyboard("{Control>},{/Control}");
+      await user.click(screen.getByRole("button", { name: "Back to workspace" }));
+      expect(store.getState().fileDiff.status).toBe("loading");
+      expect(read).toHaveBeenCalledTimes(2);
+
+      await act(async () => {
+        if (outcome === "success") {
+          older.resolve(await original(WT_WHY_AGENT, "src-tauri/src/git/mod.rs", "vsBase"));
+        } else {
+          older.reject({ kind: "timeout" } satisfies IpcError);
+        }
+      });
+      expect(screen.queryByRole("textbox", { name: "Diff editor" })).toBeNull();
+      expect(screen.queryByRole("alert")).toBeNull();
+      await act(async () => current.resolve(content));
+      await screen.findByRole("textbox", { name: "Diff editor" });
+      expect(screen.getByLabelText("Modified").textContent).toContain("pub struct RawWorktree");
+      expect(read.mock.calls.filter(([, path]) => path === content.path)).toHaveLength(1);
+      expect(toasts.getState().toasts).toEqual([]);
+    },
+  );
 
   it("keeps the editor mounted and passes added, deleted and renamed content through", async () => {
     const { select, main } = setup();

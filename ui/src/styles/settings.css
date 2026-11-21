@@ -1,0 +1,150 @@
+.settings-form {
+  display: grid;
+  gap: 12px;
+}
+.setting {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.setting label {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 500;
+}
+.setting-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.setting-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.setting-check input {
+  width: 14px;
+  height: 14px;
+  accent-color: oklch(0.82 0 0);
+}
+
+.rail-footer {
+  flex: none;
+  border-top: 1px solid var(--border);
+  padding: 6px 12px;
+}
+
+.settings-page {
+  display: grid;
+  grid-template-columns: max(144px, 18%) minmax(0, 1fr);
+  flex: 1;
+  min-height: 0;
+}
+
+.settings-nav {
+  min-width: 0;
+  border-right: 1px solid var(--border);
+  background: var(--rail-bg);
+  font-size: 13px;
+}
+
+.settings-back,
+.settings-sections {
+  padding: 8px 12px;
+}
+
+.settings-back {
+  border-bottom: 1px solid var(--border);
+}
+
+.settings-sections {
+  display: grid;
+  gap: 2px;
+}
+
+.settings-nav [aria-current="page"] {
+  background: var(--rail-hover-strong);
+  border-color: var(--border);
+}
+
+.settings-content {
+  min-width: 0;
+  overflow: auto;
+  scrollbar-width: thin;
+}
+
+.settings-section {
+  display: grid;
+  gap: 20px;
+  max-width: 720px;
+  margin-inline: auto;
+  padding: 24px clamp(16px, 4vw, 32px);
+}
+
+.settings-section h2 {
+  width: fit-content;
+  font-size: 21px;
+  font-weight: 600;
+}
+
+.settings-section h2:focus {
+  outline: none;
+}
+
+.settings-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.editor-preview {
+  display: grid;
+  gap: 6px;
+}
+
+.editor-preview figcaption {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.editor-preview pre {
+  margin: 0;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding-block: 8px;
+  user-select: text;
+}
+
+.editor-preview pre span {
+  display: block;
+  width: max-content;
+  min-width: 100%;
+  padding-inline: 12px;
+}
+
+@media (max-width: 720px) {
+  .settings-page {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .settings-nav {
+    display: flex;
+    flex-wrap: wrap;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .settings-back {
+    border-bottom: 0;
+    border-right: 1px solid var(--border);
+  }
+
+  .settings-sections {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+}

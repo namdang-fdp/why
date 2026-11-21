@@ -1,74 +1,17 @@
-/* The review uses the app's Radix enter/exit animation with the transitions.dev
-   modal scale and easing. Closing the request scope never waits on animation. */
-[data-slot="dialog-content"].agent-hooks-dialog {
-  --modal-open-dur: 250ms;
-  --modal-close-dur: 150ms;
-  --modal-scale: 0.96;
-  --modal-ease: cubic-bezier(0.22, 1, 0.36, 1);
-  width: min(760px, calc(100vw - 32px));
-  max-width: none;
-  max-height: calc(100dvh - 32px);
-  grid-template-rows: auto minmax(0, 1fr) auto;
-  gap: 0;
-  padding: 0;
-  background: var(--surface-overlay);
-  box-shadow: var(--shadow-float);
+.agent-hooks-section {
+  display: grid;
+  gap: 16px;
   font-size: 13px;
 }
 
-[data-slot="dialog-content"].agent-hooks-dialog[data-state="open"] {
-  animation: hook-dialog-in var(--modal-open-dur) var(--modal-ease);
-}
-
-[data-slot="dialog-content"].agent-hooks-dialog[data-state="closed"] {
-  animation: hook-dialog-out var(--modal-close-dur) var(--modal-ease) forwards;
-}
-
-@keyframes hook-dialog-in {
-  from {
-    opacity: 0;
-    scale: var(--modal-scale);
-  }
-}
-
-@keyframes hook-dialog-out {
-  to {
-    opacity: 0;
-    scale: var(--modal-scale);
-  }
-}
-
-.hook-dialog-header {
-  padding: 17px 166px 15px 20px;
-  border-bottom: 1px solid var(--border);
-}
-
-.hook-dialog-header p {
-  margin-top: 3px;
-}
-
-.hook-dialog-close,
-.hook-refresh {
-  position: absolute;
-  top: 12px;
-}
-
-.hook-dialog-close {
-  right: 12px;
+.hook-description {
+  color: var(--muted-foreground);
 }
 
 .hook-refresh {
-  right: 48px;
+  justify-self: end;
 }
 
-.hook-body {
-  min-height: 0;
-  overflow: auto;
-  overscroll-behavior: contain;
-  padding: 16px 20px;
-}
-
-.hook-body,
 .hook-diff {
   scrollbar-width: thin;
   scrollbar-color: oklch(1 0 0 / 25%) transparent;
@@ -393,7 +336,7 @@
   align-items: flex-start;
   gap: 8px;
   border-top: 1px solid var(--border);
-  padding: 12px 20px;
+  padding-block: 12px;
   color: var(--muted-foreground);
   font-size: 12px;
 }
@@ -404,23 +347,7 @@
 }
 
 @media (max-width: 600px) {
-  .hook-trigger {
-    width: 32px;
-  }
-
-  .hook-trigger span {
-    display: none;
-  }
-
   .hook-harnesses {
     grid-template-columns: minmax(0, 1fr);
-  }
-
-  .hook-dialog-header {
-    padding-right: 88px;
-  }
-
-  .hook-refresh span {
-    display: none;
   }
 }

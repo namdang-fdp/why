@@ -6,7 +6,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FixtureDataSource, type FixtureOptions } from "@/data/fixture-data-source";
 import { storageTemporary } from "@/fixtures";
-import { editorSettingsStore } from "@/stores/editor-settings";
+import { defaultEditorSettings, editorSettingsStore } from "@/stores/editor-settings";
 import { createToastStore, toastStore } from "@/stores/toasts";
 import { createWorkspaceStore } from "@/stores/workspace";
 import { App } from "./App";
@@ -356,8 +356,10 @@ describe("editor settings", () => {
   it("changes font, theme, ligatures and whitespace, and remembers them", async () => {
     const { user } = setup();
     await screen.findByRole("list", { name: "Worktrees in why" });
-    await user.click(screen.getByRole("button", { name: "Editor settings" }));
+    await user.click(screen.getByRole("button", { name: "Settings" }));
 
+    const sample = screen.getByLabelText("Diff preview");
+    expect(sample.textContent).toContain("',·");
     const size = await screen.findByLabelText("Size");
     await user.clear(size);
     await user.type(size, "15");
@@ -380,20 +382,59 @@ describe("editor settings", () => {
       lineHeight: 24,
     });
 
+    expect(sample.style.fontSize).toBe("15px");
+    expect(sample.style.lineHeight).toBe("24px");
+    expect(sample.style.fontFeatureSettings).toBe('"liga" 0, "calt" 0');
+    expect(sample.style.backgroundColor).toBe("rgb(36, 40, 59)");
+    expect(sample.textContent).not.toContain("·");
+
+    await user.selectOptions(screen.getByLabelText("Show whitespace"), "boundary");
+    expect(sample.textContent).toContain("··item =>");
+    await user.selectOptions(screen.getByLabelText("Show whitespace"), "all");
+    expect(sample.textContent).toContain("item·=>");
+
     await user.click(screen.getByRole("button", { name: "Reset to defaults" }));
-    expect(editorSettingsStore.getState().settings).toMatchObject({ fontSize: 14, lineHeight: 22 });
+    expect(editorSettingsStore.getState().settings).toEqual(defaultEditorSettings);
+    expect(sample.style.fontSize).toBe("14px");
+    expect(sample.textContent).toContain("',·");
   });
 
   it("applies the font family when the field is left, not on every keystroke", async () => {
     const { user } = setup();
     await screen.findByRole("list", { name: "Worktrees in why" });
-    await user.click(screen.getByRole("button", { name: "Editor settings" }));
+    await user.click(screen.getByRole("button", { name: "Settings" }));
     const family = await screen.findByLabelText("Font");
     await user.clear(family);
     await user.type(family, "Fira Code");
     expect(editorSettingsStore.getState().settings.fontFamily).toContain("CaskaydiaCove");
     await user.tab();
     expect(editorSettingsStore.getState().settings.fontFamily).toBe("Fira Code");
+    expect(screen.getByLabelText("Diff preview").style.fontFamily).toContain("Fira Code");
+
+    await user.clear(family);
+    await user.type(family, "Geist Mono{Enter}");
+    expect(editorSettingsStore.getState().settings.fontFamily).toBe("Geist Mono");
+    expect(screen.getByLabelText("Diff preview").style.fontFamily).toContain("Geist Mono");
+  });
+
+  it("clamps typed numbers and keeps the stored value after invalid number text", async () => {
+    const { user } = setup();
+    await user.keyboard("{Control>},{/Control}");
+    const size = screen.getByRole<HTMLInputElement>("spinbutton", { name: "Size" });
+    await user.clear(size);
+    await user.type(size, "999");
+    await user.tab();
+    expect(size.value).toBe("28");
+
+    const height = screen.getByRole<HTMLInputElement>("spinbutton", { name: "Line height" });
+    await user.clear(height);
+    await user.type(height, "1");
+    await user.tab();
+    expect(height.value).toBe("14");
+    await user.clear(height);
+    await user.type(height, "xyz");
+    await user.tab();
+    expect(height.value).toBe("14");
   });
 
   it("is reachable from the command palette, which can also tune the editor", async () => {

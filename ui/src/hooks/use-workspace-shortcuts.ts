@@ -3,10 +3,11 @@ import { focusInspector } from "@/components/sessions/session-controls";
 import { diffModes } from "@/stores/workspace";
 import type { Workspace } from "@/stores/workspace-context";
 
-export const paletteKeys =
-  typeof navigator !== "undefined" && /mac|iphone|ipad/i.test(navigator.platform)
-    ? "⌘ K"
-    : "Ctrl K";
+const primaryModifier =
+  typeof navigator !== "undefined" && /mac|iphone|ipad/i.test(navigator.platform) ? "⌘" : "Ctrl";
+
+export const paletteKeys = `${primaryModifier} K`;
+export const settingsKeys = primaryModifier === "⌘" ? "⌘," : "Ctrl+,";
 
 export const shortcutGroups = [
   {
@@ -47,6 +48,7 @@ export const shortcutGroups = [
       { label: "Filter repositories, worktrees and files", keys: ["/"] },
       { label: "Toggle inspector", keys: ["i"] },
       { label: "Search commands", keys: paletteKeys.split(" ") },
+      { label: "Open settings", keys: [primaryModifier, ","] },
       { label: "Keyboard shortcuts", keys: ["?"] },
     ],
   },
@@ -73,21 +75,39 @@ export function useWorkspaceShortcuts(store: Workspace, helpOpen: boolean, openH
         state.paletteOpen ||
         state.addRepositoryOpen ||
         helpOpen ||
-        isEditing(event.target) ||
         // Any other open dialog, confirmation or menu owns the keyboard.
         document.querySelector('[role="dialog"], [role="alertdialog"], [role="menu"]') !== null
       )
         return;
 
+      const settingsOpen = state.settingsView.status === "open";
+      const editing = isEditing(event.target);
+      const key = event.key;
       if (event.metaKey || event.ctrlKey) {
-        if (event.key.toLowerCase() === "k" && !event.shiftKey) {
+        if (event.shiftKey) return;
+        if (key === ",") {
+          event.preventDefault();
+          if (!event.repeat) state.openSettings();
+        } else if (key.toLowerCase() === "k" && (settingsOpen || !editing)) {
           event.preventDefault();
           if (!event.repeat) state.setPaletteOpen(true);
         }
         return;
       }
 
-      const key = event.key;
+      if (settingsOpen && key === "Escape") {
+        event.preventDefault();
+        if (!event.repeat) state.closeSettings();
+        return;
+      }
+      if (editing) return;
+      if (key === "?") {
+        event.preventDefault();
+        if (!event.repeat) openHelp();
+        return;
+      }
+      // The review selection stays where the user left it while Settings has focus.
+      if (settingsOpen) return;
       if (event.shiftKey && key.toLowerCase() === "i") {
         event.preventDefault();
         if (!event.repeat) focusInspector(store);
@@ -136,10 +156,6 @@ export function useWorkspaceShortcuts(store: Workspace, helpOpen: boolean, openH
             }
             state.toggleInspector();
           }
-          break;
-        case "?":
-          event.preventDefault();
-          if (!event.repeat) openHelp();
           break;
       }
     }

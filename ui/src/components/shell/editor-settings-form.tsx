@@ -1,8 +1,7 @@
 import { useState } from "react";
-import { Settings2 } from "lucide-react";
 import { useStore } from "zustand";
 import { Button } from "@/components/ui/button";
-import { PopoverContent, PopoverRoot, PopoverTrigger, Tip } from "@/components/ui/overlays";
+import { EditorSettingsPreview } from "./editor-settings-preview";
 import {
   defaultEditorSettings,
   editorSettingsStore,
@@ -13,7 +12,6 @@ import {
   type EditorTheme,
   type WhitespaceMode,
 } from "@/stores/editor-settings";
-import { useWorkspace } from "@/stores/workspace-context";
 
 /** A text field that applies its value when the user leaves it or presses Enter. */
 function FontFamilyField({
@@ -94,15 +92,13 @@ function NumberField({
   );
 }
 
-function EditorSettingsForm() {
+export function EditorSettingsForm() {
   const settings = useStore(editorSettingsStore, (state) => state.settings);
   const update = useStore(editorSettingsStore, (state) => state.update);
   const reset = useStore(editorSettingsStore, (state) => state.reset);
 
   return (
     <div className="settings-form">
-      <h2 className="settings-title">Editor</h2>
-
       <div className="setting">
         <label htmlFor="editor-font-family">Font</label>
         <FontFamilyField
@@ -174,7 +170,9 @@ function EditorSettingsForm() {
         <span>Font ligatures</span>
       </label>
 
-      <div className="modal-actions">
+      <EditorSettingsPreview settings={settings} />
+
+      <div className="settings-actions">
         <Button
           type="button"
           variant="ghost"
@@ -186,36 +184,5 @@ function EditorSettingsForm() {
         </Button>
       </div>
     </div>
-  );
-}
-
-/** The gear in the top bar. Open state lives in the workspace store so the palette can open it too. */
-export function EditorSettingsPopover() {
-  const open = useWorkspace((state) => state.editorSettingsOpen);
-  const setOpen = useWorkspace((state) => state.setEditorSettingsOpen);
-  return (
-    <PopoverRoot open={open} onOpenChange={setOpen}>
-      <Tip label="Editor settings" side="bottom">
-        <PopoverTrigger asChild>
-          <Button
-            id="shell-editor-settings"
-            aria-label="Editor settings"
-            variant={open ? "secondary" : "ghost"}
-            size="icon-sm"
-          >
-            <Settings2 aria-hidden />
-          </Button>
-        </PopoverTrigger>
-      </Tip>
-      <PopoverContent
-        align="end"
-        className="settings-popover"
-        // Opened from the palette, focus is still being handed back by the closing
-        // palette; that must not count as "the user clicked away".
-        onFocusOutside={(event) => event.preventDefault()}
-      >
-        <EditorSettingsForm />
-      </PopoverContent>
-    </PopoverRoot>
   );
 }
