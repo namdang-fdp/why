@@ -7,6 +7,7 @@ import type {
   FilterGuardStatus,
   HookHarness,
   IpcError,
+  LineOriginsResult,
   RepoId,
   Repository,
   RepositoryChanged,
@@ -26,6 +27,7 @@ import type {
   WorktreeId,
 } from "@/contracts";
 import { supplementaryDiffs } from "@/dev-fixtures/file-diffs";
+import { buildLongFileOrigins, LONG_FILE_PATH } from "@/dev-fixtures/long-file-origins";
 import { buildLongSession } from "@/dev-fixtures/long-session";
 import { buildManyWorktrees, manyDiff } from "@/dev-fixtures/many-worktrees";
 import {
@@ -34,9 +36,11 @@ import {
   repositories,
   storagePersistent,
   WT_BILLING_DETACHED,
+  WT_WHY_AGENT,
   WT_WHY_MAIN,
   worktrees,
 } from "@/fixtures";
+import { changeForOrigins, engineNotReady, lineOriginsByFile } from "@/fixtures/provenance";
 import {
   attributeFile,
   fileActivity,
@@ -105,6 +109,13 @@ export type FixtureOptions = {
   empty?: boolean;
   /** Add a crowded repository (12 worktrees, duplicates, detached, broken) to judge the rail. */
   many?: boolean;
+  /**
+   * WHY-64: also list the line-origin sample files (`src/calc.py`, `src/helper.py`
+   * and the 2,000-line file) as changes with matching diffs, so the gutter can be
+   * reached through the normal file list. Off by default: the default change
+   * lists stay as other tests expect them.
+   */
+  provenance?: boolean;
   storage?: StorageStatus;
   /** What the "native" folder picker returns; `null` simulates cancelling. */
   pick?: string | null;
@@ -139,6 +150,8 @@ export class FixtureDataSource implements DataSource {
   private worktreeList: Worktree[];
   private readonly changes: Record<string, FileChange[]>;
   private readonly editedDiffs = new Map<string, FileDiff>();
+  /** Diffs of the opt-in line-origin samples, by `worktree:path`. */
+  private readonly provenanceDiffs = new Map<string, FileDiff>();
   private readonly options: FixtureOptions;
   private hooks: HookFixtures;
   private evidence: EvidenceScenario;
@@ -161,6 +174,13 @@ export class FixtureDataSource implements DataSource {
       this.repos = [...this.repos, crowd.repository].sort((a, b) => a.name.localeCompare(b.name));
       this.worktreeList = [...this.worktreeList, ...crowd.worktrees];
       Object.assign(this.changes, crowd.changes);
+    }
+    if (options.provenance) {
+      for (const [worktreeId, result] of provenanceSamples()) {
+        const { change, diff } = changeForOrigins(result);
+        this.changes[worktreeId] = [...(this.changes[worktreeId] ?? []), change];
+        this.provenanceDiffs.set(`${worktreeId}:${change.path}`, diff);
+      }
     }
   }
 
@@ -317,6 +337,7 @@ export class FixtureDataSource implements DataSource {
       this.editedDiffs.get(`${worktreeId}:${path}`) ??
       (worktreeId.startsWith("wt-aip-") && file ? manyDiff(path, file.status) : undefined) ??
       extraDiffs[worktreeId]?.find((entry) => entry.path === path) ??
+      this.provenanceDiffs.get(`${worktreeId}:${path}`) ??
       fileDiffs.find((entry) => entry.path === path);
     if (!diff) throw { kind: "notFound" } satisfies IpcError;
     return structuredClone(diff);
@@ -553,6 +574,23 @@ export class FixtureDataSource implements DataSource {
     return structuredClone(shellOutcomes(sessionId, this.evidence.outcomes));
   }
 
+  async getLineOrigins(worktreeId: WorktreeId, path: string): Promise<LineOriginsResult> {
+    await this.delay();
+    // Like the core: a path that is not plainly worktree-relative is refused.
+    // The worktree is not checked: the core reads nothing for this command yet.
+    const problem = requestPathProblem(path);
+    if (problem) throw { kind: "invalidInput", message: problem } satisfies IpcError;
+    if (worktreeId === WT_WHY_AGENT && path === LONG_FILE_PATH) {
+      return buildLongFileOrigins(worktreeId);
+    }
+    // Own properties only: `toString` is a valid file name, not a fixture.
+    const files = Object.hasOwn(lineOriginsByFile, worktreeId)
+      ? lineOriginsByFile[worktreeId]
+      : undefined;
+    const found = files && Object.hasOwn(files, path) ? files[path] : undefined;
+    return structuredClone(found ?? engineNotReady);
+  }
+
   private session(sessionId: SessionId) {
     const timeline = this.sessions().get(sessionId);
     if (!timeline) throw { kind: "notFound" } satisfies IpcError;
@@ -688,4 +726,32 @@ export class FixtureDataSource implements DataSource {
     }
     this.emitWorktreeChanged({ worktreeId, paths: [path] });
   }
+}
+
+/**
+ * Why the core would refuse `path` as a request path (`check_request_path` in
+ * `git/diff.rs`), or `null` when it is accepted. Mirrors the core on Unix, where
+ * the app is developed: empty, NUL, absolute, `..` anywhere, or a leading `./`.
+ * `C:/x` and `a\\..\\b` are legal Unix names there (the core refuses them only on
+ * Windows), so they are accepted here too.
+ */
+function requestPathProblem(path: string): string | null {
+  if (path === "") return "path is empty";
+  if (path.includes("\0")) return "path contains a NUL byte";
+  const parts = path.split("/");
+  if (parts.includes("..")) return "path must not contain `..`";
+  if (path.startsWith("/") || parts[0] === ".") return "path must be relative to the worktree";
+  return null;
+}
+
+/** The line-origin samples that have content, with their worktrees. */
+function provenanceSamples(): [WorktreeId, LineOriginsResult][] {
+  const samples: [WorktreeId, LineOriginsResult][] = Object.entries(lineOriginsByFile).flatMap(
+    ([worktreeId, files]) =>
+      Object.values(files)
+        .filter((result) => result.status === "ok")
+        .map((result): [WorktreeId, LineOriginsResult] => [worktreeId, result]),
+  );
+  samples.push([WT_WHY_AGENT, buildLongFileOrigins(WT_WHY_AGENT)]);
+  return samples;
 }
