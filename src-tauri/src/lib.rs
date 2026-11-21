@@ -127,6 +127,7 @@ pub fn run() {
             ipc::hooks::preview_uninstall,
             ipc::hooks::uninstall,
             ipc::hooks::hook_status,
+            ipc::provenance::get_line_origins,
         ])
         .build(tauri::generate_context!())
         .expect("error while building WHY")

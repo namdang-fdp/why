@@ -40,6 +40,8 @@
 //!   (`get_turn_rationale`, `get_tool_rationale`, `get_shell_outcomes`).
 //! * [`hooks`]: installing WHY's hooks into the agents' user-level config
 //!   (`preview_install`, `install`, `preview_uninstall`, `uninstall`, `hook_status`).
+//! * [`provenance`]: which captured edit wrote each line of a file
+//!   (`get_line_origins`; the engine is a stub until WHY-22).
 //! * [`error`]: the one place errors become `IpcError`.
 
 pub mod changes;
@@ -54,6 +56,8 @@ pub mod storage;
 pub mod attribution;
 // WHY-53
 pub mod rationale;
+// WHY-64
+pub mod provenance;
 
 // Commands are not re-exported here. `#[tauri::command]` also generates helper
 // macros (`__cmd__<name>`) that `generate_handler!` looks up next to the function,
