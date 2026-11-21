@@ -5,6 +5,7 @@ use std::fs;
 use std::path::Path;
 
 use rusqlite::Connection;
+use why_lib::events::sqlite::SCHEMA_VERSION;
 use why_lib::events::{Clock, EventStore, SqliteEventStore, open_event_store};
 use why_wire::Harness;
 
@@ -60,7 +61,7 @@ fn a_database_from_a_newer_why_falls_back_and_is_left_alone() {
 }
 
 /// A real, current-version database, then damaged with `sql` (via a plain
-/// connection, so the file stays a valid SQLite file at the current `user_version = 2`).
+/// connection, so the file stays a valid SQLite file at the current `user_version`, `SCHEMA_VERSION`).
 fn damaged_current(sql: &str) -> tempfile::TempDir {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("events.db");
@@ -70,7 +71,10 @@ fn damaged_current(sql: &str) -> tempfile::TempDir {
     let version: i64 = conn
         .pragma_query_value(None, "user_version", |r| r.get(0))
         .unwrap();
-    assert_eq!(version, 2, "premise: the version still says current");
+    assert_eq!(
+        version, SCHEMA_VERSION as i64,
+        "premise: the version still says current"
+    );
     drop(conn);
     dir
 }
@@ -91,6 +95,26 @@ fn a_current_version_database_missing_a_column_falls_back_and_is_left_alone() {
 fn a_current_version_database_missing_an_index_falls_back_and_is_left_alone() {
     let dir = damaged_current("DROP INDEX events_by_session;");
     assert_refused_untouched(dir.path(), "events_by_session");
+}
+
+// WHY-64: a v3 database whose `edit_ops` table is gone or damaged.
+#[test]
+fn a_current_version_database_missing_the_edit_ops_table_falls_back() {
+    let dir = damaged_current("DROP TABLE edit_ops;");
+    assert_refused_untouched(dir.path(), "edit_ops");
+}
+
+#[test]
+fn a_current_version_database_with_a_reshaped_edit_ops_table_falls_back() {
+    // Same name, wrong columns (the index went with the old table).
+    let dir = damaged_current("DROP TABLE edit_ops; CREATE TABLE edit_ops (x);");
+    assert_refused_untouched(dir.path(), "edit_ops");
+}
+
+#[test]
+fn a_current_version_database_missing_the_edit_ops_index_falls_back() {
+    let dir = damaged_current("DROP INDEX edit_ops_by_file;");
+    assert_refused_untouched(dir.path(), "edit_ops_by_file");
 }
 
 /// A newer WHY that exited without checkpointing leaves its data (and the new

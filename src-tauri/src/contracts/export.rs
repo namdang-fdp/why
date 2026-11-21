@@ -28,6 +28,8 @@ use super::{TurnRef, WorktreeAttribution};
 use super::{RationaleResult, ShellOutcomesResult};
 // WHY-51 hook installer contracts.
 use super::{ApplyResult, HookHarness, HookStatusReport, PreviewResult};
+// WHY-64 line provenance contracts.
+use super::LineOriginsResult;
 
 /// Where the committed bindings live, relative to this crate (`src-tauri/`).
 fn committed_dir() -> PathBuf {
@@ -63,6 +65,7 @@ fn export_all(dir: &Path) -> Result<()> {
     PreviewResult::export_all(&cfg)?;
     ApplyResult::export_all(&cfg)?;
     HookHarness::export_all(&cfg)?;
+    LineOriginsResult::export_all(&cfg)?;
 
     const NOTE: &str = "// This file was generated from the Rust contracts in src-tauri/src/contracts. Do not edit it manually.\n// Regenerate with `pnpm gen:contracts`.\n";
 

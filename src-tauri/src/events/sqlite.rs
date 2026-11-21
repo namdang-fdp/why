@@ -12,7 +12,8 @@
 //!
 //! Rows are identified by the stable [`EventKey`] and [`SessionKey`] (harness +
 //! harness session id), never by a SQLite rowid. The one integer `events.seq`
-//! only remembers arrival order inside this file and is never read out of it.
+//! only remembers arrival order inside this file; it leaves the store only as
+//! the ordering key [`EditRecord::seq`], never as an identity.
 //!
 //! # Threads
 //!
@@ -37,11 +38,17 @@ use super::correlation::{
     CallEvent, EditTouch, ShellTurn, build_edit_touches, build_shell_turns, canonical_paths,
     distinct_sessions, fold_calls, indexed_paths,
 };
+use super::edits::{
+    FORMAT_V1, decode_after, decode_before, decode_hunks, decode_kind as decode_edit_kind,
+    decode_observed, encode_after, encode_before, encode_hunks, encode_kind as encode_edit_kind,
+    encode_observed, stored_form,
+};
 use super::model::{EventKey, EventKind, NormalizedEvent, SessionKey, ToolCall, ToolClass};
 use super::rationale::{SourceEvent, SourceTool};
 use super::timeline::{TimelinePosition, TurnIndices, build_summary, build_timeline, turn_indices};
 use super::{AppendOutcome, EventStore, MemoryEventStore};
 use crate::contracts::{EvidenceLabel, SessionSummary, SessionTimeline, ToolOutcome, WorktreeId};
+use crate::provenance::{EditOp, EditRecord, EditSource, Observed};
 use crate::store::StoreError;
 
 /// Schema migrations, in order; migration `i` upgrades version `i` to `i + 1`
@@ -144,7 +151,48 @@ const MIGRATIONS: &[&str] = &[
          ON events (harness, session_id, tool_use_id) WHERE tool_use_id IS NOT NULL;
      CREATE INDEX events_shell_by_worktree
          ON events (worktree_id) WHERE tool_class IN ('shell', 'test_run');",
+    // v3 (WHY-64): the replay inputs of line provenance (decision 29).
+    //
+    // * One row per stored `EditOp`, keyed by its event and its position in
+    //   that event (`op_index`). `ON DELETE CASCADE` on the event, so the
+    //   30-day prune (which deletes sessions, cascading to events) removes the
+    //   ops in the same statement; the primary key's `event_key` prefix is what
+    //   lets that cascade find the rows without a table scan.
+    // * `event_seq` copies `events.seq` so `edit_ops_by_file` alone answers
+    //   "this worktree + file, in arrival order" (seq, then op_index) without
+    //   a sort step. `worktree_id` is the OP's worktree (decision 32), which
+    //   may differ from its event's.
+    // * NO LINE TEXT, anywhere: `before`, `after` and `hunks` hold 16-byte line
+    //   hashes in the binary layout of `events/edits.rs`, whose version is
+    //   `format` (a later layout writes a new number next to old rows).
+    //   BLOB, not JSON: `before` holds one hash per line of the old file.
+    // * A rowid table, not `WITHOUT ROWID`: rows can be tens of KB, and SQLite
+    //   advises rowid tables for rows that large.
+    // * Closed sets (`kind`, `observed`) are stable lowercase strings, like
+    //   the events table.
+    "CREATE TABLE edit_ops (
+         event_key    TEXT    NOT NULL
+             REFERENCES events (event_key) ON DELETE CASCADE,
+         op_index     INTEGER NOT NULL,
+         event_seq    INTEGER NOT NULL,
+         worktree_id  TEXT    NOT NULL,
+         path         TEXT    NOT NULL,
+         kind         TEXT    NOT NULL,
+         renamed_from TEXT,
+         observed     TEXT    NOT NULL,
+         format       INTEGER NOT NULL,
+         before       BLOB,
+         after        BLOB,
+         hunks        BLOB    NOT NULL,
+         PRIMARY KEY (event_key, op_index)
+     );
+     CREATE INDEX edit_ops_by_file ON edit_ops (worktree_id, path, event_seq, op_index);",
 ];
+
+/// The schema version this build writes (`PRAGMA user_version` after `open`).
+/// Tests compare with it instead of a bare number, so a new migration does not
+/// have to edit them.
+pub const SCHEMA_VERSION: usize = MIGRATIONS.len();
 
 /// How long a statement waits for another connection's lock before failing with
 /// `SQLITE_BUSY`. Inside the app the writer mutex already serializes writes and
@@ -251,6 +299,23 @@ const EXPECTED_TABLES: &[(&str, &[&str])] = &[
     ),
     ("event_files", &["worktree_id", "path", "event_key"]),
     (
+        "edit_ops",
+        &[
+            "event_key",
+            "op_index",
+            "event_seq",
+            "worktree_id",
+            "path",
+            "kind",
+            "renamed_from",
+            "observed",
+            "format",
+            "before",
+            "after",
+            "hunks",
+        ],
+    ),
+    (
         "events",
         &[
             "seq",
@@ -284,6 +349,7 @@ const EXPECTED_INDEXES: &[&str] = &[
     "event_files_by_event",
     "events_by_tool_use",
     "events_shell_by_worktree",
+    "edit_ops_by_file",
 ];
 
 /// `Err` unless every expected table, column and index exists.
@@ -691,6 +757,9 @@ fn event_from_row(row: &Row<'_>) -> rusqlite::Result<NormalizedEvent> {
         evidence: decode_evidence(&evidence)
             .ok_or_else(|| bad_column(18, "evidence", &evidence))?,
         transcript_path: row.get(19)?,
+        // Stored ops are read back through `edit_records`, never attached to
+        // the events a timeline is built from.
+        edits: Vec::new(),
     })
 }
 
@@ -736,6 +805,130 @@ const INSERT_EVENT: &str = "INSERT INTO events (event_key, harness, session_id, 
 const INSERT_EVENT_FILE: &str =
     "INSERT OR IGNORE INTO event_files (worktree_id, path, event_key) VALUES (?1, ?2, ?3)";
 
+const INSERT_EDIT_OP: &str = "INSERT INTO edit_ops (event_key, op_index, event_seq, worktree_id, \
+     path, kind, renamed_from, observed, format, before, after, hunks) \
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)";
+
+/// One file's ops in replay order, with their event's identity, in the column
+/// order [`edit_record_from_row`] reads. Served by `edit_ops_by_file` (already
+/// in `(event_seq, op_index)` order: no sort step). Public so a test can
+/// `EXPLAIN QUERY PLAN` the exact text the store runs.
+pub const EDIT_RECORDS_SQL: &str = "SELECT o.event_seq, o.op_index, o.worktree_id, o.path, \
+     o.kind, o.renamed_from, o.observed, o.format, o.before, o.after, o.hunks, \
+     e.event_key, e.harness, e.session_id, e.turn_id, e.agent_id, e.tool_use_id, e.at_ms \
+     FROM edit_ops o JOIN events e ON e.event_key = o.event_key \
+     WHERE o.worktree_id = ?1 AND o.path = ?2 \
+     ORDER BY o.event_seq, o.op_index";
+
+fn encode_error(e: String) -> StoreError {
+    StoreError::Backend(format!("cannot encode an edit op: {e}"))
+}
+
+/// Store `ev`'s ops (already known to be a NEW event, stored as `seq`).
+fn insert_edit_ops(
+    stmt: &mut rusqlite::CachedStatement<'_>,
+    ev: &NormalizedEvent,
+    seq: i64,
+) -> Result<(), StoreError> {
+    for (index, op) in ev.edits.iter().enumerate() {
+        let Some((wt, op)) = stored_form(op) else {
+            continue;
+        };
+        let index = i64::try_from(index).map_err(|_| encode_error("too many ops".into()))?;
+        let before = op
+            .before
+            .as_ref()
+            .map(encode_before)
+            .transpose()
+            .map_err(encode_error)?;
+        let after = op.after.as_ref().map(encode_after);
+        let hunks = encode_hunks(&op.hunks).map_err(encode_error)?;
+        stmt.execute(params![
+            ev.key.0,
+            index,
+            seq,
+            wt.0,
+            op.path,
+            encode_edit_kind(op.kind),
+            op.renamed_from,
+            encode_observed(op.observed),
+            FORMAT_V1,
+            before,
+            after,
+            hunks,
+        ])
+        .map_err(backend("cannot store an edit op"))?;
+    }
+    Ok(())
+}
+
+/// A BLOB column that does not decode, as a rusqlite error.
+fn bad_blob(index: usize, what: &str, why: String) -> rusqlite::Error {
+    rusqlite::Error::FromSqlConversionFailure(
+        index,
+        Type::Blob,
+        format!("damaged {what}: {why}").into(),
+    )
+}
+
+/// Read one row of [`EDIT_RECORDS_SQL`].
+fn edit_record_from_row(row: &Row<'_>) -> rusqlite::Result<EditRecord> {
+    let seq: i64 = row.get(0)?;
+    let op_index: i64 = row.get(1)?;
+    let kind: String = row.get(4)?;
+    let observed: String = row.get(6)?;
+    let format: i64 = row.get(7)?;
+    if format != FORMAT_V1 {
+        // A row from a newer layout cannot be read by this build: refuse it
+        // rather than misreading its bytes.
+        return Err(bad_column(7, "edit op format", &format.to_string()));
+    }
+    let before: Option<Vec<u8>> = row.get(8)?;
+    let after: Option<Vec<u8>> = row.get(9)?;
+    let hunks: Vec<u8> = row.get(10)?;
+    let harness: String = row.get(12)?;
+    let at_ms: i64 = row.get(17)?;
+    let observed =
+        decode_observed(&observed).ok_or_else(|| bad_column(6, "observed", &observed))?;
+    let op = EditOp {
+        worktree_id: Some(WorktreeId(row.get(2)?)),
+        path: row.get(3)?,
+        kind: decode_edit_kind(&kind).ok_or_else(|| bad_column(4, "edit kind", &kind))?,
+        renamed_from: row.get(5)?,
+        before: before
+            .map(|b| decode_before(&b))
+            .transpose()
+            .map_err(|e| bad_blob(8, "before", e))?,
+        after: after
+            .map(|b| decode_after(&b))
+            .transpose()
+            .map_err(|e| bad_blob(9, "after", e))?,
+        hunks: decode_hunks(&hunks).map_err(|e| bad_blob(10, "hunks", e))?,
+        observed,
+    };
+    if matches!(observed, Observed::Unobserved(_)) && !op.hunks.is_empty() {
+        return Err(bad_blob(10, "hunks", "an unobserved op has hunks".into()));
+    }
+    Ok(EditRecord {
+        source: EditSource {
+            session: SessionKey {
+                harness: decode_harness(&harness)
+                    .ok_or_else(|| bad_column(12, "harness", &harness))?,
+                session_id: row.get(13)?,
+            },
+            turn_id: row.get(14)?,
+            agent_id: row.get(15)?,
+            tool_use_id: row.get(16)?,
+            event_key: EventKey(row.get(11)?),
+        },
+        seq: u64::try_from(seq).map_err(|_| bad_column(0, "seq", &seq.to_string()))?,
+        op_index: u32::try_from(op_index)
+            .map_err(|_| bad_column(1, "op index", &op_index.to_string()))?,
+        at_ms: u64::try_from(at_ms).map_err(|_| bad_column(17, "timestamp", &at_ms.to_string()))?,
+        op,
+    })
+}
+
 impl EventStore for SqliteEventStore {
     fn append(&self, events: &[NormalizedEvent]) -> Result<AppendOutcome, StoreError> {
         let mut outcome = AppendOutcome::default();
@@ -771,6 +964,9 @@ impl EventStore for SqliteEventStore {
             let mut index = tx
                 .prepare_cached(INSERT_EVENT_FILE)
                 .map_err(backend("cannot prepare file index insert"))?;
+            let mut insert_op = tx
+                .prepare_cached(INSERT_EDIT_OP)
+                .map_err(backend("cannot prepare edit op insert"))?;
 
             for ev in events {
                 let at = ms_to_i64(ev.at_ms)?;
@@ -824,6 +1020,11 @@ impl EventStore for SqliteEventStore {
                 }
                 outcome.inserted += 1;
                 changed_sessions.insert(&ev.session);
+                // The ops, in the SAME transaction as their event (both or
+                // neither). `events.seq` is the rowid the insert just made.
+                if !ev.edits.is_empty() {
+                    insert_edit_ops(&mut insert_op, ev, tx.last_insert_rowid())?;
+                }
                 if let Some(wt) = &ev.worktree_id {
                     link.execute(params![wt.0, harness, ev.session.session_id])
                         .map_err(backend("cannot link session to worktree"))?;
@@ -946,6 +1147,18 @@ impl EventStore for SqliteEventStore {
             }
         }
         Ok(removed)
+    }
+
+    fn edit_records(&self, wt: &WorktreeId, path: &str) -> Result<Vec<EditRecord>, StoreError> {
+        let conn = lock(&self.reader, "reader")?;
+        // One statement: its own snapshot, no transaction needed.
+        let mut stmt = conn
+            .prepare_cached(EDIT_RECORDS_SQL)
+            .map_err(backend("cannot prepare edit records"))?;
+        stmt.query_map(params![wt.0, path], edit_record_from_row)
+            .map_err(backend("cannot read edit records"))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(backend("cannot read an edit op row"))
     }
 
     fn edit_calls(&self, wt: &WorktreeId, paths: &[String]) -> Result<Vec<EditTouch>, StoreError> {
@@ -1530,7 +1743,11 @@ mod tests {
 
         for round in 0..2 {
             let store = SqliteEventStore::open(&path).unwrap();
-            assert_eq!(count(&path, "PRAGMA user_version"), 2, "round {round}");
+            assert_eq!(
+                count(&path, "PRAGMA user_version"),
+                SCHEMA_VERSION as i64,
+                "round {round}"
+            );
             // Only the `b.rs` row of the edit start: the finish names no file, the shell
             // event is not an edit, `no_wt` has no worktree, `broken` is unreadable
             // (skipped, not fatal).
@@ -1598,5 +1815,274 @@ mod tests {
             0,
             "the step's other statements rolled back too"
         );
+    }
+
+    // ---- v3 (WHY-64): edit ops ---------------------------------------------
+
+    use crate::provenance::{
+        EditHunk, EditKind, FileSnapshot, HunkLineHash, HunkLineKind, LineHasher, UnobservedReason,
+    };
+
+    /// A successful edit of `path` in `wt` carrying a `before` of `lines`
+    /// lines and one 3-line hunk.
+    fn edit_event(
+        session: &str,
+        use_id: &str,
+        at: u64,
+        path: &str,
+        lines: usize,
+    ) -> NormalizedEvent {
+        let h = LineHasher::default();
+        let text: String = (0..lines).map(|i| format!("line {i}\n")).collect();
+        let mut ev = tool(session, use_id, Some(ToolOutcome::Ok), at, "p1");
+        ev.tool.as_mut().unwrap().class = ToolClass::Edit;
+        ev.files = vec![path.to_owned()];
+        ev.edits = vec![EditOp {
+            worktree_id: Some(WorktreeId("wt-1".into())),
+            path: path.to_owned(),
+            kind: EditKind::Update,
+            renamed_from: None,
+            before: Some(FileSnapshot::of_text(&h, text.as_bytes())),
+            after: None,
+            hunks: vec![EditHunk {
+                old_start: Some(1),
+                header: Some(h.hash_line(b"fn f() {")),
+                lines: [
+                    HunkLineKind::Context,
+                    HunkLineKind::Removed,
+                    HunkLineKind::Added,
+                ]
+                .into_iter()
+                .enumerate()
+                .map(|(i, kind)| HunkLineHash {
+                    kind,
+                    hash: h.hash_line(format!("hunk {i}").as_bytes()),
+                })
+                .collect(),
+            }],
+            observed: Observed::Exact,
+        }];
+        ev
+    }
+
+    #[test]
+    fn edit_records_use_their_index() {
+        let (_dir, store) = open_tmp();
+        let p = plan(&store, EDIT_RECORDS_SQL, 2);
+        assert!(p.contains("edit_ops_by_file"), "{p}");
+        assert!(!p.contains("SCAN"), "{p}");
+        assert!(!p.contains("TEMP B-TREE"), "no sort step: {p}");
+    }
+
+    /// The ops and their event are one unit: if storing an op fails, the
+    /// event is not stored either (and neither is the rest of the batch).
+    #[test]
+    fn an_op_that_cannot_be_stored_rolls_back_its_event() {
+        let (_dir, store) = open_tmp();
+        store
+            .writer
+            .lock()
+            .unwrap()
+            .execute_batch(
+                "CREATE TRIGGER refuse_ops BEFORE INSERT ON edit_ops \
+                 BEGIN SELECT RAISE(ABORT, 'refused by test'); END;",
+            )
+            .unwrap();
+        let plain = event("s1", "UserPromptSubmit", EventKind::Prompt, 1, Some("p1"));
+        let edit = edit_event("s1", "t1", 2, "a.rs", 3);
+        assert!(store.append(&[plain, edit.clone()]).is_err());
+        let key = SessionKey::new(Harness::ClaudeCode, "s1");
+        assert_eq!(store.timeline(&key).unwrap(), None, "nothing was stored");
+
+        store
+            .writer
+            .lock()
+            .unwrap()
+            .execute_batch("DROP TRIGGER refuse_ops")
+            .unwrap();
+        assert_eq!(store.append(&[edit]).unwrap().inserted, 1);
+        let wt = WorktreeId("wt-1".into());
+        assert_eq!(store.edit_records(&wt, "a.rs").unwrap().len(), 1);
+    }
+
+    #[test]
+    fn a_row_in_an_unknown_format_or_with_damaged_bytes_is_refused() {
+        let (_dir, store) = open_tmp();
+        store
+            .append(&[edit_event("s1", "t1", 1, "a.rs", 3)])
+            .unwrap();
+        let wt = WorktreeId("wt-1".into());
+        let writer = store.writer.lock().unwrap();
+        writer
+            .execute("UPDATE edit_ops SET format = 2", [])
+            .unwrap();
+        drop(writer);
+        assert!(store.edit_records(&wt, "a.rs").is_err(), "newer layout");
+
+        let writer = store.writer.lock().unwrap();
+        writer
+            .execute("UPDATE edit_ops SET format = 1, hunks = x'0100'", [])
+            .unwrap();
+        drop(writer);
+        assert!(store.edit_records(&wt, "a.rs").is_err(), "truncated hunks");
+    }
+
+    /// The numbers for the owner's "should `before` be capped?" decision
+    /// (printed with `--nocapture`), plus a bound so a layout change that
+    /// bloats rows is noticed.
+    #[test]
+    fn storage_cost_of_edit_ops() {
+        let (dir, store) = open_tmp();
+        let row_bytes = |store: &SqliteEventStore| -> i64 {
+            store
+                .reader
+                .lock()
+                .unwrap()
+                .query_row(
+                    "SELECT sum(length(event_key) + 8 + length(worktree_id) + length(path) \
+                     + length(kind) + length(observed) + coalesce(length(before), 0) \
+                     + coalesce(length(after), 0) + length(hunks)) FROM edit_ops",
+                    [],
+                    |r| r.get(0),
+                )
+                .unwrap()
+        };
+        store
+            .append(&[edit_event("s1", "big", 1, "big.rs", 1000)])
+            .unwrap();
+        let one = row_bytes(&store);
+        eprintln!("edit_ops: one edit with a 1,000-line `before`: {one} bytes of row data");
+        // 16,025 B of `before` + ~60 B of hunks + keys.
+        assert!((16_000..17_000).contains(&one), "{one}");
+
+        // A "typical session": 40 Claude edits of 300-line files.
+        let (dir2, store2) = open_tmp();
+        let page = |d: &tempfile::TempDir| {
+            let c = Connection::open(d.path().join("events.db")).unwrap();
+            c.execute_batch("PRAGMA wal_checkpoint(TRUNCATE)").unwrap();
+            let pages: i64 = c.query_row("PRAGMA page_count", [], |r| r.get(0)).unwrap();
+            let size: i64 = c.query_row("PRAGMA page_size", [], |r| r.get(0)).unwrap();
+            pages * size
+        };
+        let empty = page(&dir2);
+        let session: Vec<_> = (0..40)
+            .map(|i| {
+                edit_event(
+                    "s2",
+                    &format!("t{i}"),
+                    10 + i,
+                    &format!("f{}.rs", i % 8),
+                    300,
+                )
+            })
+            .collect();
+        store2.append(&session).unwrap();
+        let session_rows = row_bytes(&store2);
+        let grown = page(&dir2) - empty;
+        eprintln!(
+            "edit_ops: 40 edits of 300-line files: {session_rows} bytes of row data \
+             ({} per edit); events.db grew {grown} bytes including the events themselves",
+            session_rows / 40
+        );
+        drop((dir, dir2));
+    }
+
+    /// Write a genuine v2 file: the v1 helper, then the v2 step exactly as a
+    /// v2 WHY ran it (schema, backfill, version).
+    fn write_v2_database(path: &Path, events: &[NormalizedEvent]) {
+        write_v1_database(path, events, None);
+        let mut conn = Connection::open(path).unwrap();
+        conn.pragma_update(None, "foreign_keys", true).unwrap();
+        let tx = conn.transaction().unwrap();
+        tx.execute_batch(MIGRATIONS[1]).unwrap();
+        backfill_event_files(&tx).unwrap();
+        tx.pragma_update(None, "user_version", 2).unwrap();
+        tx.commit().unwrap();
+    }
+
+    #[test]
+    fn a_v2_database_migrates_to_v3_and_keeps_every_row() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("events.db");
+        let mut old_edit = tool("s1", "t1", Some(ToolOutcome::Ok), 2, "p1");
+        old_edit.tool.as_mut().unwrap().class = ToolClass::Edit;
+        old_edit.files = vec!["a.rs".into()];
+        let events = [
+            event("s1", "UserPromptSubmit", EventKind::Prompt, 1, Some("p1")),
+            old_edit,
+            event("s1", "Stop", EventKind::Stop, 3, Some("p1")),
+        ];
+        write_v2_database(&path, &events);
+        assert_eq!(count(&path, "PRAGMA user_version"), 2, "premise");
+        assert_eq!(
+            count(&path, "SELECT count(*) FROM event_files"),
+            1,
+            "premise"
+        );
+
+        for round in 0..2 {
+            let store = SqliteEventStore::open(&path).unwrap();
+            assert_eq!(
+                count(&path, "PRAGMA user_version"),
+                SCHEMA_VERSION as i64,
+                "round {round}"
+            );
+            assert_eq!(count(&path, "SELECT count(*) FROM events"), 3);
+            assert_eq!(count(&path, "SELECT count(*) FROM sessions"), 1);
+            assert_eq!(count(&path, "SELECT count(*) FROM session_worktrees"), 1);
+            assert_eq!(count(&path, "SELECT count(*) FROM event_files"), 1);
+            assert_eq!(count(&path, "SELECT count(*) FROM edit_ops"), 0);
+            let wt = WorktreeId("wt-1".into());
+            // Old data still answers; old events simply have no ops.
+            assert_eq!(store.edit_calls(&wt, &["a.rs".into()]).unwrap().len(), 1);
+            assert!(store.edit_records(&wt, "a.rs").unwrap().is_empty());
+            let key = SessionKey::new(Harness::ClaudeCode, "s1");
+            assert_eq!(store.timeline(&key).unwrap().unwrap().turns.len(), 1);
+        }
+
+        // New events after the migration store their ops.
+        let store = SqliteEventStore::open(&path).unwrap();
+        store
+            .append(&[edit_event("s1", "t9", 9, "a.rs", 2)])
+            .unwrap();
+        let wt = WorktreeId("wt-1".into());
+        assert_eq!(store.edit_records(&wt, "a.rs").unwrap().len(), 1);
+    }
+
+    #[test]
+    fn a_failed_v3_migration_leaves_the_v2_file_untouched() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("events.db");
+        write_v2_database(&path, &[]);
+        Connection::open(&path)
+            .unwrap()
+            .execute_batch("CREATE TABLE edit_ops (x)")
+            .unwrap();
+        assert!(SqliteEventStore::open(&path).is_err());
+        assert_eq!(count(&path, "PRAGMA user_version"), 2, "version not bumped");
+        assert_eq!(
+            count(
+                &path,
+                "SELECT count(*) FROM sqlite_schema WHERE name = 'edit_ops_by_file'"
+            ),
+            0
+        );
+    }
+
+    #[test]
+    fn unobserved_ops_round_trip_without_content() {
+        let (_dir, store) = open_tmp();
+        let mut ev = edit_event("s1", "t1", 1, "a.rs", 3);
+        ev.edits[0].observed = Observed::Unobserved(UnobservedReason::PayloadReduced);
+        store.append(&[ev]).unwrap();
+        let got = store
+            .edit_records(&WorktreeId("wt-1".into()), "a.rs")
+            .unwrap();
+        assert_eq!(got.len(), 1);
+        assert_eq!(
+            got[0].op.observed,
+            Observed::Unobserved(UnobservedReason::PayloadReduced)
+        );
+        assert!(got[0].op.hunks.is_empty() && got[0].op.before.is_none());
     }
 }

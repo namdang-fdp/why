@@ -7,6 +7,7 @@ import type {
   FileDiff,
   HookHarness,
   HookStatusReport,
+  LineOriginsResult,
   PreviewResult,
   RepoId,
   Repository,
@@ -162,6 +163,10 @@ export class TauriDataSource implements DataSource {
 
   getShellOutcomes(sessionId: SessionId) {
     return this.call<ShellOutcomesResult>("get_shell_outcomes", { sessionId });
+  }
+
+  getLineOrigins(worktreeId: WorktreeId, path: string) {
+    return this.call<LineOriginsResult>("get_line_origins", { worktreeId, path });
   }
 }
 

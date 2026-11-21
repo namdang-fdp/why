@@ -12,6 +12,8 @@ pub mod ipc;
 pub mod state;
 pub mod store;
 pub mod watch;
+// WHY-64: line provenance (v0.3).
+pub mod provenance;
 
 use std::path::Path;
 use std::sync::Arc;
@@ -125,6 +127,7 @@ pub fn run() {
             ipc::hooks::preview_uninstall,
             ipc::hooks::uninstall,
             ipc::hooks::hook_status,
+            ipc::provenance::get_line_origins,
         ])
         .build(tauri::generate_context!())
         .expect("error while building WHY")

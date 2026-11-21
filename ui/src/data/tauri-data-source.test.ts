@@ -193,3 +193,15 @@ it("calls the five hook IPC commands and returns refusals and stale previews as 
     { cmd: "hook_status", args: {} },
   ]);
 });
+
+describe("TauriDataSource line provenance (WHY-64)", () => {
+  it("calls get_line_origins with camelCase arguments and passes the result through", async () => {
+    const reply = { status: "unavailable", reason: "engineNotReady" };
+    const calls = ipc(() => reply);
+    const result = await new TauriDataSource().getLineOrigins("w1", "src/a.rs");
+    expect(calls).toEqual([
+      { cmd: "get_line_origins", args: { worktreeId: "w1", path: "src/a.rs" } },
+    ]);
+    expect(result).toEqual(reply);
+  });
+});

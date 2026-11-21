@@ -10,6 +10,7 @@ import {
   WT_WHY_AGENT,
   WT_WHY_MAIN,
 } from "@/fixtures";
+import { LONG_FILE_PATH } from "@/dev-fixtures/long-file-origins";
 import { SESSION_LONG } from "@/dev-fixtures/long-session";
 import {
   SESSION_CLAUDE,
@@ -205,5 +206,82 @@ describe("FixtureDataSource sessions", () => {
     expect(await source.getSessionTimeline(SESSION_CLAUDE)).toEqual(before);
     expect(callback).not.toHaveBeenCalled();
     stop();
+  });
+});
+
+describe("FixtureDataSource line origins (WHY-64)", () => {
+  it("serves runs for the sample files and engineNotReady for everything else", async () => {
+    const source = new FixtureDataSource();
+    const calc = await source.getLineOrigins(WT_WHY_AGENT, "src/calc.py");
+    expect(calc.status).toBe("ok");
+    const helper = await source.getLineOrigins(WT_WHY_MAIN, "src/helper.py");
+    expect(helper.status).toBe("ok");
+    // The same path in another worktree is another file.
+    expect(await source.getLineOrigins(WT_WHY_MAIN, "src/calc.py")).toEqual({
+      status: "unavailable",
+      reason: "engineNotReady",
+    });
+    expect(await source.getLineOrigins("no-such-worktree", "a.rs")).toEqual({
+      status: "unavailable",
+      reason: "engineNotReady",
+    });
+  });
+
+  it("serves the 2,000-line file for gutter performance", async () => {
+    const result = await new FixtureDataSource().getLineOrigins(WT_WHY_AGENT, LONG_FILE_PATH);
+    if (result.status !== "ok") throw new Error("expected origins");
+    expect(result.origins.lineCount).toBe(2000);
+    expect(result.origins.runs.length).toBeGreaterThan(50);
+  });
+
+  it("rejects request paths the core would refuse, with invalidInput", async () => {
+    const source = new FixtureDataSource();
+    for (const path of ["", "/etc/passwd", "../x", "a/../../x", "./a.rs", ".", "a\0b"]) {
+      await expect(source.getLineOrigins(WT_WHY_AGENT, path)).rejects.toMatchObject({
+        kind: "invalidInput",
+      });
+    }
+  });
+
+  it("returns copies, so callers cannot change the fixtures", async () => {
+    const source = new FixtureDataSource();
+    const first = await source.getLineOrigins(WT_WHY_AGENT, "src/calc.py");
+    if (first.status !== "ok") throw new Error("expected origins");
+    first.origins.runs.length = 0;
+    const again = await source.getLineOrigins(WT_WHY_AGENT, "src/calc.py");
+    if (again.status !== "ok") throw new Error("expected origins");
+    expect(again.origins.runs.length).toBeGreaterThan(0);
+  });
+});
+
+describe("FixtureDataSource line origins edge cases (WHY-64)", () => {
+  it("accepts what the core accepts on Unix and never answers with a prototype member", async () => {
+    const source = new FixtureDataSource();
+    const notReady = { status: "unavailable", reason: "engineNotReady" };
+    for (const path of ["C:/x", "toString", "constructor", "__proto__", "a\\..\\b"]) {
+      expect(await source.getLineOrigins(WT_WHY_AGENT, path), path).toEqual(notReady);
+    }
+    expect(await source.getLineOrigins("toString", "src/calc.py")).toEqual(notReady);
+  });
+
+  it("lists the samples as changes with matching diffs only when asked to", async () => {
+    const plain = new FixtureDataSource();
+    const plainPaths = (await plain.getChanges(WT_WHY_AGENT, "uncommitted")).map((c) => c.path);
+    expect(plainPaths).not.toContain("src/calc.py");
+
+    const source = new FixtureDataSource({ provenance: true });
+    for (const [worktreeId, path] of [
+      [WT_WHY_AGENT, "src/calc.py"],
+      [WT_WHY_MAIN, "src/helper.py"],
+      [WT_WHY_AGENT, LONG_FILE_PATH],
+    ] as const) {
+      const paths = (await source.getChanges(worktreeId, "uncommitted")).map((c) => c.path);
+      expect(paths).toContain(path);
+      const origins = await source.getLineOrigins(worktreeId, path);
+      if (origins.status !== "ok") throw new Error(`expected origins for ${path}`);
+      const diff = await source.getFileDiff(worktreeId, path, "uncommitted");
+      const lines = (diff.newContent ?? "").split("\n").slice(0, -1);
+      expect(lines.length, path).toBe(origins.origins.lineCount);
+    }
   });
 });

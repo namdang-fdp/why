@@ -1,0 +1,74 @@
+{
+  "format": 1,
+  "name": "claude-shifted-edit",
+  "description": "A first Claude edit inserts two doc-comment lines; a second edit in a later turn changes the body, whose position the first edit shifted by two. Each line keeps the edit that wrote it.",
+  "stage": "replay",
+  "harness": "claudeCode",
+  "file": "src/load.rs",
+  "base": {
+    "lines": [
+      "use std::fs;",
+      "",
+      "fn load(path: &str) -> String {",
+      "    fs::read_to_string(path).unwrap()",
+      "}"
+    ],
+    "finalNewline": true
+  },
+  "ops": [
+    {
+      "id": "e1",
+      "session": "s1",
+      "turn": "t1",
+      "kind": "update",
+      "hunks": [
+        {
+          "oldStart": 2,
+          "lines": [" ", "+/// Loads a file.", "+/// Panics if it cannot be read.", " fn load(path: &str) -> String {"]
+        }
+      ],
+      "before": "auto",
+      "after": "none"
+    },
+    {
+      "id": "e2",
+      "session": "s1",
+      "turn": "t2",
+      "kind": "update",
+      "hunks": [
+        {
+          "oldStart": 5,
+          "lines": [
+            " fn load(path: &str) -> String {",
+            "-    fs::read_to_string(path).unwrap()",
+            "+    fs::read_to_string(path).expect(\"readable file\")",
+            " }"
+          ]
+        }
+      ],
+      "before": "auto",
+      "after": "auto"
+    }
+  ],
+  "final": {
+    "lines": [
+      "use std::fs;",
+      "",
+      "/// Loads a file.",
+      "/// Panics if it cannot be read.",
+      "fn load(path: &str) -> String {",
+      "    fs::read_to_string(path).expect(\"readable file\")",
+      "}"
+    ],
+    "finalNewline": true
+  },
+  "expected": [
+    { "line": 1, "origin": "base" },
+    { "line": 2, "origin": "base" },
+    { "line": 3, "origin": { "op": "e1" } },
+    { "line": 4, "origin": { "op": "e1" } },
+    { "line": 5, "origin": "base" },
+    { "line": 6, "origin": { "op": "e2" } },
+    { "line": 7, "origin": "base" }
+  ]
+}

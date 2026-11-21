@@ -1,0 +1,57 @@
+{
+  "format": 1,
+  "name": "codex-ambiguous-context",
+  "description": "A Codex apply_patch hunk (no line numbers) whose context matches two identical blocks. It really applied to the second (appliedAt 6, truth only). The engine cannot tell which block changed, so the changed line and its twin are Unknown(ambiguousMatch); the context lines are base either way.",
+  "stage": "replay",
+  "harness": "codex",
+  "file": "stats.py",
+  "base": {
+    "lines": [
+      "def a(xs):",
+      "    xs = clean(xs)",
+      "    return len(xs)",
+      "",
+      "def b(xs):",
+      "    xs = clean(xs)",
+      "    return len(xs)"
+    ],
+    "finalNewline": true
+  },
+  "ops": [
+    {
+      "id": "p1",
+      "session": "s1",
+      "turn": "t1",
+      "kind": "update",
+      "hunks": [
+        {
+          "appliedAt": 6,
+          "lines": ["     xs = clean(xs)", "-    return len(xs)", "+    return len(set(xs))"]
+        }
+      ],
+      "before": "none",
+      "after": "none"
+    }
+  ],
+  "final": {
+    "lines": [
+      "def a(xs):",
+      "    xs = clean(xs)",
+      "    return len(xs)",
+      "",
+      "def b(xs):",
+      "    xs = clean(xs)",
+      "    return len(set(xs))"
+    ],
+    "finalNewline": true
+  },
+  "expected": [
+    { "line": 1, "origin": "base" },
+    { "line": 2, "origin": "base" },
+    { "line": 3, "origin": { "unknown": "ambiguousMatch" } },
+    { "line": 4, "origin": "base" },
+    { "line": 5, "origin": "base" },
+    { "line": 6, "origin": "base" },
+    { "line": 7, "origin": { "unknown": "ambiguousMatch" } }
+  ]
+}

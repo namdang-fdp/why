@@ -5,6 +5,7 @@ import type {
   FileDiff,
   HookHarness,
   HookStatusReport,
+  LineOriginsResult,
   PreviewResult,
   RepoId,
   Repository,
@@ -82,4 +83,10 @@ export interface DataSource {
   getToolRationale(sessionId: SessionId, eventId: string): Promise<RationaleResult>;
   /** Codex: shell calls the hooks left `unknown`, settled from the rollout. One bounded file read per call. */
   getShellOutcomes(sessionId: SessionId): Promise<ShellOutcomesResult>;
+  /**
+   * Which captured edit wrote each line of one file, as runs (`base` / `edit` / `unknown`).
+   * `unavailable { engineNotReady }` until the replay engine lands; rejects with
+   * `invalidInput` for a path that is not worktree-relative.
+   */
+  getLineOrigins(worktreeId: WorktreeId, path: string): Promise<LineOriginsResult>;
 }

@@ -10,3 +10,4 @@ export {
 export { changesByWorktree } from "./changes";
 export { fileDiffs } from "./diffs";
 export { ipcErrors, worktreeChangedAll, worktreeChangedSome } from "./events";
+export { engineNotReady, lineOriginsByFile, unknownLineReasons } from "./provenance";

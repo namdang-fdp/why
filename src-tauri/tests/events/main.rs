@@ -10,5 +10,7 @@ mod common;
 
 mod bench;
 mod conformance;
+// WHY-64
+mod edit_ops;
 mod hostile;
 mod sqlite;

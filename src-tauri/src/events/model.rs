@@ -26,6 +26,7 @@ use sha2::{Digest, Sha256};
 use why_wire::{Envelope, Harness};
 
 use crate::contracts::{EvidenceLabel, SessionId, ToolOutcome, WorktreeId};
+use crate::provenance::EditOp;
 
 /// Excerpts (prompts, messages, commands) are capped at this many bytes when an
 /// adapter normalizes an event (decision 22): prompts and assistant messages are
@@ -240,6 +241,12 @@ pub struct NormalizedEvent {
     pub evidence: EvidenceLabel,
     /// The harness transcript, for lazy reading later (never copied).
     pub transcript_path: Option<String>,
+    /// WHY-64: the file edits this event carries, as line hashes (decision 29).
+    /// Only a successful edit's `PostToolUse` has any (WHY-65 fills them);
+    /// every other event leaves this empty. The store keeps them apart from
+    /// the event and hands them back through `EventStore::edit_records`;
+    /// events read back for timelines always have it empty.
+    pub edits: Vec<EditOp>,
 }
 
 impl NormalizedEvent {
@@ -277,6 +284,7 @@ impl NormalizedEvent {
             files: Vec::new(),
             evidence: EvidenceLabel::Observed,
             transcript_path: None,
+            edits: Vec::new(),
         }
     }
 }
