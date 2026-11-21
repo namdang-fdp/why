@@ -91,6 +91,17 @@ export function currentAttribution(
 
 export type CoverageCounts = Record<FileEvidenceKind, number> & { total: number };
 
+/**
+ * The one predicate behind the rail's "Unexplained N" chip, its filter and the
+ * inspector's filter control: no applied captured edit (attempted files included).
+ */
+export const isNotExplained = (file: Pick<FileAttribution, "status">) =>
+  file.status !== "explained";
+
+export function notExplainedCount(files: readonly Pick<FileAttribution, "status">[]) {
+  return files.filter(isNotExplained).length;
+}
+
 /** How many changed files fall in each evidence bucket (they always sum to `total`). */
 export function coverageCounts(files: readonly FileAttribution[]): CoverageCounts {
   const counts: CoverageCounts = {

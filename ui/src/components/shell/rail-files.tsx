@@ -11,7 +11,12 @@ import { RailSectionHeader } from "./rail-section";
 import { fileMatches } from "./rail-model";
 import { RowMarker } from "./rail-repositories";
 import { AttributionMarker, ShellLeadsLine } from "./rail-attribution";
-import { currentAttribution, evidenceKind } from "./attribution-model";
+import {
+  currentAttribution,
+  evidenceKind,
+  isNotExplained,
+  notExplainedCount,
+} from "./attribution-model";
 
 function PathPart({ path }: { path: string }) {
   const nameIndex = path.lastIndexOf("/") + 1;
@@ -120,12 +125,13 @@ export function ChangedFiles({ expanded, onToggle }: { expanded: boolean; onTogg
   const all = changes.status === "ok" ? changes.data : [];
   const matching = all.filter((file) => fileMatches(file, filter));
   const byText = matching.length > 0 ? matching : all;
-  const unexplainedCount =
-    attribution?.current.files.filter((f) => f.status === "unexplained").length ?? 0;
+  const unexplainedCount = attribution ? notExplainedCount(attribution.current.files) : 0;
   // "Show unexplained files" narrows to the files no captured edit explains.
   const files =
     onlyUnexplained && attribution
-      ? byText.filter((file) => attribution.byPath.get(file.path)?.status !== "explained")
+      ? byText.filter((file) =>
+          isNotExplained(attribution.byPath.get(file.path) ?? { status: "unexplained" }),
+        )
       : byText;
   const narrowed =
     (filter.trim() !== "" && matching.length > 0 && matching.length < all.length) ||

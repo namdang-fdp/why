@@ -233,15 +233,27 @@ describe("Worktree tab", () => {
     expect(explained + attempted + none).toBe(rows);
   });
 
-  it("turns on the rail's unexplained filter from the 'No captured edit' item", async () => {
+  it("labels the filter control with the number of files it really shows", async () => {
     const { user } = setup({}, "worktree");
-    await screen.findByRole("button", { name: /^Unexplained \d+$/ });
-    await user.click(await why().findByRole("button", { name: /No captured edit/ }));
+    const rail = await fileList();
+    const chip = await screen.findByRole("button", { name: /^Unexplained \d+$/ });
+    const railNumber = Number(/\d+/.exec(chip.textContent ?? "")?.[0]);
+    const control = await why().findByRole("button", {
+      name: /^Show files without an applied edit/,
+    });
+    expect(Number(/\((\d+)\)/.exec(control.textContent ?? "")?.[1])).toBe(railNumber);
+    // The legend stays plain labels that still sum to the total.
+    const count = (name: string) => Number(within(legend(name)).getByText(/^\d+$/).textContent);
+    const total = rail.querySelectorAll(".file-row").length;
+    expect(count("Explained") + count("Attempted") + count("No captured edit")).toBe(total);
+    expect(why().queryByRole("button", { name: /^No captured edit/ })).toBeNull();
+    await user.click(control);
     expect(
       (await screen.findByRole("button", { name: /^Unexplained \d+$/ })).getAttribute(
         "aria-pressed",
       ),
     ).toBe("true");
+    await waitFor(() => expect(rail.querySelectorAll(".file-row")).toHaveLength(railNumber));
   });
 
   it("never shows another worktree's attribution, even when it arrives late", async () => {

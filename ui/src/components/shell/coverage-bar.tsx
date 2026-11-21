@@ -14,9 +14,12 @@ const segments = [
  */
 export function CoverageBar({
   counts,
+  notExplained,
   onShowUnexplained,
 }: {
   counts: CoverageCounts;
+  /** Files the rail filter shows (attempted included): the number the control must carry. */
+  notExplained: number;
   onShowUnexplained: () => void;
 }) {
   const summary = segments
@@ -35,18 +38,17 @@ export function CoverageBar({
         {segments.map(({ kind, label }) => (
           <li key={kind}>
             <span className="coverage-swatch" data-kind={kind} aria-hidden />
-            {kind === "unexplained" && counts.unexplained > 0 ? (
-              <button type="button" className="session-text-button" onClick={onShowUnexplained}>
-                {label} <b>{counts.unexplained}</b>
-              </button>
-            ) : (
-              <span>
-                {label} <b>{counts[kind]}</b>
-              </span>
-            )}
+            <span>
+              {label} <b>{counts[kind]}</b>
+            </span>
           </li>
         ))}
       </ul>
+      {notExplained > 0 && (
+        <button type="button" className="session-text-button" onClick={onShowUnexplained}>
+          Show files without an applied edit ({notExplained})
+        </button>
+      )}
       <p className="evidence-note">Captured edits only. Line-level provenance comes later.</p>
     </div>
   );

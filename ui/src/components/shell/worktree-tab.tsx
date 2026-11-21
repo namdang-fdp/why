@@ -6,7 +6,7 @@ import { PromptExcerpt, harnessNames } from "@/components/sessions/session-label
 import type { FileChange } from "@/contracts";
 import { ErrorMessage, LoadingMessage } from "./async-message";
 import { branchLabel, worktreeName } from "./change-labels";
-import { coverageCounts } from "./attribution-model";
+import { coverageCounts, notExplainedCount } from "./attribution-model";
 import { CoverageBar } from "./coverage-bar";
 import { useCurrentAttribution } from "./use-attribution";
 
@@ -116,7 +116,13 @@ export function WorktreeTab({ onOpenSession }: { onOpenSession: (id: string) => 
         ) : counts.total === 0 ? (
           <p className="evidence-note">No changed files to cover.</p>
         ) : (
-          <CoverageBar counts={counts} onShowUnexplained={() => setOnlyUnexplained(true)} />
+          <CoverageBar
+            counts={counts}
+            notExplained={
+              attribution.status === "ok" ? notExplainedCount(attribution.data.files) : 0
+            }
+            onShowUnexplained={() => setOnlyUnexplained(true)}
+          />
         )}
       </section>
 
