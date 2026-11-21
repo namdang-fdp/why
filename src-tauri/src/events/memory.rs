@@ -10,6 +10,7 @@ use super::correlation::{
     distinct_sessions, fold_calls, tool_event_class,
 };
 use super::model::{EventKey, NormalizedEvent, SessionKey, ToolClass};
+use super::rationale::SourceEvent;
 use super::timeline::{TimelinePosition, TurnIndices, build_summary, build_timeline, turn_indices};
 use super::{AppendOutcome, EventStore};
 use crate::contracts::{SessionSummary, SessionTimeline, WorktreeId};
@@ -198,6 +199,14 @@ impl EventStore for MemoryEventStore {
             })
             .collect();
         Ok(build_shell_turns(calls, &indices))
+    }
+
+    fn source_events(&self, session: &SessionKey) -> Result<Option<Vec<SourceEvent>>, StoreError> {
+        let inner = self.lock()?;
+        Ok(inner
+            .sessions
+            .get(session)
+            .map(|events| events.iter().map(SourceEvent::from_event).collect()))
     }
 }
 

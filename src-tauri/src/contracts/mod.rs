@@ -26,6 +26,9 @@
 //! | `get_session_timeline(session_id: SessionId)` | `SessionTimeline` | One session's turns and events |
 //! | `get_worktree_attribution(worktree_id: WorktreeId, mode: Option<DiffMode>)` | `WorktreeAttribution` | Each changed file with the agent turns whose captured edits explain it, or `unexplained` (default mode `vsBase`) |
 //! | `get_file_activity(worktree_id: WorktreeId, path: String)` | `Vec<TurnRef>` | Every captured edit attempt on one file, newest first, any outcome |
+//! | `get_turn_rationale(session_id: SessionId, turn_id: String)` | `RationaleResult` | What the agent said during one turn (`declared`), read from the harness transcript on demand; `unavailable { reason }` when it cannot be read |
+//! | `get_tool_rationale(session_id: SessionId, event_id: String)` | `RationaleResult` | What the agent said just before (Codex: and after) the tool call identified by `TimelineEvent.id` |
+//! | `get_shell_outcomes(session_id: SessionId)` | `ShellOutcomesResult` | Codex only: `unknown` shell calls the rollout's structured exit code settles (`observed`); Claude is `unavailable { notApplicable }` |
 //! | `preview_install(harness: HookHarness)` | `PreviewResult` | The exact change installing WHY's hooks into the agent's user-level config would make (nothing is written) |
 //! | `install(harness: HookHarness, fingerprint: String)` | `ApplyResult` | Install the hooks the user previewed (refused as `stale` if the file changed) |
 //! | `preview_uninstall(harness: HookHarness)` | `PreviewResult` | The exact change removing WHY's hooks would make |
@@ -64,6 +67,8 @@ mod sessions;
 mod storage;
 // WHY-16: file <-> turn attribution.
 mod attribution;
+// WHY-53: lazy rationale from the harness transcript.
+mod rationale;
 
 pub use changes::{ChangeStatus, DiffMode, FileChange, FileDiff};
 pub use error::IpcError;
@@ -89,6 +94,11 @@ pub use storage::StorageStatus;
 // WHY-16
 pub use attribution::{
     AttributionStatus, FileAttribution, ShellLead, TurnRef, WorktreeAttribution,
+};
+// WHY-53
+pub use rationale::{
+    BlockPosition, Rationale, RationaleBlock, RationaleResult, ShellOutcome, ShellOutcomes,
+    ShellOutcomesResult, TranscriptSource, TranscriptUnavailable,
 };
 
 // `ts-rs` is a dev-dependency: the types derive `TS` only under `cfg(test)`

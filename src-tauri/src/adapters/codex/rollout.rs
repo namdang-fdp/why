@@ -41,6 +41,7 @@
 //! * `auth.json` and other credential files are never opened: the root check
 //!   confines this reader to `sessions/`.
 
+use std::collections::HashMap;
 use std::ffi::OsString;
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, Read, Seek, SeekFrom};
@@ -49,7 +50,7 @@ use std::path::{Path, PathBuf};
 use serde_json::Value;
 
 use super::{ENCRYPTED, looks_encrypted};
-use crate::events::excerpt;
+use crate::events::excerpt_with_truncation;
 
 /// At most this much of a rollout is scanned (its tail if the file is bigger):
 /// a long session's rollout can reach hundreds of MiB.
@@ -100,7 +101,63 @@ pub struct RolloutContext {
     pub bytes_scanned: u64,
     /// The file was bigger than the scan window.
     pub truncated: bool,
+    /// At least one completed item of `turn_id` was seen. `false` means the
+    /// rollout (inside the scan window) says nothing about this turn, which a
+    /// caller reports as "not found" rather than "the agent said nothing".
+    pub turn_seen: bool,
+    /// An item with `tool_use_id` was seen in the turn. `false` with both
+    /// narrations `None` means "no such call in this rollout", not "silent".
+    pub anchor_seen: bool,
+    /// The turn exceeded the message count or per-message text limit.
+    pub turn_messages_truncated: bool,
+    /// A returned before/after message exceeded the per-message text limit.
+    pub narration_clipped: bool,
 }
+
+/// What a whole-file pass learned about command exits (see [`read_exit_codes`]).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ExitCodes {
+    pub cli_version: Option<String>,
+    pub version_trusted: bool,
+    /// Per `CommandExecution` id, what the structured records say.
+    records: HashMap<String, ExitRecord>,
+    /// More distinct ids than [`MAX_EXIT_RECORDS`]: later ones were not kept.
+    pub overflowed: bool,
+    pub bytes_scanned: u64,
+    /// The file was bigger than the scan window (only its tail was read).
+    pub truncated: bool,
+}
+
+/// The evidence for one command id. Anything but exactly one record with a
+/// parseable code and a matching turn is not evidence of an exit code.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ExitRecord {
+    /// Exactly one `CommandExecution` record carries this id.
+    One { turn_id: String, code: i32 },
+    /// Exactly one record, but it has no usable turn ID or integer exit code.
+    Incomplete,
+    /// Two or more records share the id: the rollout is not what we think it
+    /// is, so none of them is trusted.
+    Ambiguous,
+}
+
+impl ExitCodes {
+    /// The exit code for `id`, only when the version is trusted and exactly one
+    /// record with a code exists and belongs to `turn_id`.
+    pub fn exit_code(&self, id: &str, turn_id: &str) -> Option<i32> {
+        match self.records.get(id) {
+            Some(ExitRecord::One {
+                turn_id: recorded,
+                code,
+            }) if self.version_trusted && recorded == turn_id => Some(*code),
+            _ => None,
+        }
+    }
+}
+
+/// Distinct command ids kept by [`read_exit_codes`]: bounds the map even for a
+/// 16 MiB window full of tiny records.
+pub const MAX_EXIT_RECORDS: usize = 50_000;
 
 /// `$CODEX_HOME/sessions`, else `~/.codex/sessions`. `None` when neither
 /// variable is set.
@@ -231,16 +288,68 @@ struct Scanner<'a> {
     tool_use_id: Option<&'a str>,
     cli_version: Option<String>,
     /// `(sequence number, text)` of the turn's agent messages.
-    messages: Vec<(u64, String)>,
+    messages: Vec<(u64, MessageText)>,
     /// Sequence number of the anchor item (the tool call), if seen.
     anchor: Option<u64>,
     exit_codes: Vec<i32>,
     seq: u64,
+    /// The turn had an `item_completed` record.
+    turn_seen: bool,
+    /// Set for [`read_exit_codes`]: every `CommandExecution` of the file is
+    /// recorded here (all turns) and nothing else is collected.
+    all_exits: Option<ExitMap>,
+    /// Only `session_meta` is read (the head pass of a big file).
+    version_only: bool,
+}
+
+/// What [`Scanner::all_exits`] collects.
+#[derive(Default)]
+struct ExitMap {
+    records: HashMap<String, ExitRecord>,
+    overflowed: bool,
+}
+
+impl ExitMap {
+    fn add(&mut self, id: &str, turn_id: Option<&str>, code: Option<i32>) {
+        if let Some(existing) = self.records.get_mut(id) {
+            // Same id twice: whatever the codes say, do not trust either.
+            *existing = ExitRecord::Ambiguous;
+        } else if self.records.len() >= MAX_EXIT_RECORDS {
+            self.overflowed = true;
+        } else {
+            let record = match (turn_id, code) {
+                (Some(turn_id), Some(code)) if !turn_id.is_empty() => ExitRecord::One {
+                    turn_id: turn_id.to_owned(),
+                    code,
+                },
+                _ => ExitRecord::Incomplete,
+            };
+            self.records.insert(id.to_owned(), record);
+        }
+    }
 }
 
 impl Scanner<'_> {
+    fn new<'a>(turn_id: &'a str, tool_use_id: Option<&'a str>) -> Scanner<'a> {
+        Scanner {
+            turn_id,
+            tool_use_id,
+            cli_version: None,
+            messages: Vec::new(),
+            anchor: None,
+            exit_codes: Vec::new(),
+            seq: 0,
+            turn_seen: false,
+            all_exits: None,
+            version_only: false,
+        }
+    }
+
     fn feed(&mut self, record: &Value) {
         self.seq += 1;
+        if self.version_only && record.get("type").and_then(Value::as_str) != Some("session_meta") {
+            return;
+        }
         match record.get("type").and_then(Value::as_str) {
             Some("session_meta") => {
                 // Only the version. Everything else in this record (base
@@ -264,12 +373,29 @@ impl Scanner<'_> {
         if payload.get("type").and_then(Value::as_str) != Some("item_completed") {
             return;
         }
-        if payload.get("turn_id").and_then(Value::as_str) != Some(self.turn_id) {
+        let turn_id = payload.get("turn_id").and_then(Value::as_str);
+        if let Some(exits) = &mut self.all_exits {
+            // Whole-file mode: only structured command records, keyed by id.
+            // The exit code is read from its field, never from output text.
+            if let Some(item) = payload.get("item")
+                && item.get("type").and_then(Value::as_str) == Some("CommandExecution")
+                && let Some(id) = item.get("id").and_then(Value::as_str)
+            {
+                let code = item
+                    .get("exit_code")
+                    .and_then(Value::as_i64)
+                    .and_then(|c| i32::try_from(c).ok());
+                exits.add(id, turn_id, code);
+            }
+            return;
+        }
+        if turn_id != Some(self.turn_id) {
             return;
         }
         let Some(item) = payload.get("item") else {
             return;
         };
+        self.turn_seen = true;
         let is_anchor = self.tool_use_id.is_some()
             && item.get("id").and_then(Value::as_str) == self.tool_use_id;
         if is_anchor {
@@ -291,9 +417,14 @@ impl Scanner<'_> {
     }
 }
 
+struct MessageText {
+    text: String,
+    clipped: bool,
+}
+
 /// The text of an `AgentMessage` item: its `Text` content parts, joined.
 /// Encrypted blobs become `(encrypted)`; other part types are ignored.
-fn agent_message_text(item: &Value) -> Option<String> {
+fn agent_message_text(item: &Value) -> Option<MessageText> {
     let parts = item.get("content")?.as_array()?;
     let text: Vec<&str> = parts
         .iter()
@@ -304,10 +435,12 @@ fn agent_message_text(item: &Value) -> Option<String> {
         return None;
     }
     let joined = text.join("\n");
-    if looks_encrypted(joined.trim()) {
-        return Some(ENCRYPTED.to_owned());
-    }
-    Some(excerpt(&joined))
+    let (text, clipped) = if looks_encrypted(joined.trim()) {
+        (ENCRYPTED.to_owned(), false)
+    } else {
+        excerpt_with_truncation(&joined)
+    };
+    Some(MessageText { text, clipped })
 }
 
 /// Feed every parseable line of `reader` to `scanner`. Truncated, oversized,
@@ -348,39 +481,8 @@ pub fn read_context(
     tool_use_id: Option<&str>,
 ) -> Result<RolloutContext, RolloutError> {
     let mut file = open_confined(path, root)?;
-    let len = file.metadata()?.len();
-    let mut scanner = Scanner {
-        turn_id,
-        tool_use_id,
-        cli_version: None,
-        messages: Vec::new(),
-        anchor: None,
-        exit_codes: Vec::new(),
-        seq: 0,
-    };
-
-    let mut bytes_scanned = 0;
-    let truncated = len > MAX_SCAN_BYTES;
-    if truncated {
-        // Big file: the version from the head, the evidence from the tail
-        // (the recent turns, the ones a live session is asking about).
-        let mut head = BufReader::new((&file).take(HEAD_BYTES));
-        scan(&mut head, &mut scanner, true)?;
-        bytes_scanned += HEAD_BYTES.min(len);
-        file.seek(SeekFrom::Start(len - MAX_SCAN_BYTES - 1))?;
-        let mut previous = [0];
-        file.read_exact(&mut previous)?;
-        let mut tail = BufReader::new((&file).take(MAX_SCAN_BYTES));
-        if previous[0] != b'\n' {
-            tail.skip_until(b'\n')?;
-        }
-        scan(&mut tail, &mut scanner, false)?;
-        bytes_scanned += MAX_SCAN_BYTES + 1;
-    } else {
-        let mut all = BufReader::new((&file).take(MAX_SCAN_BYTES));
-        scan(&mut all, &mut scanner, false)?;
-        bytes_scanned += len;
-    }
+    let mut scanner = Scanner::new(turn_id, tool_use_id);
+    let (bytes_scanned, truncated) = scan_file(&mut file, &mut scanner, false)?;
 
     let version_trusted = scanner
         .cli_version
@@ -399,20 +501,28 @@ pub fn read_context(
                 .iter()
                 .rev()
                 .find(|(seq, _)| *seq < anchor)
-                .map(|(_, t)| t.clone()),
+                .map(|(_, t)| t),
             scanner
                 .messages
                 .iter()
                 .find(|(seq, _)| *seq > anchor)
-                .map(|(_, t)| t.clone()),
+                .map(|(_, t)| t),
         ),
         None => (None, None),
     };
+    let narration_clipped =
+        narration_before.is_some_and(|t| t.clipped) || narration_after.is_some_and(|t| t.clipped);
+    let narration_before = narration_before.map(|t| t.text.clone());
+    let narration_after = narration_after.map(|t| t.text.clone());
+    let mut turn_messages_truncated = scanner.messages.len() > MAX_TURN_MESSAGES;
     let turn_messages = scanner
         .messages
         .into_iter()
         .take(MAX_TURN_MESSAGES)
-        .map(|(_, t)| t)
+        .map(|(_, t)| {
+            turn_messages_truncated |= t.clipped;
+            t.text
+        })
         .collect();
 
     Ok(RolloutContext {
@@ -422,6 +532,75 @@ pub fn read_context(
         narration_after,
         exit_code,
         turn_messages,
+        bytes_scanned,
+        truncated,
+        turn_seen: scanner.turn_seen,
+        anchor_seen: scanner.anchor.is_some(),
+        turn_messages_truncated,
+        narration_clipped,
+    })
+}
+
+/// One bounded pass over `file` (its tail when it is bigger than
+/// [`MAX_SCAN_BYTES`], plus the head for the version). Returns the bytes
+/// scanned and whether the file was bigger than the window.
+///
+/// `head_version_only`: in the head pass of a big file only `session_meta` is
+/// read. Without it a file just over the window would be read twice where the
+/// head and the tail overlap, and a whole-file scan would see the same record
+/// twice and call it a duplicate.
+fn scan_file(
+    file: &mut File,
+    scanner: &mut Scanner<'_>,
+    head_version_only: bool,
+) -> Result<(u64, bool), RolloutError> {
+    let len = file.metadata()?.len();
+    let mut bytes_scanned = 0;
+    let truncated = len > MAX_SCAN_BYTES;
+    if truncated {
+        // Big file: the version from the head, the evidence from the tail
+        // (the recent turns, the ones a live session is asking about).
+        let mut head = BufReader::new((&*file).take(HEAD_BYTES));
+        scanner.version_only = head_version_only;
+        scan(&mut head, scanner, true)?;
+        scanner.version_only = false;
+        bytes_scanned += HEAD_BYTES.min(len);
+        file.seek(SeekFrom::Start(len - MAX_SCAN_BYTES - 1))?;
+        let mut previous = [0];
+        file.read_exact(&mut previous)?;
+        let mut tail = BufReader::new((&*file).take(MAX_SCAN_BYTES));
+        if previous[0] != b'\n' {
+            tail.skip_until(b'\n')?;
+        }
+        scan(&mut tail, scanner, false)?;
+        bytes_scanned += MAX_SCAN_BYTES + 1;
+    } else {
+        let mut all = BufReader::new((&*file).take(MAX_SCAN_BYTES));
+        scan(&mut all, scanner, false)?;
+        bytes_scanned += len;
+    }
+    Ok((bytes_scanned, truncated))
+}
+
+/// Every command exit the rollout records, in ONE bounded pass (instead of one
+/// [`read_context`] per tool call). Same root confinement and byte bounds as
+/// [`read_context`]. See [`ExitCodes::exit_code`] for how a result is used:
+/// only a unique structured record under a trusted `cli_version` counts.
+pub fn read_exit_codes(path: &Path, root: &Path) -> Result<ExitCodes, RolloutError> {
+    let mut file = open_confined(path, root)?;
+    let mut scanner = Scanner::new("", None);
+    scanner.all_exits = Some(ExitMap::default());
+    let (bytes_scanned, truncated) = scan_file(&mut file, &mut scanner, true)?;
+    let version_trusted = scanner
+        .cli_version
+        .as_deref()
+        .is_some_and(|v| v.starts_with(TESTED_CLI_PREFIX));
+    let exits = scanner.all_exits.unwrap_or_default();
+    Ok(ExitCodes {
+        cli_version: scanner.cli_version,
+        version_trusted,
+        records: exits.records,
+        overflowed: exits.overflowed,
         bytes_scanned,
         truncated,
     })

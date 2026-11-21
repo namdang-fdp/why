@@ -155,6 +155,7 @@ describe("recorded events", () => {
       files: [],
       outcome: null,
       agentId: null,
+      toolUseId: null,
     };
     first.events.push(
       {

@@ -36,8 +36,12 @@ pub const EXCERPT_MAX_BYTES: usize = 8 * 1024;
 /// Cut `text` to at most [`EXCERPT_MAX_BYTES`] bytes, on a character boundary,
 /// marking the cut with `…`. Text that fits is returned unchanged.
 pub fn excerpt(text: &str) -> String {
+    excerpt_with_truncation(text).0
+}
+
+pub(crate) fn excerpt_with_truncation(text: &str) -> (String, bool) {
     if text.len() <= EXCERPT_MAX_BYTES {
-        return text.to_owned();
+        return (text.to_owned(), false);
     }
     const MARK: &str = "…";
     let mut end = EXCERPT_MAX_BYTES - MARK.len();
@@ -46,7 +50,7 @@ pub fn excerpt(text: &str) -> String {
     while !text.is_char_boundary(end) {
         end -= 1;
     }
-    format!("{}{MARK}", &text[..end])
+    (format!("{}{MARK}", &text[..end]), true)
 }
 
 /// Identifies a session: the harness plus the harness's own session id. Both

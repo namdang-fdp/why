@@ -41,6 +41,7 @@ export function buildLongSession(worktreeId: WorktreeId, turns = 500): SessionTi
         evidence: "observed",
         outcome: null,
         agentId: null,
+        toolUseId: null,
       },
     ];
     // 1 to 4 tool calls per turn, cycling through the kinds a reviewer sees.
@@ -64,6 +65,7 @@ export function buildLongSession(worktreeId: WorktreeId, turns = 500): SessionTi
         evidence: "observed",
         outcome: outcomes[(i * 3 + t) % outcomes.length] ?? "ok",
         agentId: null,
+        toolUseId: `toolu_long_${i}_${t}`,
       });
     }
     const last = i === turns - 1;
@@ -78,6 +80,7 @@ export function buildLongSession(worktreeId: WorktreeId, turns = 500): SessionTi
         evidence: "declared",
         outcome: null,
         agentId: null,
+        toolUseId: null,
       });
     }
     list.push({

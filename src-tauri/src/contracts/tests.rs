@@ -464,6 +464,7 @@ fn session_timeline_wire_format() {
                 evidence: EvidenceLabel::Observed,
                 outcome: Some(ToolOutcome::Unknown),
                 agent_id: None,
+                tool_use_id: Some("call_1".into()),
             }],
         }],
     };
@@ -485,7 +486,8 @@ fn session_timeline_wire_format() {
                 "files": ["src/calc.py"],
                 "evidence": "observed",
                 "outcome": "unknown",
-                "agentId": null
+                "agentId": null,
+                "toolUseId": "call_1"
             }]
         })
     );
@@ -719,4 +721,122 @@ fn collector_health_wire_format() {
     assert_eq!(wire["unavailable"], json!(["lastEventAt"]));
     assert_wire(&CollectorState::Listening, json!({ "kind": "listening" }));
     assert_wire(&HookHarness::Codex, json!("codex"));
+}
+
+// WHY-53: lazy rationale contracts.
+#[test]
+fn rationale_wire_format() {
+    let ok = RationaleResult::Ok {
+        rationale: Rationale {
+            evidence: EvidenceLabel::Declared,
+            source: TranscriptSource::ClaudeTranscript,
+            blocks: vec![RationaleBlock {
+                text: "I'll fix the off-by-one first.".into(),
+                position: BlockPosition::Before,
+                timestamp: Some("2026-11-20T08:00:00Z".into()),
+                encrypted: false,
+            }],
+            harness_version: Some("2.1.322".into()),
+            version_supported: true,
+            truncated: false,
+        },
+    };
+    assert_wire(
+        &ok,
+        json!({
+            "status": "ok",
+            "rationale": {
+                "evidence": "declared",
+                "source": "claudeTranscript",
+                "blocks": [{
+                    "text": "I'll fix the off-by-one first.",
+                    "position": "before",
+                    "timestamp": "2026-11-20T08:00:00Z",
+                    "encrypted": false
+                }],
+                "harnessVersion": "2.1.322",
+                "versionSupported": true,
+                "truncated": false
+            }
+        }),
+    );
+    // A reason is a value, not an error.
+    assert_wire(
+        &RationaleResult::Unavailable {
+            reason: TranscriptUnavailable::OutsideRoot,
+        },
+        json!({ "status": "unavailable", "reason": "outsideRoot" }),
+    );
+}
+
+#[test]
+fn transcript_unavailable_reasons_are_stable_strings() {
+    for (reason, wire) in [
+        (TranscriptUnavailable::NoTranscript, "noTranscript"),
+        (TranscriptUnavailable::Missing, "missing"),
+        (TranscriptUnavailable::OutsideRoot, "outsideRoot"),
+        (
+            TranscriptUnavailable::UnsupportedPlatform,
+            "unsupportedPlatform",
+        ),
+        (TranscriptUnavailable::NotFound, "notFound"),
+        (TranscriptUnavailable::Unreadable, "unreadable"),
+        (
+            TranscriptUnavailable::UnsupportedHarness,
+            "unsupportedHarness",
+        ),
+        (TranscriptUnavailable::NotApplicable, "notApplicable"),
+    ] {
+        assert_wire(&reason, json!(wire));
+    }
+}
+
+#[test]
+fn shell_outcomes_wire_format() {
+    let value = ShellOutcomesResult::Ok {
+        result: ShellOutcomes {
+            outcomes: vec![ShellOutcome {
+                tool_use_id: "exec-1".into(),
+                event_id: "abc:0".into(),
+                turn_id: "t1".into(),
+                agent_id: None,
+                exit_code: 3,
+                outcome: ToolOutcome::Failed,
+                evidence: EvidenceLabel::Observed,
+                source: TranscriptSource::CodexRollout,
+            }],
+            unresolved: 1,
+            harness_version: Some("0.170.0".into()),
+            version_supported: true,
+            truncated: false,
+        },
+    };
+    assert_wire(
+        &value,
+        json!({
+            "status": "ok",
+            "result": {
+                "outcomes": [{
+                    "toolUseId": "exec-1",
+                    "eventId": "abc:0",
+                    "turnId": "t1",
+                    "agentId": null,
+                    "exitCode": 3,
+                    "outcome": "failed",
+                    "evidence": "observed",
+                    "source": "codexRollout"
+                }],
+                "unresolved": 1,
+                "harnessVersion": "0.170.0",
+                "versionSupported": true,
+                "truncated": false
+            }
+        }),
+    );
+    assert_wire(
+        &ShellOutcomesResult::Unavailable {
+            reason: TranscriptUnavailable::NotApplicable,
+        },
+        json!({ "status": "unavailable", "reason": "notApplicable" }),
+    );
 }

@@ -27,7 +27,7 @@ use std::path::{Path, PathBuf};
 use serde_json::Value;
 use thiserror::Error;
 
-use crate::events::excerpt;
+use crate::events::excerpt_with_truncation;
 
 /// Transcripts whose `version` starts with this were checked (payloads.md).
 pub const SUPPORTED_MAJOR: &str = "2.";
@@ -65,12 +65,13 @@ pub enum Query<'a> {
     Turn(&'a str),
 }
 
-/// One assistant `text` block, capped with [`excerpt`].
+/// One assistant `text` block, capped at [`crate::events::EXCERPT_MAX_BYTES`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TextBlock {
     pub uuid: Option<String>,
     pub timestamp: Option<String>,
     pub text: String,
+    pub clipped: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -414,10 +415,14 @@ fn text_blocks(record: &Value) -> impl Iterator<Item = TextBlock> {
         .filter(|b| b.get("type").and_then(Value::as_str) == Some("text"))
         .filter_map(|b| b.get("text").and_then(Value::as_str))
         .filter(|t| !t.trim().is_empty())
-        .map(move |t| TextBlock {
-            uuid: uuid.map(str::to_owned),
-            timestamp: timestamp.map(str::to_owned),
-            text: excerpt(t),
+        .map(move |t| {
+            let (text, clipped) = excerpt_with_truncation(t);
+            TextBlock {
+                uuid: uuid.map(str::to_owned),
+                timestamp: timestamp.map(str::to_owned),
+                text,
+                clipped,
+            }
         })
 }
 
