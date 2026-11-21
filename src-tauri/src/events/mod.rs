@@ -26,6 +26,7 @@
 //! `StoreError` forces the mapping to be written (the match is exhaustive).
 
 pub mod clock;
+pub mod correlation;
 pub mod ingest;
 pub mod memory;
 pub mod model;
@@ -41,6 +42,7 @@ use crate::contracts::{SessionSummary, SessionTimeline, WorktreeId};
 use crate::store::StoreError;
 
 pub use clock::Clock;
+pub use correlation::{EditTouch, ShellTurn, canonical_path};
 pub use memory::MemoryEventStore;
 pub use model::{
     EXCERPT_MAX_BYTES, EventKey, EventKind, NormalizedEvent, SessionKey, ToolCall, ToolClass,
@@ -88,4 +90,43 @@ pub trait EventStore: Send + Sync {
     /// Whole sessions, not single events: pruning a long session's early events
     /// would leave a timeline without its first prompt or its `SessionStart`.
     fn prune_older_than(&self, cutoff_ms: u64) -> Result<usize, StoreError>;
+
+    /// The edit-class tool calls of worktree `wt` that named at least one of
+    /// `paths`, newest first (WHY-16). `paths` must already be in
+    /// [`canonical_path`] form: worktree-relative, `/`-separated; a path that
+    /// is not canonical simply matches nothing. Each result lists only the
+    /// queried paths its call named. A successful finish's targets take
+    /// precedence when it reports them. Start and finish are merged into one
+    /// call, with outcome `Unknown` when no finish was seen. Only
+    /// events resolved to `wt` count: the same relative path in another
+    /// worktree of the repository is a different file.
+    ///
+    /// Cost: SQLite reads the index rows of the queried paths plus the events
+    /// of the calls they point at, plus the timeline ordering fields of the
+    /// matching sessions. The memory store scans all stored events.
+    ///
+    /// The default is an error, not an empty list: a store that forgot to
+    /// implement this must fail loudly, because "no edits found" would label
+    /// every changed file `unexplained`. Both real stores override it.
+    fn edit_calls(
+        &self,
+        _wt: &WorktreeId,
+        _paths: &[String],
+    ) -> Result<Vec<EditTouch>, StoreError> {
+        Err(unsupported("edit_calls"))
+    }
+
+    /// The turns that ran shell commands in worktree `wt`, newest first. A
+    /// lead for the reviewer ("this turn ran commands here"), never an
+    /// attribution: what a command changed is only known to git. Start-only
+    /// attempts remain unconfirmed in the timeline.
+    ///
+    /// Same default as [`EventStore::edit_calls`]: an error, never "none".
+    fn shell_turns(&self, _wt: &WorktreeId) -> Result<Vec<ShellTurn>, StoreError> {
+        Err(unsupported("shell_turns"))
+    }
+}
+
+fn unsupported(method: &str) -> StoreError {
+    StoreError::Backend(format!("this event store does not implement {method}"))
 }

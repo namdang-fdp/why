@@ -23,7 +23,7 @@
 //! wait on `fsync`/`busy_timeout`); the IPC read commands are short enough to
 //! call directly, but `spawn_blocking` is the safe choice for a big timeline too.
 
-use std::collections::{BTreeSet, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
@@ -33,8 +33,12 @@ use rusqlite::{Connection, OpenFlags, Row, TransactionBehavior, params};
 use why_wire::Harness;
 
 use super::clock::Clock;
+use super::correlation::{
+    CallEvent, EditTouch, ShellTurn, build_edit_touches, build_shell_turns, canonical_paths,
+    distinct_sessions, fold_calls, indexed_paths,
+};
 use super::model::{EventKey, EventKind, NormalizedEvent, SessionKey, ToolCall, ToolClass};
-use super::timeline::{build_summary, build_timeline};
+use super::timeline::{TimelinePosition, TurnIndices, build_summary, build_timeline, turn_indices};
 use super::{AppendOutcome, EventStore, MemoryEventStore};
 use crate::contracts::{EvidenceLabel, SessionSummary, SessionTimeline, ToolOutcome, WorktreeId};
 use crate::store::StoreError;
@@ -108,6 +112,37 @@ const MIGRATIONS: &[&str] = &[
              REFERENCES sessions (harness, session_id) ON DELETE CASCADE
      );
      CREATE INDEX events_by_session ON events (harness, session_id, seq);",
+    // v2 (WHY-16): the file -> edit index, and two indexes for correlation.
+    //
+    // * `event_files` is a derived index: one row per (worktree, canonical
+    //   path, event) for events of EDIT-class tool calls. It answers "which
+    //   calls named this file in this worktree" with a primary-key range scan
+    //   instead of decoding every event's `files` JSON. It holds nothing the
+    //   events table does not: it can always be rebuilt from it (the backfill
+    //   below does exactly that). The path is stored canonical (see
+    //   `correlation::canonical_path`), which is why the backfill is Rust code,
+    //   not SQL: `./a/../b.rs` cannot be resolved with `json_each` alone.
+    //   `ON DELETE CASCADE` on the event, so pruning a session (which cascades
+    //   to its events) cleans the index in the same statement;
+    //   `event_files_by_event` is what lets that cascade find its rows without a
+    //   table scan.
+    // * `events_by_tool_use` finds both halves of a call (Pre and Post) by the
+    //   harness's `tool_use_id`; partial, because id-less events are never
+    //   paired.
+    // * `events_shell_by_worktree` finds a worktree's shell and test-run events
+    //   (the "this turn ran commands here" leads) without scanning the rest.
+    "CREATE TABLE event_files (
+         worktree_id TEXT NOT NULL,
+         path        TEXT NOT NULL,
+         event_key   TEXT NOT NULL
+             REFERENCES events (event_key) ON DELETE CASCADE,
+         PRIMARY KEY (worktree_id, path, event_key)
+     ) WITHOUT ROWID;
+     CREATE INDEX event_files_by_event ON event_files (event_key);
+     CREATE INDEX events_by_tool_use
+         ON events (harness, session_id, tool_use_id) WHERE tool_use_id IS NOT NULL;
+     CREATE INDEX events_shell_by_worktree
+         ON events (worktree_id) WHERE tool_class IN ('shell', 'test_run');",
 ];
 
 /// How long a statement waits for another connection's lock before failing with
@@ -213,6 +248,7 @@ const EXPECTED_TABLES: &[(&str, &[&str])] = &[
         "session_worktrees",
         &["worktree_id", "harness", "session_id"],
     ),
+    ("event_files", &["worktree_id", "path", "event_key"]),
     (
         "events",
         &[
@@ -244,6 +280,9 @@ const EXPECTED_INDEXES: &[&str] = &[
     "sessions_by_last_event",
     "session_worktrees_by_session",
     "events_by_session",
+    "event_files_by_event",
+    "events_by_tool_use",
+    "events_shell_by_worktree",
 ];
 
 /// `Err` unless every expected table, column and index exists.
@@ -411,6 +450,12 @@ fn migrate(conn: &mut Connection) -> Result<(), StoreError> {
         };
         tx.execute_batch(sql)
             .map_err(backend(format!("migration to v{} failed", version + 1)))?;
+        // Data fixes that SQL cannot express run in the SAME transaction as the
+        // schema change and the version bump: either the whole step happened or
+        // none of it did.
+        if version + 1 == 2 {
+            backfill_event_files(&tx)?;
+        }
         let next = i64::try_from(version + 1).map_err(|_| newer_schema(version))?;
         tx.pragma_update(None, "user_version", next)
             .map_err(backend("cannot record schema version"))?;
@@ -420,6 +465,50 @@ fn migrate(conn: &mut Connection) -> Result<(), StoreError> {
         )))?;
         tracing::info!(version = version + 1, "migrated event store schema");
     }
+}
+
+/// v2 backfill: index the edit events a v1 database already holds. Applies the
+/// same rule as [`indexed_paths`], split in two because SQL cannot canonicalize
+/// a path: the `WHERE` clause below is that function's guard (a worktree, an
+/// OBSERVED edit-class tool start or finish), and [`canonical_paths`], the very
+/// function `indexed_paths` ends with, makes the paths. Idempotent (`INSERT OR
+/// IGNORE`). One unreadable row is skipped with a warning rather than failing
+/// the migration: a bad row must not lock the user out of their whole history
+/// (the app would fall back to memory).
+fn backfill_event_files(conn: &Connection) -> Result<(), StoreError> {
+    let mut select = conn
+        .prepare(
+            "SELECT event_key, worktree_id, files FROM events \
+             WHERE worktree_id IS NOT NULL AND tool_class = 'edit' \
+               AND evidence = 'observed' \
+               AND kind IN ('tool_started', 'tool_finished')",
+        )
+        .map_err(backend("cannot prepare event_files backfill"))?;
+    let mut insert = conn
+        .prepare(INSERT_EVENT_FILE)
+        .map_err(backend("cannot prepare event_files insert"))?;
+    let rows = select
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        })
+        .map_err(backend("cannot read events for the backfill"))?;
+    for row in rows {
+        let (key, worktree, files) = row.map_err(backend("cannot read an event row"))?;
+        let Ok(files) = serde_json::from_str::<Vec<String>>(&files) else {
+            tracing::warn!(event_key = %key, "skipping an event with unreadable files in the backfill");
+            continue;
+        };
+        for path in canonical_paths(&files) {
+            insert
+                .execute(params![worktree, path, key])
+                .map_err(backend("cannot backfill event_files"))?;
+        }
+    }
+    Ok(())
 }
 
 fn user_version(conn: &Connection) -> Result<usize, StoreError> {
@@ -643,6 +732,9 @@ const INSERT_EVENT: &str = "INSERT INTO events (event_key, harness, session_id, 
      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, \
      ?19, ?20) ON CONFLICT (event_key) DO NOTHING";
 
+const INSERT_EVENT_FILE: &str =
+    "INSERT OR IGNORE INTO event_files (worktree_id, path, event_key) VALUES (?1, ?2, ?3)";
+
 impl EventStore for SqliteEventStore {
     fn append(&self, events: &[NormalizedEvent]) -> Result<AppendOutcome, StoreError> {
         let mut outcome = AppendOutcome::default();
@@ -674,6 +766,10 @@ impl EventStore for SqliteEventStore {
                      VALUES (?1, ?2, ?3)",
                 )
                 .map_err(backend("cannot prepare worktree link"))?;
+
+            let mut index = tx
+                .prepare_cached(INSERT_EVENT_FILE)
+                .map_err(backend("cannot prepare file index insert"))?;
 
             for ev in events {
                 let at = ms_to_i64(ev.at_ms)?;
@@ -730,6 +826,14 @@ impl EventStore for SqliteEventStore {
                 if let Some(wt) = &ev.worktree_id {
                     link.execute(params![wt.0, harness, ev.session.session_id])
                         .map_err(backend("cannot link session to worktree"))?;
+                    // The file index, in the SAME transaction as the event: a
+                    // crash can never leave an event without its index rows.
+                    // (A redelivery `continue`d above, so it adds none.)
+                    for path in indexed_paths(ev) {
+                        index
+                            .execute(params![wt.0, path, ev.key.0])
+                            .map_err(backend("cannot index event files"))?;
+                    }
                 }
             }
         }
@@ -842,6 +946,213 @@ impl EventStore for SqliteEventStore {
         }
         Ok(removed)
     }
+
+    fn edit_calls(&self, wt: &WorktreeId, paths: &[String]) -> Result<Vec<EditTouch>, StoreError> {
+        if paths.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut conn = lock(&self.reader, "reader")?;
+        // One snapshot for every statement below.
+        let tx = conn
+            .transaction()
+            .map_err(backend("cannot start read transaction"))?;
+
+        // 1. Index probe: the events that name a queried path in this worktree.
+        //    Chunked because SQLite caps the number of bound parameters.
+        let mut calls_wanted: BTreeSet<(String, String, String)> = BTreeSet::new();
+        let mut loose_keys: BTreeSet<String> = BTreeSet::new();
+        for chunk in paths.chunks(PATH_CHUNK) {
+            let sql = format!(
+                "SELECT e.harness, e.session_id, e.tool_use_id, e.event_key \
+                 FROM event_files f JOIN events e ON e.event_key = f.event_key \
+                 WHERE f.worktree_id = ?1 AND f.path IN ({})",
+                placeholders(chunk.len(), 2)
+            );
+            let mut stmt = tx
+                .prepare(&sql)
+                .map_err(backend("cannot prepare file index probe"))?;
+            let bound = std::iter::once(wt.0.as_str()).chain(chunk.iter().map(String::as_str));
+            let rows = stmt
+                .query_map(rusqlite::params_from_iter(bound), |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, Option<String>>(2)?,
+                        row.get::<_, String>(3)?,
+                    ))
+                })
+                .map_err(backend("cannot probe the file index"))?;
+            for row in rows {
+                let (harness, session, use_id, key) =
+                    row.map_err(backend("cannot read a file index row"))?;
+                match use_id {
+                    // A call has two halves; fetch both below, by id.
+                    Some(id) => calls_wanted.insert((harness, session, id)),
+                    // No id: the event is a call of its own (it cannot pair).
+                    None => loose_keys.insert(key),
+                };
+            }
+        }
+
+        // 2. Both halves of each matched call (a finish may carry no `files`,
+        //    so the index alone would miss it and report the call as Unknown).
+        let mut events: Vec<CallEvent> = Vec::new();
+        {
+            let mut by_call = tx
+                .prepare_cached(&format!(
+                    "{CALL_EVENTS_SQL} AND harness = ?2 AND session_id = ?3 \
+                     AND tool_use_id = ?4 ORDER BY seq"
+                ))
+                .map_err(backend("cannot prepare call events"))?;
+            for (harness, session, id) in &calls_wanted {
+                collect_call_events(
+                    &mut by_call,
+                    params![wt.0, harness, session, id],
+                    &mut events,
+                )?;
+            }
+            let mut by_key = tx
+                .prepare_cached(&format!("{CALL_EVENTS_SQL} AND event_key = ?2"))
+                .map_err(backend("cannot prepare call event"))?;
+            for key in &loose_keys {
+                collect_call_events(&mut by_key, params![wt.0, key], &mut events)?;
+            }
+        }
+        let calls = fold_calls(events);
+
+        // 3. Merged timeline turn numbers, from a narrow query per session.
+        let indices = session_indices(&tx, &distinct_sessions(&calls))?;
+        let wanted: HashSet<&str> = paths.iter().map(String::as_str).collect();
+        Ok(build_edit_touches(calls, &wanted, &indices))
+    }
+
+    fn shell_turns(&self, wt: &WorktreeId) -> Result<Vec<ShellTurn>, StoreError> {
+        let mut conn = lock(&self.reader, "reader")?;
+        let tx = conn
+            .transaction()
+            .map_err(backend("cannot start read transaction"))?;
+        let mut events: Vec<CallEvent> = Vec::new();
+        {
+            // The literal `IN ('shell', 'test_run')` is what lets SQLite use the
+            // partial index `events_shell_by_worktree`.
+            let mut stmt = tx
+                .prepare_cached(SHELL_EVENTS_SQL)
+                .map_err(backend("cannot prepare shell events"))?;
+            collect_call_events(&mut stmt, params![wt.0], &mut events)?;
+        }
+        let calls = fold_calls(events);
+        let indices = session_indices(&tx, &distinct_sessions(&calls))?;
+        Ok(build_shell_turns(calls, &indices))
+    }
+}
+
+/// How many `?` one `IN (...)` list may hold. SQLite's default limit is 32766
+/// (older builds 999); 400 keeps well under both.
+const PATH_CHUNK: usize = 400;
+
+/// The columns [`collect_call_events`] reads, restricted to one worktree's tool
+/// events; callers append the rest of the WHERE clause. Edit class only.
+const CALL_EVENTS_SQL: &str = "SELECT harness, session_id, turn_id, agent_id, tool_use_id, kind, \
+     outcome, at_ms, files FROM events WHERE worktree_id = ?1 AND tool_class = 'edit' \
+     AND evidence = 'observed' AND kind IN ('tool_started', 'tool_finished')";
+
+/// Shell and test-run tool events of a worktree, in arrival order (`files` is
+/// selected for the shared row decoder; shell events have none).
+const SHELL_EVENTS_SQL: &str = "SELECT harness, session_id, turn_id, agent_id, tool_use_id, kind, \
+     outcome, at_ms, files FROM events WHERE worktree_id = ?1 \
+     AND tool_class IN ('shell', 'test_run') AND evidence = 'observed' AND kind IN ('tool_started', 'tool_finished') \
+     ORDER BY seq";
+
+/// Only the fields that place entries in the timeline, in arrival order.
+const TURN_ORDER_SQL: &str = "SELECT COALESCE(turn_id, ''), at_ms, agent_id, \
+         CASE WHEN kind IN ('tool_started', 'tool_finished') \
+              AND tool_name IS NOT NULL AND tool_class IS NOT NULL THEN tool_use_id END, \
+         kind = 'tool_started' \
+     FROM events WHERE harness = ?1 AND session_id = ?2 \
+         AND kind NOT IN ('session_start', 'session_end') ORDER BY seq";
+
+/// `?<from>, ?<from+1>, ...` for `n` placeholders.
+fn placeholders(n: usize, from: usize) -> String {
+    (from..from + n)
+        .map(|i| format!("?{i}"))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// Run a statement that selects the [`CALL_EVENTS_SQL`] columns and push each
+/// row as a [`CallEvent`].
+fn collect_call_events(
+    stmt: &mut rusqlite::CachedStatement<'_>,
+    params: impl rusqlite::Params,
+    out: &mut Vec<CallEvent>,
+) -> Result<(), StoreError> {
+    let rows = stmt
+        .query_map(params, call_event_from_row)
+        .map_err(backend("cannot read call events"))?;
+    for row in rows {
+        out.push(row.map_err(backend("cannot read a call event row"))?);
+    }
+    Ok(())
+}
+
+/// One row of [`CALL_EVENTS_SQL`] as a [`CallEvent`].
+fn call_event_from_row(row: &Row<'_>) -> rusqlite::Result<CallEvent> {
+    let harness: String = row.get(0)?;
+    let kind: String = row.get(5)?;
+    let outcome: Option<String> = row.get(6)?;
+    let at_ms: i64 = row.get(7)?;
+    let files: String = row.get(8)?;
+    let finished = match decode_kind(&kind, None, outcome.as_deref())
+        .ok_or_else(|| bad_column(5, "event kind", &kind))?
+    {
+        EventKind::ToolFinished { outcome } => Some(outcome),
+        _ => None,
+    };
+    let files: Vec<String> =
+        serde_json::from_str(&files).map_err(|_| bad_column(8, "files", &files))?;
+    Ok(CallEvent {
+        session: SessionKey {
+            harness: decode_harness(&harness).ok_or_else(|| bad_column(0, "harness", &harness))?,
+            session_id: row.get(1)?,
+        },
+        turn_id: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
+        agent_id: row.get(3)?,
+        use_id: row.get(4)?,
+        finished,
+        at_ms: u64::try_from(at_ms).map_err(|_| bad_column(7, "timestamp", &at_ms.to_string()))?,
+        reported_paths: !files.is_empty(),
+        paths: canonical_paths(&files),
+    })
+}
+
+/// Number each session's merged timeline entries without decoding payloads.
+fn session_indices(
+    conn: &Connection,
+    sessions: &[SessionKey],
+) -> Result<HashMap<SessionKey, TurnIndices>, StoreError> {
+    let mut stmt = conn
+        .prepare_cached(TURN_ORDER_SQL)
+        .map_err(backend("cannot prepare turn order"))?;
+    let mut out = HashMap::new();
+    for key in sessions {
+        let rows = stmt
+            .query_map(params![key.harness.as_str(), key.session_id], |row| {
+                let at: i64 = row.get(1)?;
+                Ok(TimelinePosition::<String> {
+                    turn_id: row.get(0)?,
+                    at_ms: u64::try_from(at)
+                        .map_err(|_| bad_column(1, "timestamp", &at.to_string()))?,
+                    agent_id: row.get(2)?,
+                    use_id: row.get(3)?,
+                    is_start: row.get(4)?,
+                })
+            })
+            .map_err(backend("cannot read turn order"))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(backend("cannot read a turn order row"))?;
+        out.insert(key.clone(), turn_indices(&rows));
+    }
+    Ok(out)
 }
 
 /// `PRAGMA incremental_vacuum` frees one page per step of the statement, so it
@@ -990,5 +1301,234 @@ mod tests {
         assert!(store.append(&[ok.clone(), bad]).is_err());
         // The whole batch rolled back, including the valid first event.
         assert!(store.timeline(&ok.session).unwrap().is_none());
+    }
+
+    // ---- WHY-16: the file index and its v2 migration ---------------------
+
+    /// `EXPLAIN QUERY PLAN` detail lines of `sql` with `n` text parameters.
+    fn plan(store: &SqliteEventStore, sql: &str, n: usize) -> String {
+        let conn = store.reader.lock().unwrap();
+        let mut stmt = conn.prepare(&format!("EXPLAIN QUERY PLAN {sql}")).unwrap();
+        let rows = stmt
+            .query_map(
+                rusqlite::params_from_iter(std::iter::repeat_n("x", n)),
+                |r| r.get::<_, String>(3),
+            )
+            .unwrap();
+        rows.map(Result::unwrap).collect::<Vec<_>>().join(" | ")
+    }
+
+    /// The correlation queries run on indexes, never a table scan: this is the
+    /// "an index query must not load every event" requirement, checked against
+    /// the exact SQL text the store runs.
+    #[test]
+    fn correlation_queries_use_their_indexes() {
+        let (_dir, store) = open_tmp();
+
+        let probe = "SELECT e.harness, e.session_id, e.tool_use_id, e.event_key \
+             FROM event_files f JOIN events e ON e.event_key = f.event_key \
+             WHERE f.worktree_id = ?1 AND f.path IN (?2, ?3)";
+        let p = plan(&store, probe, 3);
+        assert!(p.contains("SEARCH f USING PRIMARY KEY"), "{p}");
+        assert!(!p.contains("SCAN"), "{p}");
+
+        let by_call = format!(
+            "{CALL_EVENTS_SQL} AND harness = ?2 AND session_id = ?3 AND tool_use_id = ?4 ORDER BY seq"
+        );
+        let p = plan(&store, &by_call, 4);
+        assert!(p.contains("events_by_tool_use"), "{p}");
+        assert!(!p.contains("SCAN"), "{p}");
+
+        let p = plan(&store, SHELL_EVENTS_SQL, 1);
+        assert!(p.contains("events_shell_by_worktree"), "{p}");
+        assert!(!p.contains("SCAN"), "{p}");
+
+        let p = plan(&store, TURN_ORDER_SQL, 2);
+        assert!(p.contains("events_by_session"), "{p}");
+    }
+
+    /// Insert `events` the way WHY v1 did: the v1 schema exactly, no `event_files`.
+    fn write_v1_database(path: &Path, events: &[NormalizedEvent], corrupt_files_of: Option<&str>) {
+        let conn = Connection::open(path).unwrap();
+        conn.pragma_update(None, "foreign_keys", true).unwrap();
+        conn.pragma_update(None, "auto_vacuum", "INCREMENTAL")
+            .unwrap();
+        conn.execute_batch(MIGRATIONS[0]).unwrap();
+        conn.pragma_update(None, "user_version", 1).unwrap();
+        for ev in events {
+            let at = ev.at_ms as i64;
+            conn.execute(
+                UPSERT_SESSION,
+                params![ev.session.harness.as_str(), ev.session.session_id, at],
+            )
+            .unwrap();
+            let (kind, resumed, outcome) = encode_kind(&ev.kind);
+            conn.execute(
+                INSERT_EVENT,
+                params![
+                    ev.key.0,
+                    ev.session.harness.as_str(),
+                    ev.session.session_id,
+                    ev.hook_event,
+                    kind,
+                    resumed,
+                    outcome,
+                    at,
+                    ev.turn_id,
+                    ev.agent_id,
+                    ev.tool.as_ref().and_then(|t| t.use_id.as_deref()),
+                    ev.tool.as_ref().map(|t| t.name.as_str()),
+                    ev.tool.as_ref().map(|t| encode_class(t.class)),
+                    ev.cwd,
+                    ev.worktree_id.as_ref().map(|w| w.0.as_str()),
+                    ev.model,
+                    ev.text,
+                    serde_json::to_string(&ev.files).unwrap(),
+                    encode_evidence(ev.evidence),
+                    ev.transcript_path,
+                ],
+            )
+            .unwrap();
+            if let Some(wt) = &ev.worktree_id {
+                conn.execute(
+                    "INSERT OR IGNORE INTO session_worktrees (worktree_id, harness, session_id) \
+                     VALUES (?1, ?2, ?3)",
+                    params![wt.0, ev.session.harness.as_str(), ev.session.session_id],
+                )
+                .unwrap();
+            }
+        }
+        if let Some(key) = corrupt_files_of {
+            conn.execute(
+                "UPDATE events SET files = 'not json' WHERE event_key = ?1",
+                [key],
+            )
+            .unwrap();
+        }
+    }
+
+    fn count(path: &Path, sql: &str) -> i64 {
+        Connection::open(path)
+            .unwrap()
+            .query_row(sql, [], |r| r.get(0))
+            .unwrap()
+    }
+
+    /// A v1 `events.db` opens, is migrated in place, backfilled with the same
+    /// rule `append` uses, answers correlation queries, and a second open changes
+    /// nothing.
+    #[test]
+    fn a_v1_database_migrates_in_place_and_backfills_the_file_index() {
+        use crate::events::test_support::tool;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("events.db");
+
+        let with_files = |mut ev: NormalizedEvent, files: &[&str], class: ToolClass| {
+            ev.files = files.iter().map(|f| (*f).to_owned()).collect();
+            ev.tool.as_mut().unwrap().class = class;
+            ev
+        };
+        // `tool` builds Bash events in wt-1; reshape them into the cases we need.
+        let pre = with_files(
+            tool("s1", "t1", None, 10, "p1"),
+            &["./a/../b.rs", "/abs/x.rs"],
+            ToolClass::Edit,
+        );
+        let post = with_files(
+            tool("s1", "t1", Some(ToolOutcome::Ok), 11, "p1"),
+            &[],
+            ToolClass::Edit,
+        );
+        let shell = with_files(
+            tool("s1", "t2", None, 12, "p1"),
+            &["b.rs"],
+            ToolClass::Shell,
+        );
+        let mut no_wt = with_files(tool("s1", "t3", None, 13, "p1"), &["b.rs"], ToolClass::Edit);
+        no_wt.worktree_id = None;
+        let broken = with_files(tool("s1", "t4", None, 14, "p1"), &["c.rs"], ToolClass::Edit);
+        let events = [pre, post, shell, no_wt, broken.clone()];
+        write_v1_database(&path, &events, Some(&broken.key.0));
+
+        // Premise: a genuine v1 file.
+        assert_eq!(count(&path, "PRAGMA user_version"), 1);
+        assert_eq!(
+            count(
+                &path,
+                "SELECT count(*) FROM sqlite_schema WHERE name = 'event_files'"
+            ),
+            0
+        );
+
+        for round in 0..2 {
+            let store = SqliteEventStore::open(&path).unwrap();
+            assert_eq!(count(&path, "PRAGMA user_version"), 2, "round {round}");
+            // Only the `b.rs` row of the edit start: the finish names no file, the shell
+            // event is not an edit, `no_wt` has no worktree, `broken` is unreadable
+            // (skipped, not fatal).
+            assert_eq!(
+                count(&path, "SELECT count(*) FROM event_files"),
+                1,
+                "round {round}"
+            );
+            // No event was touched by the migration.
+            assert_eq!(
+                count(&path, "SELECT count(*) FROM events"),
+                5,
+                "round {round}"
+            );
+
+            let touches = store
+                .edit_calls(&WorktreeId("wt-1".into()), &["b.rs".to_owned()])
+                .unwrap();
+            assert_eq!(touches.len(), 1, "round {round}");
+            assert_eq!(
+                touches[0].outcome,
+                ToolOutcome::Ok,
+                "paired with its finish"
+            );
+            assert_eq!(touches[0].turn_id, "p1");
+        }
+
+        // New events after the migration are indexed by `append`.
+        let store = SqliteEventStore::open(&path).unwrap();
+        let mut fresh = tool("s2", "n1", Some(ToolOutcome::Ok), 20, "p9");
+        fresh.files = vec!["new.rs".into()];
+        fresh.tool.as_mut().unwrap().class = ToolClass::Edit;
+        store.append(&[fresh]).unwrap();
+        assert_eq!(
+            store
+                .edit_calls(&WorktreeId("wt-1".into()), &["new.rs".to_owned()])
+                .unwrap()
+                .len(),
+            1
+        );
+    }
+
+    /// A failed migration leaves a v1 file exactly as it was (the whole step is
+    /// one transaction): simulate a failure after the schema changes by making
+    /// the backfill's target already exist as something else.
+    #[test]
+    fn a_failed_v2_migration_leaves_the_v1_file_untouched() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("events.db");
+        write_v1_database(&path, &[], None);
+        // `event_files` exists with the wrong shape, so `CREATE TABLE event_files`
+        // inside the v2 step fails.
+        Connection::open(&path)
+            .unwrap()
+            .execute_batch("CREATE TABLE event_files (x)")
+            .unwrap();
+
+        assert!(SqliteEventStore::open(&path).is_err());
+        assert_eq!(count(&path, "PRAGMA user_version"), 1, "version not bumped");
+        assert_eq!(
+            count(
+                &path,
+                "SELECT count(*) FROM sqlite_schema WHERE name = 'events_by_tool_use'"
+            ),
+            0,
+            "the step's other statements rolled back too"
+        );
     }
 }

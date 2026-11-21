@@ -68,12 +68,157 @@ pub fn effective_status(status: SessionStatus, last_event_ms: u64, now_ms: u64) 
     }
 }
 
-/// One timeline entry while it is being assembled.
-struct Entry {
-    at_ms: u64,
+/// The fields that place an event in the timeline. SQLite can read these
+/// without loading the event's message or files.
+#[derive(Clone, Copy)]
+pub(crate) struct TimelinePosition<S> {
+    pub turn_id: S,
+    pub at_ms: u64,
+    pub agent_id: Option<S>,
+    pub use_id: Option<S>,
+    pub is_start: bool,
+}
+
+impl<S: AsRef<str>> TimelinePosition<S> {
+    fn borrowed(&self) -> TimelinePosition<&str> {
+        TimelinePosition {
+            turn_id: self.turn_id.as_ref(),
+            at_ms: self.at_ms,
+            agent_id: self.agent_id.as_ref().map(AsRef::as_ref),
+            use_id: self.use_id.as_ref().map(AsRef::as_ref),
+            is_start: self.is_start,
+        }
+    }
+}
+
+impl<'a> TimelinePosition<&'a str> {
+    pub(crate) fn from_event(ev: &'a NormalizedEvent) -> Self {
+        let use_id = match ev.kind {
+            EventKind::ToolStarted | EventKind::ToolFinished { .. } => {
+                ev.tool.as_ref().and_then(|tool| tool.use_id.as_deref())
+            }
+            _ => None,
+        };
+        Self {
+            turn_id: ev.turn_id.as_deref().unwrap_or_default(),
+            at_ms: ev.at_ms,
+            agent_id: ev.agent_id.as_deref(),
+            use_id,
+            is_start: ev.kind == EventKind::ToolStarted,
+        }
+    }
+}
+
+struct Entry<'a, T> {
+    position: TimelinePosition<&'a str>,
     arrival_index: usize,
-    turn: String,
-    event: TimelineEvent,
+    value: T,
+}
+
+/// Both the rendered timeline and the attribution index merge and order rows
+/// here. The index only needs the position, so its entry payload is `()`.
+struct Entries<'a, T> {
+    entries: Vec<Entry<'a, T>>,
+    tools: HashMap<(Option<&'a str>, &'a str), usize>,
+}
+
+impl<'a, T> Entries<'a, T> {
+    fn new() -> Self {
+        Self {
+            entries: Vec::new(),
+            tools: HashMap::new(),
+        }
+    }
+
+    fn push(
+        &mut self,
+        position: TimelinePosition<&'a str>,
+        arrival_index: usize,
+        create: impl FnOnce() -> T,
+        merge: impl FnOnce(&mut T),
+    ) {
+        if let Some(id) = position.use_id {
+            let slot = self
+                .tools
+                .entry((position.agent_id, id))
+                .or_insert(self.entries.len());
+            if let Some(entry) = self.entries.get_mut(*slot) {
+                if position.is_start {
+                    // A finish may have a different turn ID or be stamped
+                    // earlier after a clock adjustment. The start anchors it.
+                    entry.position = position;
+                    entry.arrival_index = arrival_index;
+                }
+                merge(&mut entry.value);
+                return;
+            }
+        }
+        self.entries.push(Entry {
+            position,
+            arrival_index,
+            value: create(),
+        });
+    }
+
+    fn ordered(mut self) -> Vec<Entry<'a, T>> {
+        self.entries
+            .sort_by_key(|e| (e.position.at_ms, e.arrival_index));
+        self.entries
+    }
+}
+
+#[derive(Default)]
+pub(crate) struct TurnIndices {
+    ids: Vec<String>,
+    by_id: HashMap<String, usize>,
+    by_tool: HashMap<Option<String>, HashMap<String, usize>>,
+}
+
+impl TurnIndices {
+    pub(crate) fn locate(
+        &self,
+        turn: &str,
+        agent_id: &Option<String>,
+        use_id: Option<&str>,
+    ) -> Option<(&str, u32)> {
+        let index = use_id
+            .and_then(|id| self.by_tool.get(agent_id)?.get(id))
+            .or_else(|| self.by_id.get(turn))?;
+        Some((&self.ids[*index], turn_index(*index)))
+    }
+}
+
+pub(crate) fn turn_indices<S: AsRef<str>>(positions: &[TimelinePosition<S>]) -> TurnIndices {
+    let mut sorted: Vec<_> = positions.iter().enumerate().collect();
+    sorted.sort_by_key(|&(_, position)| position.at_ms);
+    let mut entries = Entries::new();
+    for (arrival, position) in sorted {
+        entries.push(position.borrowed(), arrival, || (), |_| ());
+    }
+
+    let mut turns = TurnIndices::default();
+    for entry in entries.ordered() {
+        let position = entry.position;
+        let index = *turns
+            .by_id
+            .entry(position.turn_id.to_owned())
+            .or_insert_with(|| {
+                turns.ids.push(position.turn_id.to_owned());
+                turns.ids.len() - 1
+            });
+        if let Some(id) = position.use_id {
+            turns
+                .by_tool
+                .entry(position.agent_id.map(str::to_owned))
+                .or_default()
+                .insert(id.to_owned(), index);
+        }
+    }
+    turns
+}
+
+fn turn_index(index: usize) -> u32 {
+    u32::try_from(index).unwrap_or(u32::MAX)
 }
 
 fn kind_for_tool(class: ToolClass) -> TimelineEventKind {
@@ -86,27 +231,21 @@ fn kind_for_tool(class: ToolClass) -> TimelineEventKind {
     }
 }
 
-fn entry(
+fn timeline_event(
     ev: &NormalizedEvent,
-    arrival_index: usize,
     kind: TimelineEventKind,
     outcome: Option<ToolOutcome>,
-) -> Entry {
-    Entry {
-        at_ms: ev.at_ms,
-        arrival_index,
-        turn: ev.turn_id.clone().unwrap_or_default(),
-        event: TimelineEvent {
-            id: ev.key.0.clone(),
-            kind,
-            at: rfc3339_from_ms(ev.at_ms),
-            tool_name: ev.tool.as_ref().map(|t| t.name.clone()),
-            summary: ev.text.clone().unwrap_or_default(),
-            files: ev.files.clone(),
-            evidence: ev.evidence,
-            outcome,
-            agent_id: ev.agent_id.clone(),
-        },
+) -> TimelineEvent {
+    TimelineEvent {
+        id: ev.key.0.clone(),
+        kind,
+        at: rfc3339_from_ms(ev.at_ms),
+        tool_name: ev.tool.as_ref().map(|t| t.name.clone()),
+        summary: ev.text.clone().unwrap_or_default(),
+        files: ev.files.clone(),
+        evidence: ev.evidence,
+        outcome,
+        agent_id: ev.agent_id.clone(),
     }
 }
 
@@ -135,109 +274,86 @@ pub fn build_timeline(
     sorted.sort_by_key(|&(_, ev)| ev.at_ms);
 
     let mut status = SessionStatus::Unknown;
-    let mut entries: Vec<Entry> = Vec::new();
-    // (agent_id, tool_use_id) -> index in `entries`.
-    let mut tools: HashMap<(Option<&str>, &str), usize> = HashMap::new();
-    let mut turn_ends: HashMap<String, u64> = HashMap::new();
-    let mut prompts: HashMap<String, String> = HashMap::new();
+    let mut entries = Entries::new();
+    let mut turn_ends: HashMap<&str, u64> = HashMap::new();
+    let mut prompts: HashMap<&str, String> = HashMap::new();
 
     for &(arrival_index, ev) in &sorted {
-        match &ev.kind {
-            EventKind::SessionStart { .. } => status = SessionStatus::Live,
-            EventKind::SessionEnd => status = SessionStatus::Ended,
+        let position = TimelinePosition::from_event(ev);
+        let (kind, outcome) = match &ev.kind {
+            EventKind::SessionStart { .. } => {
+                status = SessionStatus::Live;
+                continue;
+            }
+            EventKind::SessionEnd => {
+                status = SessionStatus::Ended;
+                continue;
+            }
             EventKind::Prompt => {
-                let turn = ev.turn_id.clone().unwrap_or_default();
                 if let Some(text) = &ev.text {
-                    prompts.entry(turn).or_insert_with(|| text.clone());
+                    prompts
+                        .entry(position.turn_id)
+                        .or_insert_with(|| text.clone());
                 }
-                entries.push(entry(ev, arrival_index, TimelineEventKind::Prompt, None));
+                (TimelineEventKind::Prompt, None)
             }
-            EventKind::AssistantMessage => {
-                entries.push(entry(
-                    ev,
-                    arrival_index,
-                    TimelineEventKind::AssistantMessage,
-                    None,
-                ));
-            }
+            EventKind::AssistantMessage => (TimelineEventKind::AssistantMessage, None),
             EventKind::SubagentStarted | EventKind::SubagentStopped => {
-                entries.push(entry(ev, arrival_index, TimelineEventKind::Subagent, None));
+                (TimelineEventKind::Subagent, None)
             }
             EventKind::Stop => {
-                let turn = ev.turn_id.clone().unwrap_or_default();
-                let end = turn_ends.entry(turn).or_insert(ev.at_ms);
+                let end = turn_ends.entry(position.turn_id).or_insert(ev.at_ms);
                 *end = (*end).max(ev.at_ms);
-                entries.push(entry(ev, arrival_index, TimelineEventKind::Stop, None));
+                (TimelineEventKind::Stop, None)
             }
             EventKind::ToolStarted | EventKind::ToolFinished { .. } => {
-                let (class, use_id) = match &ev.tool {
-                    Some(t) => (t.class, t.use_id.as_deref()),
-                    None => (ToolClass::Other, None),
-                };
+                let class = ev.tool.as_ref().map_or(ToolClass::Other, |tool| tool.class);
                 let outcome = match &ev.kind {
                     EventKind::ToolFinished { outcome } => *outcome,
                     _ => ToolOutcome::Unknown,
                 };
-                let is_start = matches!(ev.kind, EventKind::ToolStarted);
-                let existing =
-                    use_id.and_then(|id| tools.get(&(ev.agent_id.as_deref(), id)).copied());
-                match existing {
-                    // The other half is already there: merge into it.
-                    Some(i) => {
-                        let e = &mut entries[i];
-                        if is_start {
-                            // The entry shows the call where it started.
-                            e.at_ms = ev.at_ms;
-                            e.arrival_index = arrival_index;
-                            e.turn = ev.turn_id.clone().unwrap_or_default();
-                            e.event.at = rfc3339_from_ms(ev.at_ms);
-                            e.event.id = ev.key.0.clone();
-                            if let Some(text) = &ev.text {
-                                e.event.summary = text.clone();
-                            }
-                        } else {
-                            e.event.outcome = Some(outcome);
-                            if e.event.summary.is_empty() {
-                                e.event.summary = ev.text.clone().unwrap_or_default();
-                            }
-                        }
-                        merge_files(&mut e.event.files, &ev.files);
+                (kind_for_tool(class), Some(outcome))
+            }
+        };
+        entries.push(
+            position,
+            arrival_index,
+            || timeline_event(ev, kind, outcome),
+            |event| {
+                if position.is_start {
+                    event.at = rfc3339_from_ms(ev.at_ms);
+                    event.id = ev.key.0.clone();
+                    if let Some(text) = &ev.text {
+                        event.summary = text.clone();
                     }
-                    None => {
-                        if let Some(id) = use_id {
-                            tools.insert((ev.agent_id.as_deref(), id), entries.len());
-                        }
-                        entries.push(entry(
-                            ev,
-                            arrival_index,
-                            kind_for_tool(class),
-                            Some(outcome),
-                        ));
+                } else {
+                    event.outcome = outcome;
+                    if event.summary.is_empty() {
+                        event.summary = ev.text.clone().unwrap_or_default();
                     }
                 }
-            }
-        }
+                merge_files(&mut event.files, &ev.files);
+            },
+        );
     }
 
-    // A merged row takes both its timestamp and arrival order from the start.
-    entries.sort_by_key(|e| (e.at_ms, e.arrival_index));
-
-    // Group into turns, ordered by each turn's first entry.
+    // Group into turns, ordered by each turn's first merged entry.
     let mut turns: Vec<Turn> = Vec::new();
-    let mut turn_index: HashMap<String, usize> = HashMap::new();
-    for e in entries {
-        let i = *turn_index.entry(e.turn.clone()).or_insert_with(|| {
+    let mut by_turn: HashMap<&str, usize> = HashMap::new();
+    for entry in entries.ordered() {
+        let turn = entry.position.turn_id;
+        let i = *by_turn.entry(turn).or_insert_with(|| {
             turns.push(Turn {
-                id: e.turn.clone(),
-                index: u32::try_from(turns.len()).unwrap_or(u32::MAX),
-                prompt: prompts.get(&e.turn).cloned(),
-                started_at: e.event.at.clone(),
-                ended_at: turn_ends.get(&e.turn).map(|&ms| rfc3339_from_ms(ms)),
+                id: turn.to_owned(),
+                index: turn_index(turns.len()),
+                prompt: prompts.get(turn).cloned(),
+                started_at: entry.value.at.clone(),
+                ended_at: turn_ends.get(turn).map(|&ms| rfc3339_from_ms(ms)),
                 events: Vec::new(),
             });
             turns.len() - 1
         });
-        turns[i].events.push(e.event);
+        turns[i].events.push(entry.value);
     }
 
     let &(_, first) = sorted.first()?;
