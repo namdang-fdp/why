@@ -8,7 +8,9 @@ WHY is a local-first desktop app (Tauri 2 + Rust core, React 19 + TypeScript UI)
 
 ## Layout
 
-- `src-tauri/src/`: Rust core. `git/` (all git access), `store/` (persistence trait + backends), `ipc/` (Tauri commands), `state.rs` (shared `AppState`), `contracts/` (IPC types), `watch/`.
+- `src-tauri/src/`: Rust core. `git/` (all git access), `store/` (persistence trait + backends), `ipc/` (Tauri commands), `state.rs` (shared `AppState`), `contracts/` (IPC types), `watch/`. Session context (v0.2): `collector/` (socket, resolver, spool drain), `adapters/` (harness payloads → `NormalizedEvent`), `events/` (`EventStore` trait, SQLite + memory, timeline, correlation), `hooks/` (user-level hook installer), `instance.rs`.
+- `src-tauri/` is a Cargo workspace: `crates/why-hook` (the hook binary agents run; no Tauri, fail-open) and `crates/why-wire` (envelope, allowlist, spool, instance paths shared by app and hook). Run cargo with `--workspace` (the `pnpm` scripts do).
+- Dev vs installed instance: `pnpm dev` uses a separate data dir (`<installed data dir>-dev`, shared by all dev ports), socket `collector-dev-<port>.sock`, spool `spool-<port>/` and hook binary `why/bin/dev-<port>/why-hook`. Never point a dev build at the installed instance's paths, and never install hooks into the real `~/.claude` / `~/.codex` while developing (tests use temp homes).
 - `ui/`: React frontend (Vite root). Rust workers do not touch it; UI workers do not touch `src-tauri/`.
 - `ui/src/contracts/` is **generated** from `src-tauri/src/contracts/` by ts-rs. Never hand-edit it; run `pnpm gen:contracts` and commit the result. A test fails if they drift.
 
@@ -22,7 +24,7 @@ WHY is a local-first desktop app (Tauri 2 + Rust core, React 19 + TypeScript UI)
 
 ## Verification
 
-- Before reporting: `pnpm lint` and `pnpm test` must pass (they run clippy `-D warnings`, `cargo fmt --check`, eslint, `tsc`, cargo tests, vitest). Run `pnpm fmt` to fix formatting.
+- Before reporting: `pnpm lint` and `pnpm test` must pass (they run clippy `-D warnings`, `cargo fmt --check`, eslint, `tsc`, `prettier --check`, cargo tests, vitest). Run `pnpm fmt` to fix formatting; `main` is formatted, so `pnpm fmt` should only touch files you changed. If it touches others, revert them and report it.
 - Report what you did **not** verify (for example "did not launch the app on macOS"). Never claim a pass you did not see.
 
 ## Rust rules

@@ -46,7 +46,12 @@ pub enum SessionStatus {
     /// `codex exec` process ends with its own `SessionEnd`, and a resume makes
     /// the same session live again.
     Ended,
-    /// No lifecycle event seen (for example the hook was installed mid-session).
+    /// Not enough evidence to say: no lifecycle event was seen (for example the
+    /// hook was installed mid-session), OR the session looked live but no event
+    /// of any kind arrived for 30 minutes (`STALE_AFTER_MS` in
+    /// `events/timeline.rs`), which is what an agent killed without a
+    /// `SessionEnd` looks like. Computed when the list is read; any new event
+    /// makes a stale session live again.
     Unknown,
 }
 
