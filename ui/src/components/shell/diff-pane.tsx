@@ -1,11 +1,11 @@
-import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
+import { lazy, Suspense, useContext, useEffect, useState, type ReactNode } from "react";
 import { Binary, FileDiff, Files, FileWarning } from "lucide-react";
 import { DiffSkeleton } from "@/components/diff/diff-skeleton";
 import { hasContentDiff } from "@/components/diff/diff-preview";
 import type { FileDiff as FileDiffData } from "@/contracts";
 import { finishFileSwitch } from "@/lib/perf";
 import { selectActiveFile, selectChanges } from "@/stores/workspace";
-import { useWorkspace } from "@/stores/workspace-context";
+import { WorkspaceContext, useWorkspace } from "@/stores/workspace-context";
 import { ErrorMessage, LoadingMessage } from "./async-message";
 import { FilterNotice, FilterTrustPanel } from "./filter-trust";
 import { ChangeStatusBadge, LineCounts, displayPath } from "./change-labels";
@@ -167,6 +167,20 @@ export function DiffPane() {
   const file = useWorkspace(selectActiveFile);
   const diff = useWorkspace((state) => state.fileDiff);
   const layout = useWorkspace((state) => state.diffLayout);
+
+  // Line origins are read only for the file open here, never for every changed file.
+  // A path that is not valid UTF-8 shares its display string with other files: never ask.
+  const workspace = useContext(WorkspaceContext);
+  const worktreeId = useWorkspace((state) => state.worktreeId);
+  const originsPath = file && !file.pathLossy ? file.path : null;
+  useEffect(() => {
+    const origins = workspace.getState().lineOrigins.getState();
+    void origins.setTarget(originsPath === null ? null : worktreeId, originsPath);
+  }, [workspace, worktreeId, originsPath]);
+  useEffect(
+    () => () => void workspace.getState().lineOrigins.getState().setTarget(null, null),
+    [workspace],
+  );
   const setLayout = useWorkspace((state) => state.setDiffLayout);
   const pathLossy = file?.pathLossy || (diff.status === "ok" && diff.data.pathLossy);
   const repo = useWorkspace((state) =>

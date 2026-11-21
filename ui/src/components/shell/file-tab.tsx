@@ -3,6 +3,7 @@ import { useSessions, useWorkspace } from "@/stores/workspace-context";
 import { inspectorViewStore } from "@/stores/inspector-view";
 import { evidenceKind, fileCaveat, fileChipLabel } from "./attribution-model";
 import { FileActivity } from "./file-activity";
+import { LineOriginsPanel } from "./line-origins-panel";
 import { useCurrentAttribution } from "./use-attribution";
 
 /**
@@ -63,6 +64,8 @@ export function FileTab() {
         )}
         {kind === "explained" && <p className="evidence-note">{fileCaveat}</p>}
       </div>
+      {/* Between the verdict on the file and its edit list: where each LINE came from. */}
+      <LineOriginsPanel file={file} />
       <FileActivity
         file={file}
         empty={

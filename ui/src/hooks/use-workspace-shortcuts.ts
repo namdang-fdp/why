@@ -52,6 +52,14 @@ export const shortcutGroups = [
       { label: "Keyboard shortcuts", keys: ["?"] },
     ],
   },
+  {
+    // Registered by the diff editor itself (they work while it has focus).
+    title: "Line origins (in the diff)",
+    shortcuts: [
+      { label: "Show where the cursor line came from", keys: ["o"] },
+      { label: "Next / previous line with an unknown origin", keys: [".", ","] },
+    ],
+  },
 ];
 
 function isEditing(target: EventTarget | null) {

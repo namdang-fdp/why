@@ -23,3 +23,10 @@ export function useEvidence<T>(selector: (state: EvidenceState) => T): T {
   const store = useContext(WorkspaceContext);
   return useStore(store.getState().evidence, selector);
 }
+
+type LineOriginsState = ReturnType<ReturnType<Workspace["getState"]>["lineOrigins"]["getState"]>;
+
+export function useLineOrigins<T>(selector: (state: LineOriginsState) => T): T {
+  const store = useContext(WorkspaceContext);
+  return useStore(store.getState().lineOrigins, selector);
+}

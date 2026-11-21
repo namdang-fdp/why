@@ -40,6 +40,9 @@ function fixtureOptionsFromUrl(): FixtureOptions {
     // `?filters=1` gives each sample repository a different filter-driver state:
     // `why` is blocked (its own .git/config defines one), `billing-api` only uses
     // the user's git-lfs.
+    // `?provenance=1` lists the sample files that have line origins (`src/calc.py`,
+    // `src/helper.py` and a 2,000-line file) with matching diffs, to try the gutter.
+    provenance: params.get("provenance") === "1",
     ...(params.get("filters") === "1" && { filters: sampleFilters }),
     ...(params.get("storage") === "temporary" && {
       storage: {
