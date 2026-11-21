@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { AlignLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useWorkspace } from "@/stores/workspace-context";
+import { useEvidence, useWorkspace } from "@/stores/workspace-context";
+import { outcomesNote } from "./outcome-overlay";
 import type { SessionSummary } from "@/contracts";
 import { useNowSeconds } from "@/hooks/use-now";
 import { HarnessBadge, PromptExcerpt, SessionTime, StatusBadge } from "./session-labels";
@@ -98,6 +99,7 @@ export function TaskHeader({ session }: { session: SessionSummary }) {
       ) : (
         <p className="session-muted">Task unknown</p>
       )}
+      <OutcomesNote session={session} />
       <dl className="session-task-times">
         <div>
           <dt>Started</dt>
@@ -113,5 +115,29 @@ export function TaskHeader({ session }: { session: SessionSummary }) {
         </div>
       </dl>
     </header>
+  );
+}
+
+/**
+ * One quiet line about exit-code recovery for a Codex session: why some calls
+ * stay unknown, or that the rollout could not be read. Nothing for Claude (its
+ * hooks report exit codes) and nothing when recovery simply worked.
+ */
+function OutcomesNote({ session }: { session: SessionSummary }) {
+  const state = useEvidence((s) => s.outcomes);
+  const forSession = useEvidence((s) => s.session?.id === session.id);
+  const refresh = useEvidence((s) => s.loadOutcomes);
+  if (session.harness !== "codex" || !forSession) return null;
+  const note = outcomesNote(state);
+  if (!note) return null;
+  return (
+    <p className="session-outcomes-note" role="status">
+      {note}{" "}
+      {state.status !== "loading" && (
+        <button type="button" className="session-text-button" onClick={() => void refresh()}>
+          Refresh
+        </button>
+      )}
+    </p>
   );
 }

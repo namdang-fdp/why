@@ -37,7 +37,9 @@ export function ShortcutHelp({
           ))}
         </div>
         <p className="text-sm text-muted-foreground">
-          Search for <strong>Set up agent hooks</strong> in the command palette. Tab moves through
+          Search for <strong>Set up agent hooks</strong>, <strong>Show why for this turn</strong> or{" "}
+          <strong>Show unexplained files</strong> in the command palette. Why? shows the
+          agent&rsquo;s own words and reads its transcript only when you open it. Tab moves through
           the preview controls, and Esc closes the dialog.
         </p>
       </DialogContent>

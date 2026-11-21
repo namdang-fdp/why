@@ -10,13 +10,17 @@ import type {
   Repository,
   RepositoryChanged,
   RepositorySecurity,
+  RationaleResult,
   RevokeResult,
   SessionId,
   SessionsChanged,
   SessionSummary,
   SessionTimeline,
+  ShellOutcomesResult,
   StorageStatus,
+  TurnRef,
   Worktree,
+  WorktreeAttribution,
   WorktreeChanged,
   WorktreeId,
 } from "@/contracts";
@@ -68,4 +72,14 @@ export interface DataSource {
   previewUninstall(harness: HookHarness): Promise<PreviewResult>;
   uninstall(harness: HookHarness, fingerprint: string): Promise<ApplyResult>;
   hookStatus(): Promise<HookStatusReport>;
+  /** Per changed file: the turns that explain it, the attempts that do not, and the shell leads. */
+  getWorktreeAttribution(worktreeId: WorktreeId, mode?: DiffMode): Promise<WorktreeAttribution>;
+  /** Every captured edit call on one file, newest first, any outcome. */
+  getFileActivity(worktreeId: WorktreeId, path: string): Promise<TurnRef[]>;
+  /** The agent's words for one turn. Reads the harness transcript: call only when the user asks. */
+  getTurnRationale(sessionId: SessionId, turnId: string): Promise<RationaleResult>;
+  /** The agent's words around one tool call; `eventId` is `TimelineEvent.id`. Only when the user asks. */
+  getToolRationale(sessionId: SessionId, eventId: string): Promise<RationaleResult>;
+  /** Codex: shell calls the hooks left `unknown`, settled from the rollout. One bounded file read per call. */
+  getShellOutcomes(sessionId: SessionId): Promise<ShellOutcomesResult>;
 }

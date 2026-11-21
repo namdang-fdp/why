@@ -265,6 +265,24 @@ const codexTurns = [
         // Codex hooks carry no exit code: the core cannot tell pass from fail.
         outcome: "unknown",
       }),
+      // More shell calls the hooks left `unknown`. The rollout settles two of them
+      // (see `evidence.ts`); the third has no matching record and stays unknown.
+      event({
+        id: "x3-lint",
+        kind: "shell",
+        at: at(14, 20),
+        toolName: "Bash",
+        summary: "cargo fmt --check",
+        outcome: "unknown",
+      }),
+      event({
+        id: "x3-mystery",
+        kind: "shell",
+        at: at(14, 31),
+        toolName: "Bash",
+        summary: "./scripts/check.sh --all",
+        outcome: "unknown",
+      }),
     ],
   },
 ] satisfies Turn[];

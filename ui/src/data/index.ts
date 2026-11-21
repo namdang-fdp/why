@@ -1,9 +1,22 @@
 import { isTauri } from "@tauri-apps/api/core";
 import type { WorktreeChanged } from "@/contracts";
 import type { HookFixtureScenario } from "@/fixtures/hooks";
+import { unavailableReasons, type OutcomesScenario } from "@/fixtures/evidence";
 import type { DataSource } from "./data-source";
-import { FixtureDataSource, sampleFilters, type FixtureOptions } from "./fixture-data-source";
+import {
+  FixtureDataSource,
+  sampleFilters,
+  type EvidenceScenario,
+  type FixtureOptions,
+} from "./fixture-data-source";
 import { TauriDataSource } from "./tauri-data-source";
+
+const outcomeScenarios: OutcomesScenario[] = [
+  "default",
+  "unavailable",
+  "unsupportedVersion",
+  "truncated",
+];
 
 /**
  * Dev-only knobs for looking at states by hand in a plain browser, e.g.
@@ -18,6 +31,12 @@ function fixtureOptionsFromUrl(): FixtureOptions {
     many: params.get("many") === "1",
     hooks: window.location.port ? { instance: `dev:${window.location.port}` } : {},
     latencyMs: Number.isFinite(latency) ? latency : 0,
+    // `?rationale=missing` makes every "Why?" answer unavailable with that reason;
+    // `?outcomes=unavailable|unsupportedVersion|truncated` changes what the Codex rollout says.
+    evidence: {
+      rationale: unavailableReasons.find((reason) => reason === params.get("rationale")) ?? null,
+      outcomes: outcomeScenarios.find((name) => name === params.get("outcomes")) ?? "default",
+    },
     // `?filters=1` gives each sample repository a different filter-driver state:
     // `why` is blocked (its own .git/config defines one), `billing-api` only uses
     // the user's git-lfs.
@@ -42,6 +61,8 @@ declare global {
       /** Reset in-memory hook configs. Reopen Agent hooks or refresh its status to view. */
       setHookScenario: (scenario: HookFixtureScenario) => void;
       simulateWorktreeRemoved: (worktreeId: string) => void;
+      /** Change what the evidence commands answer (see `EvidenceScenario`). */
+      setEvidenceScenario: (scenario: EvidenceScenario) => void;
     };
   }
 }
@@ -61,6 +82,7 @@ function createDataSource(): DataSource {
       simulateWorktreeAdded: (repoId) => void fixtures.simulateWorktreeAdded(repoId),
       setHookScenario: (scenario) => fixtures.setHookScenario(scenario),
       simulateWorktreeRemoved: (worktreeId) => fixtures.simulateWorktreeRemoved(worktreeId),
+      setEvidenceScenario: (scenario) => fixtures.setEvidenceScenario(scenario),
     };
   }
   return fixtures;

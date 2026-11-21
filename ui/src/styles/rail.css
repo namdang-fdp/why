@@ -456,3 +456,120 @@
   background: transparent;
   color: oklch(1 0 0 / 48%);
 }
+
+/* ---- evidence: what the captured agent activity says about each file --------------- */
+
+.file-item {
+  display: grid;
+  min-width: 0;
+}
+.evidence-chip,
+.shell-leads,
+.evidence-filter {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 5px;
+  border-radius: 4px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  line-height: 16px;
+  text-align: left;
+}
+.evidence-chip {
+  justify-self: start;
+  margin: -1px 0 3px 36px;
+  padding: 0 4px;
+}
+.evidence-chip .session-harness {
+  padding-block: 0;
+}
+/* Color is for diff, agent status and risk: "no captured edit" is information, not an alarm. */
+.evidence-chip[data-kind="unexplained"] {
+  color: oklch(1 0 0 / 42%);
+}
+.evidence-chip[data-kind="attempted"] {
+  color: var(--git-modified);
+}
+.evidence-chip:hover,
+.shell-leads:hover,
+.evidence-filter:hover {
+  background: var(--rail-hover);
+  color: var(--foreground);
+}
+.evidence-filter {
+  padding: 0 6px;
+  border: 1px solid var(--border);
+}
+.evidence-filter[aria-pressed="true"] {
+  border-color: var(--rail-pill-edge);
+  background: var(--rail-pill);
+  color: var(--foreground);
+}
+.shell-leads {
+  margin: 8px 4px 0;
+  padding: 4px 6px;
+  align-items: flex-start;
+  border: 1px dashed var(--border);
+}
+
+.evidence-popover {
+  width: min(360px, calc(100vw - 24px));
+  max-height: min(70vh, 460px);
+  overflow: auto;
+}
+.evidence-detail {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+}
+.evidence-detail h4 {
+  margin-top: 4px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-weight: 600;
+}
+.evidence-detail ul {
+  display: grid;
+  gap: 2px;
+}
+.evidence-detail-title {
+  overflow: hidden;
+  font: 500 12px/16px var(--font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.evidence-note {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  line-height: 1.4;
+}
+.evidence-turn {
+  display: grid;
+  width: 100%;
+  gap: 2px;
+  padding: 5px 6px;
+  border-radius: 5px;
+  text-align: left;
+}
+.evidence-turn:hover {
+  background: var(--shell-hover);
+}
+.evidence-turn-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+}
+.evidence-turn-task {
+  overflow: hidden;
+  color: var(--muted-foreground);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.evidence-old-path,
+.evidence-subagent,
+.evidence-count {
+  color: var(--muted-foreground);
+}

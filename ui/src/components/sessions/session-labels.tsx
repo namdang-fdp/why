@@ -1,5 +1,12 @@
 import { useId, useLayoutEffect, useRef, useState } from "react";
-import type { EvidenceLabel, Harness, SessionStatus, ToolOutcome } from "@/contracts";
+import type {
+  EvidenceLabel,
+  Harness,
+  SessionStatus,
+  ShellOutcome,
+  ToolOutcome,
+  TranscriptSource,
+} from "@/contracts";
 import { Tip } from "@/components/ui/overlays";
 
 const harnessNames: Record<Harness, string> = {
@@ -38,6 +45,35 @@ export function Outcome({ outcome, test }: { outcome: ToolOutcome; test: boolean
     <span className="session-outcome" data-outcome={outcome}>
       {outcome === "ok" ? (test ? "Passed" : "OK") : outcome === "failed" ? "Failed" : "Unknown"}
     </span>
+  );
+}
+
+export const sourceNames: Record<TranscriptSource, string> = {
+  claudeTranscript: "Claude transcript",
+  codexRollout: "Codex rollout",
+};
+
+/**
+ * An exit code the hooks did not report, recovered from the harness's own log.
+ * Shown next to its source so it never looks like the hook's word: the label
+ * says where it came from, and the chip is the Observed one.
+ */
+export function RecoveredOutcome({ outcome, test }: { outcome: ShellOutcome; test: boolean }) {
+  const word = outcome.outcome === "ok" ? (test ? "Passed" : "OK") : "Failed";
+  return (
+    <>
+      <span
+        className="session-outcome"
+        data-outcome={outcome.outcome}
+        data-recovered
+        title={`Exit code ${outcome.exitCode}, read from the ${sourceNames[outcome.source]}`}
+      >
+        {word} · exit {outcome.exitCode}
+      </span>
+      <span className="session-evidence" data-evidence="observed" data-recovered>
+        Observed · from rollout
+      </span>
+    </>
   );
 }
 

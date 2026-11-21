@@ -24,6 +24,24 @@ afterEach(() => clearMocks());
 describe("TauriDataSource commands", () => {
   const source = new TauriDataSource();
 
+  it("calls the evidence commands by their Rust names with camelCase arguments", async () => {
+    const calls = ipc(() => null);
+    await source.getWorktreeAttribution("w1", "staged");
+    await source.getWorktreeAttribution("w1");
+    await source.getFileActivity("w1", "src/a.rs");
+    await source.getTurnRationale("s1", "t1");
+    await source.getToolRationale("s1", "e1");
+    await source.getShellOutcomes("s1");
+    expect(calls).toEqual([
+      { cmd: "get_worktree_attribution", args: { worktreeId: "w1", mode: "staged" } },
+      { cmd: "get_worktree_attribution", args: { worktreeId: "w1" } },
+      { cmd: "get_file_activity", args: { worktreeId: "w1", path: "src/a.rs" } },
+      { cmd: "get_turn_rationale", args: { sessionId: "s1", turnId: "t1" } },
+      { cmd: "get_tool_rationale", args: { sessionId: "s1", eventId: "e1" } },
+      { cmd: "get_shell_outcomes", args: { sessionId: "s1" } },
+    ]);
+  });
+
   it("calls each command by its Rust name with camelCase arguments", async () => {
     const calls = ipc((cmd) => {
       if (cmd === "list_repositories") return repositories;

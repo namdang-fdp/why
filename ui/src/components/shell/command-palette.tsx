@@ -6,7 +6,9 @@ import {
   FileDiff,
   FolderGit2,
   GitBranch,
+  HelpCircle,
   History,
+  ListFilter,
   Palette,
   PanelRight,
   Plug,
@@ -34,9 +36,14 @@ import {
 } from "@/stores/workspace";
 import { useStore } from "zustand";
 import { editorSettingsStore, themeLabels, type EditorTheme } from "@/stores/editor-settings";
-import { WorkspaceContext, useSessions, useWorkspace } from "@/stores/workspace-context";
+import {
+  WorkspaceContext,
+  useEvidence,
+  useSessions,
+  useWorkspace,
+} from "@/stores/workspace-context";
 import { focusInspector, moveTurn } from "@/components/sessions/session-controls";
-import { filesInTurn, matchesFile } from "@/components/sessions/timeline-model";
+import { turnsTouchingFile } from "@/components/sessions/timeline-model";
 import { ErrorMessage, LoadingMessage } from "./async-message";
 import { branchLabel, displayPath, worktreeName } from "./change-labels";
 
@@ -79,14 +86,33 @@ function PaletteContents({
   const changes = useWorkspace((state) => state.changes);
   const activeWorktree = useWorkspace(selectWorktree);
   const activeFile = useWorkspace(selectActiveFile);
-  const hasMatchingTurn = useSessions(
+  const timeline = useSessions((state) =>
+    state.worktreeId === activeWorktree?.id ? state.timeline : undefined,
+  );
+  const timelineSession = useSessions((state) => state.sessionId);
+  const activity = useEvidence((state) => state.activity);
+  // The same test the timeline uses, so the action is enabled exactly when its buttons are.
+  const hasMatchingTurn =
+    !!activeFile &&
+    timeline?.status === "ok" &&
+    turnsTouchingFile(
+      timeline.data.turns,
+      activeFile,
+      activity.status === "ok" ? activity.data : undefined,
+      timelineSession ?? undefined,
+    ).size > 0;
+  const activeChanges = useWorkspace(selectChanges);
+  const attribution = useEvidence((state) => state.attribution);
+  const onlyUnexplained = useEvidence((state) => state.onlyUnexplained);
+  const setOnlyUnexplained = useEvidence((state) => state.setOnlyUnexplained);
+  const hasSelectedTurn = useSessions(
     (state) =>
-      !!activeFile &&
       state.worktreeId === activeWorktree?.id &&
       state.timeline.status === "ok" &&
-      state.timeline.data.turns.some((turn) => matchesFile(filesInTurn(turn), activeFile)),
+      state.turnId !== null &&
+      state.turnId !== "" &&
+      state.timeline.data.turns.some((turn) => turn.id === state.turnId),
   );
-  const activeChanges = useWorkspace(selectChanges);
   const inspectorOpen = useWorkspace((state) => state.inspectorOpen);
   const selectRepo = useWorkspace((state) => state.selectRepository);
   const selectWorktreeAction = useWorkspace((state) => state.selectWorktree);
@@ -213,6 +239,42 @@ function PaletteContents({
           >
             <ChevronDown aria-hidden />
             Next turn touching this file
+          </CommandItem>
+          <CommandItem
+            value="action-show-why"
+            keywords={["Show why for this turn", "Why?", "agent said", "rationale", "declared"]}
+            disabled={!hasSelectedTurn}
+            onSelect={() =>
+              afterClose(() => {
+                const sessions = workspace.getState().sessions.getState();
+                const { sessionId, turnId } = sessions;
+                if (sessionId === null || turnId === null || turnId === "") return;
+                // Opening is what reads the transcript; nothing was fetched before this.
+                workspace
+                  .getState()
+                  .evidence.getState()
+                  .toggleWhy({ kind: "turn", sessionId, turnId }, true);
+                sessions.selectTurn(turnId, true);
+                focusInspector(workspace);
+              })
+            }
+          >
+            <HelpCircle aria-hidden />
+            Show why for this turn
+          </CommandItem>
+          <CommandItem
+            value="action-unexplained-files"
+            keywords={[
+              onlyUnexplained ? "Show all changed files" : "Show unexplained files",
+              "no captured agent edit",
+              "attribution",
+              "changed files filter",
+            ]}
+            disabled={attribution.status !== "ok"}
+            onSelect={run(() => setOnlyUnexplained(!onlyUnexplained))}
+          >
+            <ListFilter aria-hidden />
+            {onlyUnexplained ? "Show all changed files" : "Show unexplained files"}
           </CommandItem>
           {diffModes.map(({ mode, label, key }) => (
             <CommandItem

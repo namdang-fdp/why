@@ -35,6 +35,8 @@ export const shortcutGroups = [
       { label: "Next / previous session or turn", keys: ["j", "k"] },
       { label: "First / last session or turn", keys: ["Home", "End"] },
       { label: "Next / previous turn touching this file", keys: ["n", "p"] },
+      { label: "Open or close Why? on the focused turn or call", keys: ["Enter"] },
+      { label: "Show why for the selected turn", keys: ["w"] },
       { label: "Back to sessions", keys: ["Esc"] },
     ],
   },
