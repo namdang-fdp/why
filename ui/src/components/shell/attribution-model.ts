@@ -1,4 +1,15 @@
-import type { FileAttribution, Harness, SessionSummary, ToolOutcome, TurnRef } from "@/contracts";
+import type {
+  DiffMode,
+  FileAttribution,
+  Harness,
+  IpcError,
+  SessionSummary,
+  ToolOutcome,
+  TurnRef,
+  WorktreeAttribution,
+  WorktreeId,
+} from "@/contracts";
+import type { AsyncState } from "@/data/async-state";
 
 /**
  * How the rail describes a file. The names are about EVIDENCE, not people:
@@ -53,3 +64,54 @@ export function attemptLabel(file: FileAttribution) {
     ? "Agent tried, not applied"
     : "Agent edit not confirmed";
 }
+
+/**
+ * Attribution for ONE worktree and comparison, or why there is none yet.
+ * `ok` carries the answer only when it was computed for exactly the worktree
+ * and diff mode being shown; an answer for anything else is `loading`, never
+ * numbers from another worktree. The rail, the File tab and the coverage bar
+ * all read it through this one function so they cannot disagree.
+ */
+export type CurrentAttribution =
+  | { status: "idle" | "loading" }
+  | { status: "error"; error: IpcError }
+  | { status: "ok"; data: WorktreeAttribution };
+
+export function currentAttribution(
+  state: AsyncState<WorktreeAttribution>,
+  worktreeId: WorktreeId | null,
+  mode: DiffMode | undefined,
+): CurrentAttribution {
+  if (worktreeId === null || mode === undefined) return { status: "idle" };
+  if (state.status !== "ok") return state;
+  return state.data.worktreeId === worktreeId && state.data.mode === mode
+    ? state
+    : { status: "loading" };
+}
+
+export type CoverageCounts = Record<FileEvidenceKind, number> & { total: number };
+
+/** How many changed files fall in each evidence bucket (they always sum to `total`). */
+export function coverageCounts(files: readonly FileAttribution[]): CoverageCounts {
+  const counts: CoverageCounts = {
+    explained: 0,
+    attempted: 0,
+    unexplained: 0,
+    total: files.length,
+  };
+  for (const file of files) counts[evidenceKind(file)]++;
+  return counts;
+}
+
+/** The File tab's one state chip: a label only, never a claim about who made the change. */
+export function fileChipLabel(file: FileAttribution) {
+  const kind = evidenceKind(file);
+  if (kind === "explained") {
+    const edits = file.explainedBy.length;
+    return `Explained by ${edits} captured ${edits === 1 ? "edit" : "edits"}`;
+  }
+  return kind === "attempted" ? attemptLabel(file) : "No captured agent edit";
+}
+
+export const fileCaveat =
+  "WHY may not have seen every change to this file. Line-level provenance comes later.";

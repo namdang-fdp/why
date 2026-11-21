@@ -11,7 +11,7 @@ import { RailSectionHeader } from "./rail-section";
 import { fileMatches } from "./rail-model";
 import { RowMarker } from "./rail-repositories";
 import { AttributionMarker, ShellLeadsLine } from "./rail-attribution";
-import { evidenceKind } from "./attribution-model";
+import { currentAttribution, evidenceKind } from "./attribution-model";
 
 function PathPart({ path }: { path: string }) {
   const nameIndex = path.lastIndexOf("/") + 1;
@@ -82,14 +82,14 @@ export function ChangedFiles({ expanded, onToggle }: { expanded: boolean; onTogg
   const evidenceScope = useEvidence((state) => state.scope);
   const onlyUnexplained = useEvidence((state) => state.onlyUnexplained);
   const setOnlyUnexplained = useEvidence((state) => state.setOnlyUnexplained);
-  // Only an answer for THIS worktree and comparison may label its rows.
+  // Only an answer for THIS worktree and comparison may label its rows
+  // (the same guard the inspector's File tab and coverage bar use).
+  const guarded = useMemo(
+    () => currentAttribution(evidence, worktreeId, evidenceScope?.mode),
+    [evidence, worktreeId, evidenceScope?.mode],
+  );
   const attribution = useMemo(() => {
-    const current =
-      evidence.status === "ok" &&
-      evidence.data.worktreeId === worktreeId &&
-      evidence.data.mode === evidenceScope?.mode
-        ? evidence.data
-        : undefined;
+    const current = guarded.status === "ok" ? guarded.data : undefined;
     // A file whose name was not valid UTF-8 shares its display string with other
     // files, so it is never joined to evidence by path (the core leaves it unexplained).
     return (
@@ -100,7 +100,7 @@ export function ChangedFiles({ expanded, onToggle }: { expanded: boolean; onTogg
         current,
       }
     );
-  }, [evidence, worktreeId, evidenceScope?.mode]);
+  }, [guarded]);
   const rows = useRef<HTMLUListElement>(null);
   const bar = useRef<HTMLLIElement>(null);
   useSlidingHighlight(rows, bar);
