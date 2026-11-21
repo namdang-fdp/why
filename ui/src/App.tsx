@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { AgentHooksDialog } from "@/components/hooks/agent-hooks-dialog";
 import { AddRepositoryDialog } from "@/components/shell/add-repository-dialog";
 import { CommandPalette } from "@/components/shell/command-palette";
 import { StorageBanner } from "@/components/shell/storage-banner";
@@ -45,6 +46,7 @@ export function App({ store = workspaceStore }: { store?: Workspace }) {
           <WorkspacePanels />
           <CommandPalette />
           <AddRepositoryDialog />
+          <AgentHooksDialog />
           <ShortcutHelp open={helpOpen} onOpenChange={setHelpOpen} />
           <Toaster />
         </div>

@@ -36,6 +36,10 @@ export function ShortcutHelp({
             </section>
           ))}
         </div>
+        <p className="text-sm text-muted-foreground">
+          Search for <strong>Set up agent hooks</strong> in the command palette. Tab moves through
+          the preview controls, and Esc closes the dialog.
+        </p>
       </DialogContent>
     </Dialog>
   );

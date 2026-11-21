@@ -1,5 +1,6 @@
 import { isTauri } from "@tauri-apps/api/core";
 import type { WorktreeChanged } from "@/contracts";
+import type { HookFixtureScenario } from "@/fixtures/hooks";
 import type { DataSource } from "./data-source";
 import { FixtureDataSource, sampleFilters, type FixtureOptions } from "./fixture-data-source";
 import { TauriDataSource } from "./tauri-data-source";
@@ -15,6 +16,7 @@ function fixtureOptionsFromUrl(): FixtureOptions {
   return {
     empty: params.get("empty") === "1",
     many: params.get("many") === "1",
+    hooks: window.location.port ? { instance: `dev:${window.location.port}` } : {},
     latencyMs: Number.isFinite(latency) ? latency : 0,
     // `?filters=1` gives each sample repository a different filter-driver state:
     // `why` is blocked (its own .git/config defines one), `billing-api` only uses
@@ -37,6 +39,8 @@ declare global {
       simulateSessionActivity: (sessionId: string, summary?: string, newPrompt?: string) => boolean;
       simulateEdit: (worktreeId: string, path: string) => void;
       simulateWorktreeAdded: (repoId: string) => void;
+      /** Reset in-memory hook configs. Reopen Agent hooks or refresh its status to view. */
+      setHookScenario: (scenario: HookFixtureScenario) => void;
       simulateWorktreeRemoved: (worktreeId: string) => void;
     };
   }
@@ -55,6 +59,7 @@ function createDataSource(): DataSource {
         fixtures.simulateSessionActivity(sessionId, summary, newPrompt),
       simulateEdit: (worktreeId, path) => fixtures.simulateEdit(worktreeId, path),
       simulateWorktreeAdded: (repoId) => void fixtures.simulateWorktreeAdded(repoId),
+      setHookScenario: (scenario) => fixtures.setHookScenario(scenario),
       simulateWorktreeRemoved: (worktreeId) => fixtures.simulateWorktreeRemoved(worktreeId),
     };
   }

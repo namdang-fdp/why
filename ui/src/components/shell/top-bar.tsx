@@ -1,4 +1,4 @@
-import { ChevronRight, CircleHelp, GitPullRequest, PanelRight, Search } from "lucide-react";
+import { ChevronRight, CircleHelp, GitPullRequest, PanelRight, Plug, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tip } from "@/components/ui/overlays";
 import { paletteKeys } from "@/hooks/use-workspace-shortcuts";
@@ -19,6 +19,7 @@ export function TopBar({ onHelp }: { onHelp: () => void }) {
   const setMode = useWorkspace((state) => state.setDiffMode);
   const inspectorOpen = useWorkspace((state) => state.inspectorOpen);
   const toggleInspector = useWorkspace((state) => state.toggleInspector);
+  const setAgentHooksOpen = useWorkspace((state) => state.setAgentHooksOpen);
   const setPaletteOpen = useWorkspace((state) => state.setPaletteOpen);
 
   return (
@@ -79,6 +80,23 @@ export function TopBar({ onHelp }: { onHelp: () => void }) {
           <span className="search-label">Search</span>
           <kbd aria-hidden>{paletteKeys}</kbd>
         </Button>
+        <Tip label="Agent hooks">
+          <Button
+            id="shell-agent-hooks"
+            aria-label="Agent hooks"
+            aria-haspopup="dialog"
+            variant="ghost"
+            size="sm"
+            className="hook-trigger"
+            onClick={(event) => {
+              event.currentTarget.focus({ preventScroll: true });
+              setAgentHooksOpen(true);
+            }}
+          >
+            <Plug aria-hidden />
+            <span>Agent hooks</span>
+          </Button>
+        </Tip>
         <EditorSettingsPopover />
         <Tip label="Keyboard shortcuts" shortcut="?">
           <Button

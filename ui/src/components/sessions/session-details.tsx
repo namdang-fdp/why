@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { AlignLeft, ChevronRight } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { useWorkspace } from "@/stores/workspace-context";
 import type { SessionSummary } from "@/contracts";
 import { useNowSeconds } from "@/hooks/use-now";
 import { HarnessBadge, PromptExcerpt, SessionTime, StatusBadge } from "./session-labels";
@@ -12,6 +14,7 @@ export function SessionList({
   onSelect: (id: string) => void;
 }) {
   const now = useNowSeconds();
+  const setAgentHooksOpen = useWorkspace((state) => state.setAgentHooksOpen);
   if (sessions.length === 0) {
     return (
       <div className="inspector-empty">
@@ -20,6 +23,18 @@ export function SessionList({
         </span>
         <h3>No sessions recorded for this worktree</h3>
         <p>Agent hooks capture session activity locally on this device.</p>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          aria-haspopup="dialog"
+          onClick={(event) => {
+            event.currentTarget.focus({ preventScroll: true });
+            setAgentHooksOpen(true);
+          }}
+        >
+          Set up hooks
+        </Button>
       </div>
     );
   }

@@ -4,6 +4,7 @@ import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
 import { afterEach, describe, expect, it } from "vitest";
 import type { IpcError } from "@/contracts";
 import { repositories, storagePersistent, worktrees } from "@/fixtures";
+import { HookFixtures } from "@/fixtures/hooks";
 import { TauriDataSource } from "./tauri-data-source";
 
 type Call = { cmd: string; args: unknown };
@@ -143,4 +144,34 @@ describe("TauriDataSource session commands", () => {
     });
     await expect(source.getSessionTimeline("codex:gone")).rejects.toEqual({ kind: "notFound" });
   });
+});
+
+it("calls the five hook IPC commands and returns refusals and stale previews as values", async () => {
+  const source = new TauriDataSource();
+  const fixture = new HookFixtures({ stale: true });
+  const ready = fixture.preview("claudeCode", "install");
+  if (ready.result !== "ready") throw new Error("Expected a fixture preview");
+  const { fingerprint } = ready.preview;
+  const stale = fixture.apply("claudeCode", "install", fingerprint);
+  const refused = { result: "refused", reason: "locked", message: "Config locked." };
+  const report = fixture.status();
+  const calls = ipc((cmd) => {
+    if (cmd === "preview_install") return ready;
+    if (cmd === "install") return stale;
+    if (cmd === "hook_status") return report;
+    return refused;
+  });
+
+  await expect(source.previewInstall("claudeCode")).resolves.toEqual(ready);
+  await expect(source.install("claudeCode", fingerprint)).resolves.toEqual(stale);
+  await expect(source.previewUninstall("codex")).resolves.toEqual(refused);
+  await expect(source.uninstall("codex", "codex-fp")).resolves.toEqual(refused);
+  await expect(source.hookStatus()).resolves.toEqual(report);
+  expect(calls).toEqual([
+    { cmd: "preview_install", args: { harness: "claudeCode" } },
+    { cmd: "install", args: { harness: "claudeCode", fingerprint } },
+    { cmd: "preview_uninstall", args: { harness: "codex" } },
+    { cmd: "uninstall", args: { harness: "codex", fingerprint: "codex-fp" } },
+    { cmd: "hook_status", args: {} },
+  ]);
 });

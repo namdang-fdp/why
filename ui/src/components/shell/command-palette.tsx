@@ -9,6 +9,7 @@ import {
   History,
   Palette,
   PanelRight,
+  Plug,
   Plus,
   Settings2,
   Type,
@@ -96,6 +97,7 @@ function PaletteContents({
   const toggleLayout = useWorkspace((state) => state.toggleDiffLayout);
   const moveChange = useWorkspace((state) => state.moveChange);
   const openAdd = useWorkspace((state) => state.setAddRepositoryOpen);
+  const openAgentHooks = useWorkspace((state) => state.setAgentHooksOpen);
   const openEditorSettings = useWorkspace((state) => state.setEditorSettingsOpen);
   const editor = useStore(editorSettingsStore, (state) => state.settings);
   const updateEditor = useStore(editorSettingsStore, (state) => state.update);
@@ -174,6 +176,19 @@ function PaletteContents({
         ))}
         {!loading && <CommandEmpty>No matching commands or files.</CommandEmpty>}
         <CommandGroup heading="Actions">
+          <CommandItem
+            value="action-agent-hooks"
+            keywords={["Set up agent hooks", "install uninstall", "collector", "Claude Code Codex"]}
+            onSelect={() =>
+              afterClose(() => {
+                document.getElementById("shell-command")?.focus();
+                openAgentHooks(true);
+              })
+            }
+          >
+            <Plug aria-hidden />
+            Set up agent hooks
+          </CommandItem>
           <CommandItem
             value="action-show-sessions"
             keywords={["Show sessions", "Why inspector", "agent timeline"]}

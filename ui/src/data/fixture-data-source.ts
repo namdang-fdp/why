@@ -5,6 +5,7 @@ import type {
   FileDiff,
   FilterDriverInfo,
   FilterGuardStatus,
+  HookHarness,
   IpcError,
   RepoId,
   Repository,
@@ -31,6 +32,7 @@ import {
   WT_WHY_MAIN,
   worktrees,
 } from "@/fixtures";
+import { HookFixtures, type HookFixtureScenario } from "@/fixtures/hooks";
 import { sessionTimelines } from "@/fixtures/sessions";
 import type { DataSource } from "./data-source";
 
@@ -92,6 +94,7 @@ export type FixtureOptions = {
   storage?: StorageStatus;
   /** What the "native" folder picker returns; `null` simulates cancelling. */
   pick?: string | null;
+  hooks?: HookFixtureScenario;
 };
 
 /**
@@ -111,6 +114,7 @@ export class FixtureDataSource implements DataSource {
   private readonly changes: Record<string, FileChange[]>;
   private readonly editedDiffs = new Map<string, FileDiff>();
   private readonly options: FixtureOptions;
+  private hooks: HookFixtures;
   /** Filter drivers per repository name; a copy, so `setFilters` never touches the caller's object. */
   private readonly filters: Record<string, FixtureDriver[]>;
   private edits = 0;
@@ -119,6 +123,7 @@ export class FixtureDataSource implements DataSource {
 
   constructor(options: FixtureOptions = {}) {
     this.options = options;
+    this.hooks = new HookFixtures(options.hooks);
     this.filters = structuredClone(options.filters ?? {});
     this.repos = options.empty ? [] : structuredClone(repositories);
     this.worktreeList = options.empty ? [] : structuredClone(worktrees);
@@ -434,6 +439,40 @@ export class FixtureDataSource implements DataSource {
     if (!worktree) return;
     this.worktreeList = this.worktreeList.filter((entry) => entry.id !== worktreeId);
     this.emitRepositoryChanged({ repoId: worktree.repoId });
+  }
+
+  setHookScenario(scenario: HookFixtureScenario) {
+    this.hooks = new HookFixtures({ instance: this.options.hooks?.instance, ...scenario });
+  }
+
+  async previewInstall(harness: HookHarness) {
+    const hooks = this.hooks;
+    await this.delay();
+    return hooks.preview(harness, "install");
+  }
+
+  async install(harness: HookHarness, fingerprint: string) {
+    const hooks = this.hooks;
+    await this.delay();
+    return hooks.apply(harness, "install", fingerprint);
+  }
+
+  async previewUninstall(harness: HookHarness) {
+    const hooks = this.hooks;
+    await this.delay();
+    return hooks.preview(harness, "uninstall");
+  }
+
+  async uninstall(harness: HookHarness, fingerprint: string) {
+    const hooks = this.hooks;
+    await this.delay();
+    return hooks.apply(harness, "uninstall", fingerprint);
+  }
+
+  async hookStatus() {
+    const hooks = this.hooks;
+    await this.delay();
+    return hooks.status();
   }
 
   // ---- agent sessions (v0.2) -------------------------------------------------
