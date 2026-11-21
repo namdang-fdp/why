@@ -22,6 +22,7 @@ mod claude_hostile;
 mod claude_transcript;
 
 mod codex_common;
+mod edit_ops;
 
 mod codex_golden;
 mod codex_hostile;

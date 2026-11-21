@@ -1,5 +1,5 @@
 //! [`GitWorktreeResolver`]: which registered worktree does an event's `cwd`
-//! belong to?
+//! (or the directory of a file an event edited, WHY-65) belong to?
 //!
 //! Never a string-prefix guess: a cwd can be a subdirectory of the worktree, a
 //! linked worktree outside the main checkout, or a symlink. Git knows, so we
@@ -34,6 +34,27 @@ fn git_marker(toplevel: &std::path::Path) -> GitMarker {
     use std::os::unix::fs::MetadataExt;
     let meta = std::fs::symlink_metadata(toplevel.join(".git")).ok()?;
     Some((meta.ino(), meta.modified().ok()?))
+}
+
+/// Has a `.git` entry (a directory, or the pointer FILE of a linked worktree or
+/// submodule) appeared between `dir` and `root`, `dir` included and `root`
+/// excluded? That is a repository nested inside the cached worktree: `dir`
+/// no longer belongs to it, though the root's own `.git` is unchanged (so the
+/// marker check alone cannot see it). A stat walk, no git: a few `lstat`s per
+/// cache hit.
+fn nested_repo_between(dir: &std::path::Path, root: &std::path::Path) -> bool {
+    let mut current = dir;
+    while current != root {
+        if current.join(".git").symlink_metadata().is_ok() {
+            return true;
+        }
+        match current.parent() {
+            Some(parent) => current = parent,
+            // `dir` is not under `root` at all: cannot vouch for the answer.
+            None => return true,
+        }
+    }
+    false
 }
 
 struct Entry {
@@ -85,7 +106,9 @@ impl GitWorktreeResolver {
             cache.by_cwd.clear();
         }
         let entry = cache.by_cwd.get(canonical)?;
-        if git_marker(&entry.resolved.root) == entry.marker {
+        if git_marker(&entry.resolved.root) == entry.marker
+            && !nested_repo_between(canonical, &entry.resolved.root)
+        {
             return Some(entry.resolved.clone());
         }
         cache.by_cwd.remove(canonical);

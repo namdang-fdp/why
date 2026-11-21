@@ -151,3 +151,32 @@ async fn a_replaced_dot_git_invalidates_the_cached_answer() {
     );
     assert_eq!(r.cached(), 0);
 }
+
+/// A repository nested inside a cached worktree must not keep being answered
+/// as that worktree: the outer root's `.git` is unchanged, so only a look at the
+/// directories between the cached directory and the root can notice it.
+#[tokio::test]
+async fn a_nested_repository_that_appears_later_is_not_answered_from_the_cache() {
+    let rig = Rig::new();
+    let r = resolver(&rig);
+    let dir = rig.repo.path.join("vendor/lib");
+    std::fs::create_dir_all(&dir).unwrap();
+
+    // Warm: a plain directory of the main checkout.
+    let first = r.resolve(dir.to_str().unwrap()).await.unwrap();
+    assert_eq!(first.id, rig.main_wt);
+    assert_eq!(r.cached(), 1);
+
+    // It becomes a repository of its own (a vendored clone, a submodule).
+    git_common::git(&dir, ["init", "-q"]);
+    assert!(
+        r.resolve(dir.to_str().unwrap()).await.is_none(),
+        "an unregistered nested repository belongs to no registered worktree"
+    );
+    // A directory inside it too, and the outer worktree itself is unaffected.
+    let deeper = dir.join("src");
+    std::fs::create_dir_all(&deeper).unwrap();
+    assert!(r.resolve(deeper.to_str().unwrap()).await.is_none());
+    let outer = r.resolve(rig.repo.path.to_str().unwrap()).await.unwrap();
+    assert_eq!(outer.id, rig.main_wt);
+}

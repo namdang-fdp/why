@@ -30,6 +30,8 @@
 //!   `cmd; echo done` hides a failure). The rollout reader can upgrade this
 //!   later with real evidence.
 //! * Any other tool's `PostToolUse` → `Unknown` too: no field says it worked.
+//! * Edit ops (v0.3) come only from an `apply_patch` `PostToolUse` whose
+//!   outcome is `Ok` (see [`edit_ops`]).
 //! * `PreToolUse` with no `PostToolUse` is `Unknown` (rejected patch OR lost
 //!   delivery); the timeline builder applies that, not this adapter.
 //!
@@ -39,6 +41,7 @@
 //! the literal `(encrypted)`; WHY neither decrypts nor tries to guess it.
 
 pub mod classify;
+pub mod edit_ops;
 pub mod patch;
 pub mod rollout;
 
@@ -232,12 +235,17 @@ impl CodexAdapter {
         };
         let empty = Value::Null;
         let input = p.get("tool_input").unwrap_or(&empty);
+        let mut patch_applied = false;
         let kind = if finished {
             let outcome = if name == "apply_patch" {
                 patch_outcome(p.get("tool_response"))
             } else {
                 ToolOutcome::Unknown
             };
+            // Only a patch the tool itself reported as applied changed files.
+            // `Failed` and `Unknown` (an unreadable response) record no edit:
+            // a wrong "this turn wrote these lines" is worse than a gap.
+            patch_applied = name == "apply_patch" && outcome == ToolOutcome::Ok;
             EventKind::ToolFinished { outcome }
         } else {
             EventKind::ToolStarted
@@ -246,6 +254,9 @@ impl CodexAdapter {
         let (text, files) = describe_tool(&name, input, &ev.cwd);
         ev.text = text;
         ev.files = files;
+        if patch_applied && let Some(patch_text) = input.get("command").and_then(Value::as_str) {
+            ev.edits = edit_ops::edit_ops(patch_text, |path| absolutize(path, &ev.cwd));
+        }
         ev.tool = Some(ToolCall {
             use_id: id_field(p, "tool_use_id"),
             class: classify_tool(&name, input),

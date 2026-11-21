@@ -9,11 +9,14 @@
 //! not `Err`, so the UI can render them; `Err(IpcError)` is only for failures
 //! nobody can act on (I/O).
 
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Manager, State};
+use why_wire::Harness;
 
 use crate::collector::CollectorHandle;
 use crate::contracts::{ApplyResult, HookHarness, HookStatusReport, IpcError, PreviewResult};
-use crate::hooks::{CollectorSnapshot, HookContext, HookError, Target};
+use crate::events::EventStore;
+use crate::hooks::{CollectorSnapshot, HookContext, HookError, LastEvents, Target};
+use crate::state::AppState;
 
 fn context(app: &AppHandle) -> Result<HookContext, IpcError> {
     // `try_state`: the context only exists when the instance's paths could be
@@ -125,19 +128,33 @@ pub async fn uninstall_impl(
 
 /// Per-harness hook health plus the running collector's.
 #[tauri::command]
-pub async fn hook_status(app: AppHandle) -> Result<HookStatusReport, IpcError> {
+pub async fn hook_status(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<HookStatusReport, IpcError> {
     let collector = app
         .try_state::<CollectorHandle>()
         .map(|h| CollectorSnapshot {
             status: h.status(),
             stats: h.stats(),
         });
-    hook_status_impl(&context(&app)?, collector).await
+    let last_events = last_events(state.events.as_ref());
+    hook_status_impl(&context(&app)?, collector, last_events).await
+}
+
+/// When each harness last sent an event, from the event store. `None` when the
+/// store cannot answer: the status then says "unknown" instead of "never".
+pub fn last_events(events: &dyn EventStore) -> Option<LastEvents> {
+    Some(LastEvents {
+        claude_code: events.last_event_ms(Harness::ClaudeCode).ok()?,
+        codex: events.last_event_ms(Harness::Codex).ok()?,
+    })
 }
 
 pub async fn hook_status_impl(
     ctx: &HookContext,
     collector: Option<CollectorSnapshot>,
+    last_events: Option<LastEvents>,
 ) -> Result<HookStatusReport, IpcError> {
-    run(ctx, move |c| Ok(c.hook_status(collector))).await
+    run(ctx, move |c| Ok(c.hook_status(collector, last_events))).await
 }

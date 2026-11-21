@@ -256,6 +256,174 @@ fn prune_removes_the_ops_with_their_session(make: Make) {
     assert_eq!(markers(&*f.store, "wt-1", "a.rs"), ["t2#0", "t1#0"]);
 }
 
+// ---- WHY-65: the edited file's own worktree (decision 32) ------------------
+
+use why_lib::events::EditedFile;
+
+/// An edit call resolved to `cwd_wt` (the session's cwd) whose files ingest
+/// attributed as `owned`: `(worktree, path)`.
+fn edit_owned(
+    session: &str,
+    use_id: &str,
+    at: u64,
+    finished: bool,
+    cwd_wt: &str,
+    owned: &[(&str, &str)],
+) -> NormalizedEvent {
+    let mut ev = tool(
+        session,
+        use_id,
+        finished.then_some(ToolOutcome::Ok),
+        at,
+        "p1",
+    );
+    ev.tool.as_mut().unwrap().class = ToolClass::Edit;
+    ev.worktree_id = Some(wt(cwd_wt));
+    ev.files = owned.iter().map(|(_, p)| (*p).to_owned()).collect();
+    ev.edited_files = Some(
+        owned
+            .iter()
+            .map(|(w, p)| EditedFile {
+                worktree_id: wt(w),
+                path: (*p).to_owned(),
+            })
+            .collect(),
+    );
+    ev
+}
+
+fn touch_labels(store: &dyn EventStore, wt_id: &str, paths: &[&str]) -> Vec<String> {
+    let paths: Vec<String> = paths.iter().map(|p| (*p).to_owned()).collect();
+    store
+        .edit_calls(&wt(wt_id), &paths)
+        .unwrap()
+        .into_iter()
+        .map(|t| {
+            format!(
+                "{}:{}:{:?}",
+                t.session.session_id,
+                t.paths.join("+"),
+                t.outcome
+            )
+        })
+        .collect()
+}
+
+fn session_ids(store: &dyn EventStore, wt_id: &str) -> Vec<String> {
+    store
+        .sessions_for_worktree(&wt(wt_id))
+        .unwrap()
+        .into_iter()
+        .map(|s| s.id.0)
+        .collect()
+}
+
+fn an_edited_file_lists_the_session_in_its_worktree_and_reports_it(make: Make) {
+    let f = fresh(make);
+    // Pre + Post of ONE call in worktree wt-1 (the cwd), editing wt-2's file.
+    let pre = edit_owned("s1", "t1", 1, false, "wt-1", &[("wt-2", "src/a.rs")]);
+    let post = edit_owned("s1", "t1", 2, true, "wt-1", &[("wt-2", "src/a.rs")]);
+    let out = f.store.append(&[pre, post]).unwrap();
+    assert_eq!(out.inserted, 2);
+    assert_eq!(out.changed_worktrees, vec![wt("wt-1"), wt("wt-2")]);
+
+    assert_eq!(session_ids(&*f.store, "wt-1"), ["claude-code:s1"]);
+    assert_eq!(session_ids(&*f.store, "wt-2"), ["claude-code:s1"]);
+    assert!(session_ids(&*f.store, "wt-3").is_empty());
+    // The call is wt-2's; wt-1 (the cwd) has nothing of that name.
+    assert_eq!(
+        touch_labels(&*f.store, "wt-2", &["src/a.rs"]),
+        ["s1:src/a.rs:Ok"]
+    );
+    assert!(touch_labels(&*f.store, "wt-1", &["src/a.rs"]).is_empty());
+}
+
+fn both_halves_are_found_even_when_the_finish_names_no_file(make: Make) {
+    let f = fresh(make);
+    // The finish (reduced payload) carries no files at all and sits in wt-1.
+    let pre = edit_owned("s1", "t1", 1, false, "wt-1", &[("wt-2", "a.rs")]);
+    let mut post = edit_owned("s1", "t1", 2, true, "wt-1", &[]);
+    post.edited_files = Some(Vec::new());
+    f.store.append(&[pre, post]).unwrap();
+    assert_eq!(
+        touch_labels(&*f.store, "wt-2", &["a.rs"]),
+        ["s1:a.rs:Ok"],
+        "the outcome comes from the finish found by tool_use_id"
+    );
+}
+
+fn a_call_over_two_worktrees_lists_each_worktrees_own_files(make: Make) {
+    let f = fresh(make);
+    let files = [("wt-1", "one.rs"), ("wt-2", "two.rs"), ("wt-2", "three.rs")];
+    f.store
+        .append(&[
+            edit_owned("s1", "t1", 1, false, "wt-1", &files),
+            edit_owned("s1", "t1", 2, true, "wt-1", &files),
+        ])
+        .unwrap();
+    assert_eq!(
+        touch_labels(&*f.store, "wt-2", &["one.rs", "two.rs", "three.rs"]),
+        ["s1:three.rs+two.rs:Ok"]
+    );
+    assert_eq!(
+        touch_labels(&*f.store, "wt-1", &["one.rs", "two.rs"]),
+        ["s1:one.rs:Ok"]
+    );
+}
+
+fn the_same_relative_path_in_two_worktrees_keeps_two_call_lists(make: Make) {
+    let f = fresh(make);
+    f.store
+        .append(&[
+            edit_owned("s1", "t1", 1, true, "wt-1", &[("wt-1", "x.rs")]),
+            edit_owned("s2", "t2", 2, true, "wt-2", &[("wt-2", "x.rs")]),
+            edit_owned("s3", "t3", 3, true, "wt-1", &[("wt-2", "x.rs")]),
+        ])
+        .unwrap();
+    assert_eq!(touch_labels(&*f.store, "wt-1", &["x.rs"]), ["s1:x.rs:Ok"]);
+    let mut wt2 = touch_labels(&*f.store, "wt-2", &["x.rs"]);
+    wt2.sort();
+    assert_eq!(wt2, ["s2:x.rs:Ok", "s3:x.rs:Ok"]);
+}
+
+fn an_event_ingest_did_not_look_at_keeps_the_v02_rule(make: Make) {
+    // `edited_files: None` (hand-built or adapter output): every file is the
+    // event's own worktree's, exactly as in v0.2.
+    let f = fresh(make);
+    let mut ev = tool("s1", "t1", Some(ToolOutcome::Ok), 1, "p1");
+    ev.tool.as_mut().unwrap().class = ToolClass::Edit;
+    ev.files = vec!["./y.rs".into(), "/abs/outside.rs".into()];
+    assert!(ev.edited_files.is_none());
+    f.store.append(&[ev]).unwrap();
+    assert_eq!(touch_labels(&*f.store, "wt-1", &["y.rs"]), ["s1:y.rs:Ok"]);
+    assert!(touch_labels(&*f.store, "wt-2", &["y.rs"]).is_empty());
+    assert_eq!(session_ids(&*f.store, "wt-1"), ["claude-code:s1"]);
+}
+
+fn prune_forgets_the_links_to_other_worktrees_too(make: Make) {
+    let f = fresh(make);
+    f.store
+        .append(&[edit_owned("s1", "t1", 1, true, "wt-1", &[("wt-2", "a.rs")])])
+        .unwrap();
+    assert_eq!(f.store.prune_older_than(100).unwrap(), 1);
+    assert!(session_ids(&*f.store, "wt-2").is_empty());
+    assert!(session_ids(&*f.store, "wt-1").is_empty());
+    // A later event of the same session starts from nothing.
+    let out = f
+        .store
+        .append(&[edit_owned(
+            "s1",
+            "t9",
+            500,
+            true,
+            "wt-1",
+            &[("wt-1", "b.rs")],
+        )])
+        .unwrap();
+    assert_eq!(out.changed_worktrees, vec![wt("wt-1")]);
+    assert!(session_ids(&*f.store, "wt-2").is_empty());
+}
+
 macro_rules! edit_conformance {
     ($modname:ident, $make:path) => {
         mod $modname {
@@ -276,6 +444,12 @@ macro_rules! edit_conformance {
             case!(unobserved_ops_round_trip_without_content);
             case!(unresolvable_ops_are_skipped_and_the_event_is_kept);
             case!(prune_removes_the_ops_with_their_session);
+            case!(an_edited_file_lists_the_session_in_its_worktree_and_reports_it);
+            case!(both_halves_are_found_even_when_the_finish_names_no_file);
+            case!(a_call_over_two_worktrees_lists_each_worktrees_own_files);
+            case!(the_same_relative_path_in_two_worktrees_keeps_two_call_lists);
+            case!(an_event_ingest_did_not_look_at_keeps_the_v02_rule);
+            case!(prune_forgets_the_links_to_other_worktrees_too);
         }
     };
 }

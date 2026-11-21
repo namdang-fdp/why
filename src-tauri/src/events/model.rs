@@ -148,6 +148,18 @@ fn feed(hasher: &mut Sha256, bytes: &[u8]) {
     hasher.update(bytes);
 }
 
+/// A file an edit event touched, with the worktree that OWNS it (decision 32).
+///
+/// The owner is where the file lives, not where the session started: a session
+/// whose cwd is the main checkout can edit a file of another registered
+/// worktree by absolute path. `path` is in [`canonical_path`](super::canonical_path)
+/// form, relative to `worktree_id`'s root.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct EditedFile {
+    pub worktree_id: WorktreeId,
+    pub path: String,
+}
+
 /// What happened, in WHY's vocabulary (adapters map each harness's events here).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EventKind {
@@ -235,8 +247,10 @@ pub struct NormalizedEvent {
     /// Capped with [`excerpt`]: the prompt, the message, the command, ...
     pub text: Option<String>,
     /// Files the event touched or read. Absolute as reported by the harness;
-    /// the ingest step rewrites them relative to the worktree root when the
-    /// file is inside it.
+    /// the ingest step rewrites each one relative to the root of the worktree
+    /// that OWNS the file (see [`edited_files`](Self::edited_files); for an
+    /// edit that is not necessarily this event's own `worktree_id`), and leaves
+    /// it absolute when no registered worktree contains it.
     pub files: Vec<String>,
     pub evidence: EvidenceLabel,
     /// The harness transcript, for lazy reading later (never copied).
@@ -247,6 +261,14 @@ pub struct NormalizedEvent {
     /// the event and hands them back through `EventStore::edit_records`;
     /// events read back for timelines always have it empty.
     pub edits: Vec<EditOp>,
+    /// WHY-65: which worktree owns each file in [`files`](Self::files) that
+    /// resolved to one (an edit-class event only). Filled by the ingest step:
+    /// `None` = ingest has not looked (adapter output, hand-built test events),
+    /// and the stores then treat every file as belonging to `worktree_id`, the
+    /// old v0.2 behaviour; `Some(vec![])` = ingest looked and no file is inside
+    /// a registered worktree. Not persisted: SQLite keeps the same facts as
+    /// `event_files` / `session_worktrees` rows, and events read back have `None`.
+    pub edited_files: Option<Vec<EditedFile>>,
 }
 
 impl NormalizedEvent {
@@ -285,6 +307,7 @@ impl NormalizedEvent {
             evidence: EvidenceLabel::Observed,
             transcript_path: None,
             edits: Vec::new(),
+            edited_files: None,
         }
     }
 }

@@ -29,6 +29,18 @@ pub(crate) mod fixtures;
 use why_wire::{Envelope, Harness};
 
 use crate::events::NormalizedEvent;
+use crate::provenance::{LineHash, LineHasher};
+
+/// The hash of one line of edit text a harness reported (a hunk line, a header).
+///
+/// The harness splits lines on `\n` and leaves a CRLF file's `\r` on them, so
+/// ONE trailing `\r` is dropped, exactly like `provenance::split_lines` does
+/// for a whole file: a CRLF edit then hashes like its LF twin. (A lone `\r` in
+/// the middle of a line stays content.) Every adapter hashes through here, so
+/// the policy cannot drift between harnesses.
+pub(crate) fn hash_edit_line(hasher: &LineHasher, text: &str) -> LineHash {
+    hasher.hash_line(text.strip_suffix('\r').unwrap_or(text).as_bytes())
+}
 
 /// Turns one harness's hook payloads into normalized events.
 ///

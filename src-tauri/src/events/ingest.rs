@@ -6,7 +6,9 @@
 //! 1. [`crate::adapters::normalize`] turns the envelope into events (WHY-14/15);
 //! 2. a [`WorktreeResolver`] maps each event's cwd to a registered worktree
 //!    (WHY-13 implements it with git + the `RepoStore`; until then
-//!    [`NoResolver`] resolves nothing);
+//!    [`NoResolver`] resolves nothing). Since WHY-65 it also maps every EDITED
+//!    FILE to its own worktree (decision 32): the file's directory, not the
+//!    session's cwd, decides which worktree an edit (and its op) belongs to;
 //! 3. [`EventStore::append`] stores them (WHY-12's SQLite store).
 //!
 //! The collector (WHY-13) calls [`ingest`] per envelope and emits
@@ -19,9 +21,10 @@ use std::path::{Component, Path, PathBuf};
 
 use why_wire::Envelope;
 
-use super::{AppendOutcome, EventStore, NormalizedEvent};
+use super::{AppendOutcome, EditedFile, EventStore, NormalizedEvent, ToolClass};
 use crate::adapters;
 use crate::contracts::WorktreeId;
+use crate::provenance::{EditKind, EditOp, Observed, UnobservedReason};
 use crate::store::StoreError;
 
 /// A registered worktree an event's cwd belongs to.
@@ -32,13 +35,17 @@ pub struct ResolvedWorktree {
     pub root: PathBuf,
 }
 
-/// Maps a cwd to the registered worktree that contains it.
+/// Maps a directory (an event's cwd, or the directory of an edited file) to the
+/// registered worktree that contains it.
 ///
 /// Must use git (`rev-parse --show-toplevel` / the worktree list), never a
 /// string prefix: the cwd may be a subdirectory or a linked worktree, and
 /// `CLAUDE_PROJECT_DIR` is the session's start dir, not the repo root
 /// (payloads.md §7). Returns `None` for a cwd outside every registered
-/// repository (those events should not exist: the hook's allowlist drops them).
+/// repository (a cwd there should not exist: the hook's allowlist drops those
+/// events). An EDITED FILE's directory is different: the allowlist only looks at
+/// the session's cwd, so a file path can name any directory, and `None` simply
+/// means "that file belongs to no registered worktree".
 ///
 /// Written as `fn -> impl Future + Send` rather than `async fn` so the future
 /// is guaranteed `Send` (the collector runs on Tauri's multi-threaded runtime).
@@ -83,22 +90,190 @@ pub async fn store_events<R: WorktreeResolver>(
     let mut resolved: HashMap<String, Option<ResolvedWorktree>> = HashMap::new();
     // Multi-file edits often share a parent. Resolve it once per envelope.
     let mut parents: HashMap<PathBuf, Option<PathBuf>> = HashMap::new();
+    // Same for the worktree that owns an edited file's directory (that
+    // resolution runs git, see `owner_of`).
+    let mut homes: HashMap<PathBuf, Option<Home>> = HashMap::new();
     for ev in &mut events {
         if !resolved.contains_key(&ev.cwd) {
             let wt = resolver.resolve(&ev.cwd).await;
             resolved.insert(ev.cwd.clone(), wt);
         }
-        if let Some(Some(wt)) = resolved.get(&ev.cwd) {
+        let session_wt = resolved.get(&ev.cwd).and_then(Option::as_ref);
+        if let Some(wt) = session_wt {
             ev.worktree_id = Some(wt.id.clone());
+        }
+
+        if ev.tool.as_ref().is_some_and(|t| t.class == ToolClass::Edit) {
+            // An edit belongs to the worktree of the EDITED FILE, which is not
+            // always the session's (decision 32): resolve each file on its own,
+            // through git, with no fallback to the session's root by prefix.
+            let mut edited = Vec::new();
+            for file in &mut ev.files {
+                if let Some((wt, rel)) = owner_of(file, resolver, &mut homes).await {
+                    // The shared `files` list is read as "relative to the
+                    // session's worktree" (timeline chips, `turnsTouchingFile`).
+                    // A bare relative path for a file of ANOTHER worktree
+                    // could equal a different file of this one, so such a
+                    // file keeps its absolute path there; its owner is
+                    // recorded in `edited_files` (and `event_files`), which is
+                    // what attributes it to the right worktree.
+                    if session_wt.is_some_and(|s| s.id == wt.id) {
+                        *file = rel.clone();
+                    }
+                    edited.push(EditedFile {
+                        worktree_id: wt.id,
+                        path: rel,
+                    });
+                }
+            }
+            ev.edited_files = Some(edited);
+        } else if let Some(wt) = session_wt {
             for file in &mut ev.files {
                 if let Some(rel) = relative_to(file, &wt.root, &mut parents).await {
                     *file = rel;
                 }
             }
         }
+        attribute_ops(ev, resolver, &mut homes).await;
     }
 
     store.append(&events)
+}
+
+/// A directory's owner: the registered worktree that contains it, and the
+/// directory's canonical path (missing trailing directories included).
+struct Home {
+    worktree: ResolvedWorktree,
+    dir: PathBuf,
+}
+
+/// The worktree that owns `file`, and the file's path relative to its root.
+///
+/// The file's parent directory is resolved through the filesystem and then
+/// through git (`resolver`), never by comparing strings: symlinks are followed,
+/// and a nested repository or submodule is its OWN worktree (or, when it is not
+/// registered, nobody's: `None`), not part of the outer one. For a file in a
+/// directory that does not exist yet (a new file, or a directory the edit
+/// removed) git is asked about the nearest directory that exists, and the
+/// missing part is kept in the path. The final component is not resolved: git
+/// may track a symlink in its own right.
+async fn owner_of<R: WorktreeResolver>(
+    file: &str,
+    resolver: &R,
+    homes: &mut HashMap<PathBuf, Option<Home>>,
+) -> Option<(ResolvedWorktree, String)> {
+    let file = Path::new(file);
+    if !file.is_absolute() {
+        return None;
+    }
+    let (parent, name) = (file.parent()?, file.file_name()?);
+    if !homes.contains_key(parent) {
+        let home = async {
+            let located = locate_parent(parent).await?;
+            // Ask about the directory as given first: when it exists the
+            // resolver answers for it (following symlinks itself). When it
+            // does not (a new directory, or one the edit removed) that costs
+            // nothing and the nearest existing ancestor is asked instead.
+            let worktree = match resolver.resolve(parent.to_str()?).await {
+                Some(worktree) => worktree,
+                // Only worth asking again when that was not already the
+                // directory in question (a missing part, or a `..` that only
+                // resolves lexically): a second ask about the SAME existing
+                // directory cannot answer differently and can cost a failing
+                // git call.
+                None if Path::new(parent) != located.existing => {
+                    resolver.resolve(located.existing.to_str()?).await?
+                }
+                None => return None,
+            };
+            Some(Home {
+                worktree,
+                dir: located.dir,
+            })
+        }
+        .await;
+        homes.insert(parent.to_path_buf(), home);
+    }
+    let home = homes.get(parent)?.as_ref()?;
+    let rel = home.dir.join(name);
+    let rel = rel.strip_prefix(&home.worktree.root).ok()?;
+    Some((home.worktree.clone(), relative_string(rel)?))
+}
+
+/// Give each edit op of `ev` the worktree that owns its file and the path
+/// relative to that worktree's root. An op whose file is in no registered
+/// worktree keeps `worktree_id: None`, so the stores skip it (the event itself
+/// is still stored).
+///
+/// A rename's old path (`renamed_from`) is kept only when it is in the SAME
+/// worktree as the new one: the engine follows renames inside one file
+/// history, and a file that moved between worktrees has no single history.
+/// For a move ACROSS worktrees the destination's hunks describe the OLD file,
+/// not whatever B holds, so replaying them against B would be wrong: the
+/// destination op becomes `Unobserved(Unparsed)` with no hunks, and when the
+/// old path resolves to a worktree its removal is recorded there as a
+/// separate `Delete` op (appended after the event's own ops, so their
+/// `op_index` does not move).
+async fn attribute_ops<R: WorktreeResolver>(
+    ev: &mut NormalizedEvent,
+    resolver: &R,
+    homes: &mut HashMap<PathBuf, Option<Home>>,
+) {
+    let mut removals = Vec::new();
+    for op in &mut ev.edits {
+        let Some((wt, rel)) = owner_of(&op.path, resolver, homes).await else {
+            op.worktree_id = None;
+            op.renamed_from = None;
+            continue;
+        };
+        op.worktree_id = Some(wt.id.clone());
+        op.path = rel.clone();
+        if let Some(old) = op.renamed_from.take() {
+            match owner_of(&old, resolver, homes).await {
+                Some((old_wt, old_rel)) if old_wt.id == wt.id => op.renamed_from = Some(old_rel),
+                from => {
+                    // A move across worktrees (or from outside every one).
+                    op.observed = Observed::Unobserved(UnobservedReason::Unparsed);
+                    op.hunks.clear();
+                    op.before = None;
+                    op.after = None;
+                    if let Some((old_wt, old_rel)) = from {
+                        removals.push(EditOp {
+                            worktree_id: Some(old_wt.id.clone()),
+                            path: old_rel.clone(),
+                            kind: EditKind::Delete,
+                            renamed_from: None,
+                            before: None,
+                            after: None,
+                            hunks: Vec::new(),
+                            observed: Observed::Exact,
+                        });
+                        if let Some(edited) = &mut ev.edited_files {
+                            let file = EditedFile {
+                                worktree_id: old_wt.id,
+                                path: old_rel,
+                            };
+                            if !edited.contains(&file) {
+                                edited.push(file);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        // The session is listed in the file's worktree even if the event's
+        // own file list missed this path.
+        if let Some(edited) = &mut ev.edited_files {
+            let file = EditedFile {
+                worktree_id: wt.id,
+                path: rel,
+            };
+            if !edited.contains(&file) {
+                edited.push(file);
+            }
+        }
+    }
+    ev.edits.extend(removals);
 }
 
 /// Remove dot components for an event whose parent no longer resolves through
@@ -119,11 +294,21 @@ fn normalize_lexically(path: &Path) -> PathBuf {
     normalized
 }
 
+/// A directory resolved through the filesystem.
+struct LocatedDir {
+    /// The directory's canonical path, missing trailing directories included.
+    dir: PathBuf,
+    /// The nearest ancestor (or the directory itself) that exists, canonical:
+    /// what git can be asked about.
+    existing: PathBuf,
+}
+
 /// Canonicalize the parent directory, even if an edit removed some of its
-/// directories. Keep missing suffixes under their nearest existing ancestor.
-async fn resolve_parent(mut parent: &Path) -> Option<PathBuf> {
+/// directories (or has not created them yet). Keep missing suffixes under
+/// their nearest existing ancestor.
+async fn locate_parent(mut parent: &Path) -> Option<LocatedDir> {
     let mut missing = Vec::new();
-    let mut resolved = loop {
+    let existing = loop {
         match tokio::fs::canonicalize(parent).await {
             Ok(resolved) => break resolved,
             Err(error) if error.kind() == ErrorKind::NotFound => {
@@ -138,8 +323,13 @@ async fn resolve_parent(mut parent: &Path) -> Option<PathBuf> {
             Err(_) => return None,
         }
     };
-    resolved.extend(missing.into_iter().rev());
-    Some(resolved)
+    let mut dir = existing.clone();
+    dir.extend(missing.into_iter().rev());
+    Some(LocatedDir { dir, existing })
+}
+
+async fn resolve_parent(parent: &Path) -> Option<PathBuf> {
+    locate_parent(parent).await.map(|located| located.dir)
 }
 
 /// Worktree-relative Git spelling. Resolve symlinks in the parent before
@@ -159,7 +349,12 @@ async fn relative_to(
         parents.insert(parent.to_path_buf(), resolve_parent(parent).await);
     }
     let resolved = parents.get(parent)?.as_ref()?.join(file.file_name()?);
-    let rel = resolved.strip_prefix(root).ok()?;
+    relative_string(resolved.strip_prefix(root).ok()?)
+}
+
+/// A relative path as `/`-joined UTF-8 components; `None` if it is empty or
+/// not valid UTF-8.
+fn relative_string(rel: &Path) -> Option<String> {
     let parts: Vec<_> = rel
         .components()
         .map(|c| c.as_os_str().to_str())

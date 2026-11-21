@@ -9,7 +9,7 @@
 //! | `SessionEnd` | `SessionEnd` | ends a harness *process*, not the conversation |
 //! | `UserPromptSubmit` | `Prompt` | text = prompt excerpt; a `<task-notification>` one is synthetic, see [`extract::is_synthetic_prompt`] |
 //! | `PreToolUse` | `ToolStarted` (+ `AssistantMessage` Declared for a Bash `description`) | Edit rows carry no text here: the diff arrives with the result |
-//! | `PostToolUse` | `ToolFinished{Ok}` | Edit: files + rendered hunks (Observed); Bash: the command again, so a lost Pre still shows what ran |
+//! | `PostToolUse` | `ToolFinished{Ok}` | Edit: files + rendered hunks (Observed) + the exact [`EditOp`] (see [`edit_op`]); Bash: the command again, so a lost Pre still shows what ran |
 //! | `PostToolUseFailure` | `ToolFinished{Failed}` | the ONLY source of "failed"; the exit code is in `error`, see [`extract::exit_code`] |
 //! | `PostToolBatch` | `ToolFinished{Failed}` per **harness-rejected edit** only | the one trace of an edit the harness refused before running it |
 //! | `SubagentStart` / `SubagentStop` | `SubagentStarted` / (`AssistantMessage` Declared, `SubagentStopped`) | `agent_id` set; same `session_id` as the parent |
@@ -25,14 +25,16 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use serde_json::Value;
-use why_wire::Envelope;
+use why_wire::{Envelope, Reduction, reduction_of};
 
 use self::extract::{edit_details, first_line, non_empty, str_field, target_path, tool_use_error};
 use super::Adapter;
 use crate::contracts::{EvidenceLabel, ToolOutcome};
 use crate::events::model::DeliveryDigest;
 use crate::events::{EventKind, NormalizedEvent, ToolCall, ToolClass, excerpt};
+use crate::provenance::{EditOp, UnobservedReason};
 
+pub mod edit_op;
 pub mod extract;
 pub mod shell;
 pub mod transcript;
@@ -204,6 +206,15 @@ impl Builder<'_> {
             }
         };
 
+        // v0.3: the exact edit, from a SUCCESSFUL finish only. A failure, a
+        // rejected edit (no Pre/Post at all) and a bare start change nothing, so
+        // they carry no op. The path is the one `files` already holds.
+        let edits = if class == ToolClass::Edit && phase == Phase::Done {
+            edit_ops(p, name, response, files.first().map(String::as_str))
+        } else {
+            Vec::new()
+        };
+
         let use_id = non_empty(p, "tool_use_id").map(str::to_owned);
         let ev = self.push(kind);
         ev.tool = Some(ToolCall {
@@ -213,6 +224,7 @@ impl Builder<'_> {
         });
         ev.files = files;
         ev.text = text;
+        ev.edits = edits;
 
         // The agent's own explanation of a command, once, at the start. It is
         // the model's words (Declared), so it is its own event rather than a
@@ -264,6 +276,27 @@ impl Builder<'_> {
                 first_line(error)
             )));
         }
+    }
+}
+
+/// The op of a successful edit-class `PostToolUse` (empty when the path is unknown).
+///
+/// - A payload the hook reduced says an edit happened but not what it did:
+///   `Unobserved(PayloadReduced)`, and only when the hook kept the path
+///   (`why_wire::reduced` keeps `tool_input.file_path` for a truncated payload,
+///   never for a redacted one, which may touch a credential file).
+/// - Otherwise `Write`/`Edit` are read exactly; any other edit-class tool
+///   (`NotebookEdit`) or an unreadable response is `Unobserved(Unparsed)`.
+fn edit_ops(p: &Value, tool_name: &str, response: &Value, path: Option<&str>) -> Vec<EditOp> {
+    let Some(path) = path else {
+        return Vec::new();
+    };
+    match reduction_of(p) {
+        Some(Reduction::Redacted) => Vec::new(),
+        Some(Reduction::Truncated) => {
+            vec![edit_op::unobserved(path, UnobservedReason::PayloadReduced)]
+        }
+        None => vec![edit_op::from_response(tool_name, path, response)],
     }
 }
 

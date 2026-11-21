@@ -337,6 +337,19 @@ pub fn prepare_line(mut envelope: Envelope, raw: &[u8], credentials: &[String]) 
     if reduction_of(&envelope.payload).is_none() && mentions_credentials(raw, credentials) {
         envelope.payload = reduce_payload(&envelope.payload, Reduction::Redacted, raw.len());
     }
+    // An oversized payload is reduced before this point, so the check above
+    // skipped it, but a truncated payload now keeps the edited file's path
+    // (`tool_input.file_path`): that path gets the same credential check, with
+    // this user's real credential locations. A match is redacted, which keeps
+    // no path at all.
+    if reduction_of(&envelope.payload) == Some(Reduction::Truncated)
+        && let Some(path) = envelope.payload.pointer("/tool_input/file_path")
+        && mentions_credentials(&serde_json::to_vec(path).unwrap_or_default(), credentials)
+    {
+        let original = envelope.payload["original_bytes"].as_u64().unwrap_or(0);
+        let original = usize::try_from(original).unwrap_or(usize::MAX);
+        envelope.payload = reduce_payload(&envelope.payload, Reduction::Redacted, original);
+    }
     match encode_line(&envelope) {
         Ok(line) => Some(line),
         Err(WireError::TooLarge { .. }) => {

@@ -691,6 +691,7 @@ fn hook_preview_and_results_wire_format() {
             config_path: "/h/.codex/hooks.json".into(),
             state: HookState::NotInstalled,
             events: vec!["Stop".into()],
+            last_event_at: None,
         },
     })
     .unwrap();

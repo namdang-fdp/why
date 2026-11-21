@@ -82,6 +82,11 @@ pub struct FileEdit {
     /// `*** Move to:` (a rename), for `Update` only.
     pub move_to: Option<String>,
     pub hunks: Vec<Hunk>,
+    /// The parser reported a problem INSIDE this section (an unknown line, a
+    /// misplaced `*** Move to:`, a missing path, a cut-off section). Its hunks
+    /// may be missing lines, so an edit built from it must not be trusted
+    /// (the problem list alone cannot say which file a problem belongs to).
+    pub flawed: bool,
 }
 
 impl FileEdit {
@@ -199,7 +204,9 @@ pub fn parse_patch(text: &str) -> ParsedPatch {
     }
 
     for line in iter {
-        if line.trim() == "*** End Patch" {
+        // Column 0 only (trailing blanks tolerated): a CONTEXT line whose text is
+        // `*** End Patch` is written ` *** End Patch` and must stay a line.
+        if line.trim_end() == "*** End Patch" {
             flush_hunk(&mut current, &mut hunk);
             if let Some(file) = current.take() {
                 out.edits.push(file);
@@ -232,6 +239,7 @@ pub fn parse_patch(text: &str) -> ParsedPatch {
                 op,
                 move_to: None,
                 hunks: Vec::new(),
+                flawed: path.is_empty(),
             });
             continue;
         }
@@ -248,11 +256,12 @@ pub fn parse_patch(text: &str) -> ParsedPatch {
             if file.op == PatchOp::Update && file.hunks.is_empty() && hunk.is_none() {
                 file.move_to = Some(dest.to_owned());
             } else {
+                file.flawed = true;
                 out.problem(|| "`*** Move to:` outside an Update header".into());
             }
             continue;
         }
-        if line.trim() == "*** End of File" {
+        if line.trim_end() == "*** End of File" {
             // A marker for the applier ("this hunk ends the file"); it is not
             // content.
             continue;
@@ -267,6 +276,7 @@ pub fn parse_patch(text: &str) -> ParsedPatch {
             continue;
         }
         if line.starts_with("***") {
+            file.flawed = true;
             out.problem(|| format!("unknown directive {:?}", preview(line)));
             continue;
         }
@@ -284,20 +294,25 @@ pub fn parse_patch(text: &str) -> ParsedPatch {
         };
         match parsed {
             Some(l) => target.lines.push(l),
-            None => out.problem(|| {
-                format!(
-                    "unrecognised line in {:?}: {:?}",
-                    preview(&file.path),
-                    preview(line)
-                )
-            }),
+            None => {
+                file.flawed = true;
+                out.problem(|| {
+                    format!(
+                        "unrecognised line in {:?}: {:?}",
+                        preview(&file.path),
+                        preview(line)
+                    )
+                });
+            }
         }
     }
 
     // Reached the end of input without `*** End Patch`: keep what was read.
     if !out.complete {
         flush_hunk(&mut current, &mut hunk);
-        if let Some(file) = current.take() {
+        if let Some(mut file) = current.take() {
+            // Cut off: the last section may be missing lines.
+            file.flawed = true;
             out.edits.push(file);
         }
         out.problem(|| "missing `*** End Patch`".into());
@@ -321,6 +336,35 @@ mod tests {
         assert_eq!(parsed.edits[0].path, path);
         assert!(parsed.problems.len() <= 32);
         assert!(parsed.problems.iter().all(|p| p.len() <= 256));
+    }
+
+    #[test]
+    fn markers_are_recognised_only_at_column_zero() {
+        // A CONTEXT line whose text happens to be a marker is written with its
+        // leading space (` *** End Patch`) and must stay a line of the hunk.
+        let text = "*** Begin Patch\n*** Update File: a.md\n@@\n before\n *** End Patch\n-old\n+new\n\
+                    *** Update File: b.md\n@@\n-x\n+y\n*** End Patch";
+        let parsed = parse_patch(text);
+        assert!(parsed.is_clean(), "{:?}", parsed.problems);
+        assert_eq!(parsed.edits.len(), 2);
+        assert_eq!(
+            parsed.edits[0].hunks[0].lines,
+            vec![
+                HunkLine::Context("before".into()),
+                HunkLine::Context("*** End Patch".into()),
+                HunkLine::Removed("old".into()),
+                HunkLine::Added("new".into()),
+            ]
+        );
+        assert_eq!(parsed.edits[1].path, "b.md");
+        // Same for the other directives: an indented one is context.
+        let text = "*** Begin Patch\n*** Update File: a\n@@\n *** Update File: z\n *** End of File\n+n\n*** End Patch";
+        let parsed = parse_patch(text);
+        assert!(parsed.is_clean(), "{:?}", parsed.problems);
+        assert_eq!(parsed.edits.len(), 1);
+        assert_eq!(parsed.edits[0].hunks[0].lines.len(), 3);
+        // A real marker with trailing blanks still ends the patch.
+        assert!(parse_patch("*** Begin Patch\n*** Add File: a\n+x\n*** End Patch  ").complete);
     }
 
     #[test]

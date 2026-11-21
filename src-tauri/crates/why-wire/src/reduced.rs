@@ -16,6 +16,15 @@
 //! still place the event on the timeline (which session, which turn, which
 //! tool) without knowing anything about reduction. Adapters tell the two apart
 //! with [`reduction_of`]: a reduced event has no tool input to show.
+//!
+//! One exception (WHY-65): a TRUNCATED payload also keeps
+//! `tool_input.file_path`, so an edit that was too big to forward is still
+//! recorded as "this file was edited" (an unobserved edit op needs a file to
+//! belong to). It is the path only, bounded like every kept value, and never
+//! kept for a REDACTED payload (that one touches a credential file) nor when
+//! the path itself looks like a credential file. Codex has no equivalent: its
+//! file paths live inside the patch TEXT (`tool_input.command`), which cannot
+//! be recovered from a prefix, so a reduced Codex edit stays pathless.
 
 use serde_json::{Map, Value};
 
@@ -66,6 +75,21 @@ fn keep(out: &mut Map<String, Value>, key: &str, value: &Value) {
     }
 }
 
+/// Keep `path` as `tool_input.file_path` (and nothing else of the tool input).
+/// Dropped when too long, or when it names an agent credential file (the same
+/// default needles as [`mentions_credentials`]; a path under a custom
+/// `$CODEX_HOME` / `$CLAUDE_CONFIG_DIR` is only recognised by the hook, which
+/// knows the environment).
+fn keep_path(out: &mut Map<String, Value>, path: &str) {
+    let json = serde_json::to_vec(path).unwrap_or_default();
+    if path.len() <= MAX_KEPT_VALUE_BYTES && !mentions_credentials(&json, &[]) {
+        out.insert(
+            "tool_input".to_owned(),
+            serde_json::json!({ "file_path": path }),
+        );
+    }
+}
+
 fn marker(mut out: Map<String, Value>, reason: Reduction, original_bytes: usize) -> Value {
     out.insert(reason.flag().to_owned(), Value::Bool(true));
     out.insert(
@@ -83,6 +107,14 @@ pub fn reduce_payload(payload: &Value, reason: Reduction, original_bytes: usize)
         for (key, value) in obj {
             keep(&mut out, key, value);
         }
+        if reason == Reduction::Truncated
+            && let Some(path) = payload
+                .get("tool_input")
+                .and_then(|input| input.get("file_path"))
+                .and_then(Value::as_str)
+        {
+            keep_path(&mut out, path);
+        }
     }
     marker(out, reason, original_bytes)
 }
@@ -97,10 +129,109 @@ pub fn reduce_payload(payload: &Value, reason: Reduction, original_bytes: usize)
 pub fn reduce_prefix(prefix: &[u8], reason: Reduction, original_bytes: u64) -> Value {
     use std::fmt;
 
-    use serde::Deserializer as _;
-    use serde::de::{IgnoredAny, MapAccess, Visitor};
+    use serde::de::{
+        DeserializeSeed, Deserializer as _, IgnoredAny, MapAccess, SeqAccess, Visitor,
+    };
 
-    struct Collect<'a>(&'a mut Map<String, Value>);
+    /// A string value of at most [`MAX_KEPT_VALUE_BYTES`], read from any JSON
+    /// value without building the others (a huge object under the key is walked
+    /// and dropped, not allocated).
+    struct ShortStr(Option<String>);
+
+    impl<'de> serde::Deserialize<'de> for ShortStr {
+        fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+            struct V;
+            impl<'de> Visitor<'de> for V {
+                type Value = ShortStr;
+                fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                    f.write_str("any JSON value")
+                }
+                fn visit_str<E>(self, v: &str) -> Result<ShortStr, E> {
+                    Ok(ShortStr(
+                        (v.len() <= MAX_KEPT_VALUE_BYTES).then(|| v.to_owned()),
+                    ))
+                }
+                fn visit_bool<E>(self, _: bool) -> Result<ShortStr, E> {
+                    Ok(ShortStr(None))
+                }
+                fn visit_i64<E>(self, _: i64) -> Result<ShortStr, E> {
+                    Ok(ShortStr(None))
+                }
+                fn visit_u64<E>(self, _: u64) -> Result<ShortStr, E> {
+                    Ok(ShortStr(None))
+                }
+                fn visit_f64<E>(self, _: f64) -> Result<ShortStr, E> {
+                    Ok(ShortStr(None))
+                }
+                fn visit_unit<E>(self) -> Result<ShortStr, E> {
+                    Ok(ShortStr(None))
+                }
+                fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<ShortStr, A::Error> {
+                    while seq.next_element::<IgnoredAny>()?.is_some() {}
+                    Ok(ShortStr(None))
+                }
+                fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<ShortStr, A::Error> {
+                    while map.next_entry::<IgnoredAny, IgnoredAny>()?.is_some() {}
+                    Ok(ShortStr(None))
+                }
+            }
+            d.deserialize_any(V)
+        }
+    }
+
+    /// Reads `tool_input` and keeps only its `file_path`. Any other shape of
+    /// `tool_input` (a string, an array) is skipped without error, so the ids
+    /// that follow it are still read.
+    struct ToolInput<'a>(&'a mut Option<String>);
+
+    impl<'de> DeserializeSeed<'de> for ToolInput<'_> {
+        type Value = ();
+        fn deserialize<D: serde::Deserializer<'de>>(self, d: D) -> Result<(), D::Error> {
+            struct V<'a>(&'a mut Option<String>);
+            impl<'de> Visitor<'de> for V<'_> {
+                type Value = ();
+                fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                    f.write_str("any JSON value")
+                }
+                fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<(), A::Error> {
+                    while let Some(key) = map.next_key::<String>()? {
+                        if key == "file_path" {
+                            *self.0 = map.next_value::<ShortStr>()?.0;
+                        } else {
+                            map.next_value::<IgnoredAny>()?;
+                        }
+                    }
+                    Ok(())
+                }
+                fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<(), A::Error> {
+                    while seq.next_element::<IgnoredAny>()?.is_some() {}
+                    Ok(())
+                }
+                fn visit_str<E>(self, _: &str) -> Result<(), E> {
+                    Ok(())
+                }
+                fn visit_bool<E>(self, _: bool) -> Result<(), E> {
+                    Ok(())
+                }
+                fn visit_i64<E>(self, _: i64) -> Result<(), E> {
+                    Ok(())
+                }
+                fn visit_u64<E>(self, _: u64) -> Result<(), E> {
+                    Ok(())
+                }
+                fn visit_f64<E>(self, _: f64) -> Result<(), E> {
+                    Ok(())
+                }
+                fn visit_unit<E>(self) -> Result<(), E> {
+                    Ok(())
+                }
+            }
+            d.deserialize_any(V(self.0))
+        }
+    }
+
+    /// `keep_path`: only a truncated payload keeps the edited file's path.
+    struct Collect<'a>(&'a mut Map<String, Value>, bool);
 
     impl<'de> Visitor<'de> for Collect<'_> {
         type Value = ();
@@ -114,6 +245,16 @@ pub fn reduce_prefix(prefix: &[u8], reason: Reduction, original_bytes: u64) -> V
                 if KEPT_KEYS.contains(&key.as_str()) {
                     let value: Value = map.next_value()?;
                     keep(self.0, &key, &value);
+                } else if key == "tool_input" && self.1 {
+                    let mut path = None;
+                    // Keep what was read even when the prefix ends inside the
+                    // input (a huge `content` after the path): the error is
+                    // only passed on afterwards.
+                    let read = map.next_value_seed(ToolInput(&mut path));
+                    if let Some(path) = path {
+                        keep_path(self.0, &path);
+                    }
+                    read?;
                 } else {
                     map.next_value::<IgnoredAny>()?;
                 }
@@ -125,7 +266,8 @@ pub fn reduce_prefix(prefix: &[u8], reason: Reduction, original_bytes: u64) -> V
     let mut out = Map::new();
     // The result is deliberately ignored: a cut-off prefix ends in a parse
     // error, and `out` holds everything read before it.
-    let _ = serde_json::Deserializer::from_slice(prefix).deserialize_map(Collect(&mut out));
+    let _ = serde_json::Deserializer::from_slice(prefix)
+        .deserialize_map(Collect(&mut out, reason == Reduction::Truncated));
     marker(
         out,
         reason,
@@ -238,6 +380,8 @@ mod tests {
             json!({
                 "session_id": "s1", "hook_event_name": "PostToolUse", "tool_name": "Write",
                 "tool_use_id": "t1", "cwd": "/repo",
+                // WHY-65: the edited file's path, and nothing else of the input.
+                "tool_input": { "file_path": "/repo/a" },
                 "truncated": true, "original_bytes": 2_000_123,
             })
         );
@@ -267,6 +411,82 @@ mod tests {
             reduce_prefix(b"\xff not json", Reduction::Truncated, 1),
             json!({ "truncated": true, "original_bytes": 1 })
         );
+    }
+
+    #[test]
+    fn a_truncated_payload_keeps_only_the_edited_files_path() {
+        let big = "x".repeat(100_000);
+        let text = |input: &str| {
+            format!(
+                r#"{{"session_id":"s9","tool_name":"Write","tool_input":{input},"tool_use_id":"late"}}"#
+            )
+        };
+        let path_first = text(&format!(
+            r#"{{"file_path":"/r/a.py","content":"{big}","extra":{{"deep":[1,2,{{"x":null}}]}}}}"#
+        ));
+        let path_last = text(&format!(r#"{{"content":"{big}","file_path":"/r/b.py"}}"#));
+        for (raw, want) in [(&path_first, "/r/a.py"), (&path_last, "/r/b.py")] {
+            let r = reduce_prefix(raw.as_bytes(), Reduction::Truncated, 1);
+            assert_eq!(r["tool_input"], json!({ "file_path": want }));
+            assert_eq!(r["tool_use_id"], "late", "ids after the input still read");
+            assert!(r.get("content").is_none());
+        }
+        // Cut off inside the content: the path before the cut survives.
+        let cut = reduce_prefix(&path_first.as_bytes()[..50_000], Reduction::Truncated, 1);
+        assert_eq!(cut["tool_input"], json!({ "file_path": "/r/a.py" }));
+
+        // Not an object, or a path that is not a short string: nothing kept,
+        // and the ids that follow are still found.
+        for input in [
+            r#""just text""#,
+            "[1,2]",
+            "7",
+            "null",
+            r#"{"file_path":["a"]}"#,
+        ] {
+            let r = reduce_prefix(text(input).as_bytes(), Reduction::Truncated, 1);
+            assert!(r.get("tool_input").is_none(), "{input}");
+            assert_eq!(r["tool_use_id"], "late", "{input}");
+        }
+        let long = text(&format!(
+            r#"{{"file_path":"/{}"}}"#,
+            "p".repeat(MAX_KEPT_VALUE_BYTES)
+        ));
+        assert!(
+            reduce_prefix(long.as_bytes(), Reduction::Truncated, 1)
+                .get("tool_input")
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn a_redacted_payload_or_a_credential_path_keeps_no_path() {
+        let payload = json!({
+            "session_id": "s", "tool_name": "Write",
+            "tool_input": { "file_path": "/repo/a.py", "content": "x" },
+        });
+        // Redacted: never, however harmless the path looks.
+        let redacted = reduce_payload(&payload, Reduction::Redacted, 9);
+        assert!(redacted.get("tool_input").is_none());
+        let raw = serde_json::to_vec(&payload).unwrap();
+        let r = reduce_prefix(&raw, Reduction::Redacted, 9);
+        assert!(r.get("tool_input").is_none());
+
+        // Truncated, but the file IS a credential file: the path is dropped.
+        for path in ["/h/.claude/.credentials.json", "/h/.codex/auth.json"] {
+            let p = json!({ "session_id": "s", "tool_input": { "file_path": path } });
+            assert!(
+                reduce_payload(&p, Reduction::Truncated, 9)
+                    .get("tool_input")
+                    .is_none()
+            );
+            let raw = serde_json::to_vec(&p).unwrap();
+            assert!(
+                reduce_prefix(&raw, Reduction::Truncated, 9)
+                    .get("tool_input")
+                    .is_none()
+            );
+        }
     }
 
     #[test]

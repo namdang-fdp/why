@@ -44,14 +44,15 @@ use std::time::Duration;
 use crate::contracts::{SessionSummary, SessionTimeline, WorktreeId};
 use crate::provenance::EditRecord;
 use crate::store::StoreError;
+use why_wire::Harness;
 
 pub use clock::Clock;
 pub use correlation::{EditTouch, ShellTurn, canonical_path};
 pub use memory::MemoryEventStore;
 pub(crate) use model::excerpt_with_truncation;
 pub use model::{
-    EXCERPT_MAX_BYTES, EventKey, EventKind, NormalizedEvent, SessionKey, ToolCall, ToolClass,
-    excerpt,
+    EXCERPT_MAX_BYTES, EditedFile, EventKey, EventKind, NormalizedEvent, SessionKey, ToolCall,
+    ToolClass, excerpt,
 };
 pub use rationale::SourceEvent;
 pub use sqlite::{SqliteEventStore, open_event_store};
@@ -88,13 +89,16 @@ pub trait EventStore: Send + Sync {
     /// ops once. An op without a `worktree_id`, or whose path has no
     /// [`canonical_path`] form, could never be looked up by
     /// [`EventStore::edit_records`]: it is skipped, and the event itself is
-    /// still stored. An op's worktree is NOT added to `changed_worktrees` nor
-    /// linked to the session here; listing the session in the edited file's
-    /// worktree is the ingest step's job (WHY-65, decision 32).
+    /// still stored. An op's own worktree is NOT linked to the session here.
+    /// What lists a session in the worktree of a file it edited
+    /// (decision 32, WHY-65) is [`NormalizedEvent::edited_files`], which ingest
+    /// fills: the store links the session to the event's `worktree_id` AND to
+    /// every worktree named there, so those worktrees are also in
+    /// `changed_worktrees`.
     fn append(&self, events: &[NormalizedEvent]) -> Result<AppendOutcome, StoreError>;
 
-    /// Sessions with at least one event in this worktree, most recently active
-    /// first.
+    /// Sessions with at least one event in this worktree, or that edited a file
+    /// of it (decision 32), most recently active first.
     fn sessions_for_worktree(&self, wt: &WorktreeId) -> Result<Vec<SessionSummary>, StoreError>;
 
     /// One session's timeline, or `None` if no such session is stored.
@@ -112,8 +116,11 @@ pub trait EventStore: Send + Sync {
     /// is not canonical simply matches nothing. Each result lists only the
     /// queried paths its call named. A successful finish's targets take
     /// precedence when it reports them. Start and finish are merged into one
-    /// call, with outcome `Unknown` when no finish was seen. Only
-    /// events resolved to `wt` count: the same relative path in another
+    /// call, with outcome `Unknown` when no finish was seen. A file counts for
+    /// the worktree that OWNS it (decision 32), not for the session's cwd: a call
+    /// whose events are resolved to worktree A is found from worktree B when it
+    /// edited B's file (both its start and finish are found by `tool_use_id`),
+    /// and it lists only B's files there. The same relative path in another
     /// worktree of the repository is a different file.
     ///
     /// Cost: SQLite reads the index rows of the queried paths plus the events
@@ -164,6 +171,17 @@ pub trait EventStore: Send + Sync {
     /// An empty list would label every line of the file `NoCapture`.
     fn edit_records(&self, _wt: &WorktreeId, _path: &str) -> Result<Vec<EditRecord>, StoreError> {
         Err(unsupported("edit_records"))
+    }
+
+    /// When the newest event of `harness` arrived (Unix milliseconds), or
+    /// `None` if none was ever stored (WHY-55: "last event" per harness, the
+    /// sign that a harness really sends events to this instance). Any stored
+    /// event counts, whatever its kind; retention (30 days) applies.
+    ///
+    /// Same default as [`EventStore::edit_calls`]: an error, never "none".
+    /// "No event yet" would tell the user their hooks are not working.
+    fn last_event_ms(&self, _harness: Harness) -> Result<Option<u64>, StoreError> {
+        Err(unsupported("last_event_ms"))
     }
 }
 

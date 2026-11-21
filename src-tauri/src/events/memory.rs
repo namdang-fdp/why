@@ -5,6 +5,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::{Mutex, MutexGuard};
 
 use super::clock::Clock;
+use super::correlation::indexed_files;
 use super::correlation::{
     Call, CallEvent, EditTouch, ShellTurn, build_edit_touches, build_shell_turns,
     distinct_sessions, fold_calls, tool_event_class,
@@ -17,6 +18,7 @@ use super::{AppendOutcome, EventStore};
 use crate::contracts::{SessionSummary, SessionTimeline, WorktreeId};
 use crate::provenance::{EditRecord, EditSource};
 use crate::store::StoreError;
+use why_wire::Harness;
 
 #[derive(Debug, Default)]
 struct Inner {
@@ -32,6 +34,11 @@ struct Inner {
     /// The next event's arrival number: SQLite's `events.seq`, which an
     /// [`EditRecord::seq`] reports.
     next_seq: u64,
+    /// The worktrees each session is listed in, like SQLite's `session_worktrees`
+    /// link table. A session is listed in its events' worktree AND in every
+    /// worktree that owns a file it edited (decision 32), so this is not
+    /// derivable from the events' own `worktree_id`.
+    links: HashMap<SessionKey, HashSet<WorktreeId>>,
 }
 
 /// An [`EventStore`] in two hash maps behind one `std::sync::Mutex` (held for
@@ -72,6 +79,7 @@ impl MemoryEventStore {
 /// The calls of one tool class that happened in worktree `wt` in one session.
 /// Events resolved to another worktree are ignored here, so a call split across
 /// two worktrees (a Pre in one, a Post in the other) is never stitched together.
+/// For SHELL classes only: what a shell command did is not tied to a file.
 fn calls_in(events: &[NormalizedEvent], wt: &WorktreeId, classes: &[ToolClass]) -> Vec<Call> {
     fold_calls(
         events
@@ -80,7 +88,22 @@ fn calls_in(events: &[NormalizedEvent], wt: &WorktreeId, classes: &[ToolClass]) 
                 e.worktree_id.as_ref() == Some(wt)
                     && tool_event_class(e).is_some_and(|class| classes.contains(&class))
             })
-            .filter_map(CallEvent::from_event),
+            .filter_map(|e| CallEvent::from_event(e, wt)),
+    )
+}
+
+/// The edit calls of one session, seen from worktree `wt` (decision 32): ALL
+/// the session's edit events take part whatever their own `worktree_id`, and
+/// each lists only its files that live in `wt`. A session started in worktree A
+/// that edits a file of B has events resolved to A; both halves of that call
+/// (`Pre` and `Post`) are still found from B, and the call is only reported
+/// for the paths it names in B.
+fn edit_calls_in(events: &[NormalizedEvent], wt: &WorktreeId) -> Vec<Call> {
+    fold_calls(
+        events
+            .iter()
+            .filter(|e| tool_event_class(e) == Some(ToolClass::Edit))
+            .filter_map(|e| CallEvent::from_event(e, wt)),
     )
 }
 
@@ -132,6 +155,11 @@ impl EventStore for MemoryEventStore {
                     .entry(ev.session.clone())
                     .or_default()
                     .push(stored);
+                // List the session in the event's own worktree and in the
+                // worktree of every file it edited (decision 32).
+                let links = inner.links.entry(ev.session.clone()).or_default();
+                links.extend(ev.worktree_id.iter().cloned());
+                links.extend(indexed_files(ev).into_iter().map(|(wt, _)| wt));
                 changed_sessions.insert(&ev.session);
                 outcome.inserted += 1;
             } else {
@@ -139,11 +167,12 @@ impl EventStore for MemoryEventStore {
             }
         }
         // A session can appear in several worktree lists even after its cwd
-        // changes. Use its stored history, including events outside this batch.
+        // changes, or because it edited a file of another worktree. Use its
+        // stored links, including those made by events outside this batch.
         let changed_worktrees: HashSet<_> = changed_sessions
             .into_iter()
-            .flat_map(|session| &inner.sessions[session])
-            .filter_map(|ev| ev.worktree_id.as_ref())
+            .filter_map(|session| inner.links.get(session))
+            .flatten()
             .collect();
         outcome.changed_worktrees = changed_worktrees.into_iter().cloned().collect();
         outcome.changed_worktrees.sort_by(|a, b| a.0.cmp(&b.0));
@@ -156,7 +185,12 @@ impl EventStore for MemoryEventStore {
         let mut found: Vec<(u64, SessionSummary)> = inner
             .sessions
             .iter()
-            .filter(|(_, events)| events.iter().any(|e| e.worktree_id.as_ref() == Some(wt)))
+            .filter(|(key, _)| {
+                inner
+                    .links
+                    .get(*key)
+                    .is_some_and(|links| links.contains(wt))
+            })
             .filter_map(|(key, events)| {
                 let last = events.iter().map(|e| e.at_ms).max()?;
                 Some((last, build_summary(key, events, now)?))
@@ -182,6 +216,7 @@ impl EventStore for MemoryEventStore {
             keys,
             sessions,
             edits,
+            links,
             ..
         } = &mut *inner;
         let before = sessions.len();
@@ -196,6 +231,8 @@ impl EventStore for MemoryEventStore {
         });
         // A pruned session's ops go with it (SQLite: ON DELETE CASCADE).
         edits.retain(|r| sessions.contains_key(&r.source.session));
+        // And its worktree links (SQLite: the same cascade).
+        links.retain(|session, _| sessions.contains_key(session));
         Ok(before - sessions.len())
     }
 
@@ -208,7 +245,7 @@ impl EventStore for MemoryEventStore {
         let mut calls: Vec<Call> = Vec::new();
         let mut indices = HashMap::new();
         for (session, events) in &inner.sessions {
-            let session_calls: Vec<Call> = calls_in(events, wt, &[ToolClass::Edit])
+            let session_calls: Vec<Call> = edit_calls_in(events, wt)
                 .into_iter()
                 .filter(|c| c.paths.iter().any(|p| wanted.contains(p.as_str())))
                 .collect();
@@ -231,6 +268,16 @@ impl EventStore for MemoryEventStore {
             .filter(|r| r.op.worktree_id.as_ref() == Some(wt) && r.op.path == path)
             .cloned()
             .collect())
+    }
+
+    fn last_event_ms(&self, harness: Harness) -> Result<Option<u64>, StoreError> {
+        let inner = self.lock()?;
+        Ok(inner
+            .sessions
+            .iter()
+            .filter(|(key, _)| key.harness == harness)
+            .flat_map(|(_, events)| events.iter().map(|e| e.at_ms))
+            .max())
     }
 
     fn shell_turns(&self, wt: &WorktreeId) -> Result<Vec<ShellTurn>, StoreError> {

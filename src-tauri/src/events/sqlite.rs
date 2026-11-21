@@ -36,7 +36,7 @@ use why_wire::Harness;
 use super::clock::Clock;
 use super::correlation::{
     CallEvent, EditTouch, ShellTurn, build_edit_touches, build_shell_turns, canonical_paths,
-    distinct_sessions, fold_calls, indexed_paths,
+    distinct_sessions, fold_calls, indexed_files,
 };
 use super::edits::{
     FORMAT_V1, decode_after, decode_before, decode_hunks, decode_kind as decode_edit_kind,
@@ -535,10 +535,10 @@ fn migrate(conn: &mut Connection) -> Result<(), StoreError> {
 }
 
 /// v2 backfill: index the edit events a v1 database already holds. Applies the
-/// same rule as [`indexed_paths`], split in two because SQL cannot canonicalize
+/// same rule as [`indexed_files`], split in two because SQL cannot canonicalize
 /// a path: the `WHERE` clause below is that function's guard (a worktree, an
 /// OBSERVED edit-class tool start or finish), and [`canonical_paths`], the very
-/// function `indexed_paths` ends with, makes the paths. Idempotent (`INSERT OR
+/// function `indexed_files` ends with, makes the paths. Idempotent (`INSERT OR
 /// IGNORE`). One unreadable row is skipped with a warning rather than failing
 /// the migration: a bad row must not lock the user out of their whole history
 /// (the app would fall back to memory).
@@ -760,6 +760,7 @@ fn event_from_row(row: &Row<'_>) -> rusqlite::Result<NormalizedEvent> {
         // Stored ops are read back through `edit_records`, never attached to
         // the events a timeline is built from.
         edits: Vec::new(),
+        edited_files: None,
     })
 }
 
@@ -1028,14 +1029,20 @@ impl EventStore for SqliteEventStore {
                 if let Some(wt) = &ev.worktree_id {
                     link.execute(params![wt.0, harness, ev.session.session_id])
                         .map_err(backend("cannot link session to worktree"))?;
-                    // The file index, in the SAME transaction as the event: a
-                    // crash can never leave an event without its index rows.
-                    // (A redelivery `continue`d above, so it adds none.)
-                    for path in indexed_paths(ev) {
-                        index
-                            .execute(params![wt.0, path, ev.key.0])
-                            .map_err(backend("cannot index event files"))?;
-                    }
+                }
+                // The file index, in the SAME transaction as the event: a
+                // crash can never leave an event without its index rows.
+                // (A redelivery `continue`d above, so it adds none.) Each
+                // file is indexed under the worktree that OWNS it, and the
+                // session is listed there too (decision 32): that is what
+                // makes a session that edited a file of worktree B show up in
+                // B and what `edit_calls(B, ..)` finds.
+                for (wt, path) in indexed_files(ev) {
+                    link.execute(params![wt.0, harness, ev.session.session_id])
+                        .map_err(backend("cannot link session to worktree"))?;
+                    index
+                        .execute(params![wt.0, path, ev.key.0])
+                        .map_err(backend("cannot index event files"))?;
                 }
             }
         }
@@ -1149,6 +1156,22 @@ impl EventStore for SqliteEventStore {
         Ok(removed)
     }
 
+    fn last_event_ms(&self, harness: Harness) -> Result<Option<u64>, StoreError> {
+        let conn = lock(&self.reader, "reader")?;
+        // `sessions.last_event_ms` is the running MAX of its events' times
+        // (kept by `append`), so this reads one small row per session of the
+        // harness instead of scanning every event.
+        let max: Option<i64> = conn
+            .prepare_cached("SELECT max(last_event_ms) FROM sessions WHERE harness = ?1")
+            .map_err(backend("cannot prepare last event"))?
+            .query_row([harness.as_str()], |row| row.get(0))
+            .map_err(backend("cannot read the last event time"))?;
+        max.map(|ms| {
+            u64::try_from(ms).map_err(|_| StoreError::Backend(format!("bad last event time {ms}")))
+        })
+        .transpose()
+    }
+
     fn edit_records(&self, wt: &WorktreeId, path: &str) -> Result<Vec<EditRecord>, StoreError> {
         let conn = lock(&self.reader, "reader")?;
         // One statement: its own snapshot, no transaction needed.
@@ -1210,26 +1233,43 @@ impl EventStore for SqliteEventStore {
 
         // 2. Both halves of each matched call (a finish may carry no `files`,
         //    so the index alone would miss it and report the call as Unknown).
+        //    NOT filtered by the events' own worktree: a session that started
+        //    in worktree A and edited a file of B has its events resolved to A
+        //    (decision 32). Each half's paths are its `event_files` rows in
+        //    `wt`, so the call lists only the queried worktree's files.
         let mut events: Vec<CallEvent> = Vec::new();
         {
             let mut by_call = tx
                 .prepare_cached(&format!(
-                    "{CALL_EVENTS_SQL} AND harness = ?2 AND session_id = ?3 \
-                     AND tool_use_id = ?4 ORDER BY seq"
+                    "{EDIT_CALL_EVENTS_SQL} AND harness = ?1 AND session_id = ?2 \
+                     AND tool_use_id = ?3 ORDER BY seq"
                 ))
                 .map_err(backend("cannot prepare call events"))?;
+            let mut file_rows = tx
+                .prepare_cached(
+                    "SELECT path FROM event_files WHERE worktree_id = ?1 AND event_key = ?2",
+                )
+                .map_err(backend("cannot prepare call paths"))?;
             for (harness, session, id) in &calls_wanted {
-                collect_call_events(
+                collect_edit_call_events(
                     &mut by_call,
-                    params![wt.0, harness, session, id],
+                    &mut file_rows,
+                    wt,
+                    params![harness, session, id],
                     &mut events,
                 )?;
             }
             let mut by_key = tx
-                .prepare_cached(&format!("{CALL_EVENTS_SQL} AND event_key = ?2"))
+                .prepare_cached(&format!("{EDIT_CALL_EVENTS_SQL} AND event_key = ?1"))
                 .map_err(backend("cannot prepare call event"))?;
             for key in &loose_keys {
-                collect_call_events(&mut by_key, params![wt.0, key], &mut events)?;
+                collect_edit_call_events(
+                    &mut by_key,
+                    &mut file_rows,
+                    wt,
+                    params![key],
+                    &mut events,
+                )?;
             }
         }
         let calls = fold_calls(events);
@@ -1331,10 +1371,12 @@ fn source_event_from_row(row: &Row<'_>) -> rusqlite::Result<SourceEvent> {
 /// (older builds 999); 400 keeps well under both.
 const PATH_CHUNK: usize = 400;
 
-/// The columns [`collect_call_events`] reads, restricted to one worktree's tool
-/// events; callers append the rest of the WHERE clause. Edit class only.
-const CALL_EVENTS_SQL: &str = "SELECT harness, session_id, turn_id, agent_id, tool_use_id, kind, \
-     outcome, at_ms, files FROM events WHERE worktree_id = ?1 AND tool_class = 'edit' \
+/// The columns [`collect_edit_call_events`] reads: edit-class tool events,
+/// whatever worktree they were resolved to; callers append the rest of the
+/// WHERE clause. The last column is the event key (its files are looked up in
+/// `event_files`).
+const EDIT_CALL_EVENTS_SQL: &str = "SELECT harness, session_id, turn_id, agent_id, tool_use_id, kind, \
+     outcome, at_ms, files, event_key FROM events WHERE tool_class = 'edit' \
      AND evidence = 'observed' AND kind IN ('tool_started', 'tool_finished')";
 
 /// Shell and test-run tool events of a worktree, in arrival order (`files` is
@@ -1360,7 +1402,7 @@ fn placeholders(n: usize, from: usize) -> String {
         .join(", ")
 }
 
-/// Run a statement that selects the [`CALL_EVENTS_SQL`] columns and push each
+/// Run a statement that selects the [`SHELL_EVENTS_SQL`] columns and push each
 /// row as a [`CallEvent`].
 fn collect_call_events(
     stmt: &mut rusqlite::CachedStatement<'_>,
@@ -1376,7 +1418,36 @@ fn collect_call_events(
     Ok(())
 }
 
-/// One row of [`CALL_EVENTS_SQL`] as a [`CallEvent`].
+/// Like [`collect_call_events`] for edit calls: each event's `paths` are its
+/// `event_files` rows in `wt` (the files of that worktree it named), instead of
+/// every canonical path of its `files` list.
+fn collect_edit_call_events(
+    stmt: &mut rusqlite::CachedStatement<'_>,
+    file_rows: &mut rusqlite::CachedStatement<'_>,
+    wt: &WorktreeId,
+    params: impl rusqlite::Params,
+    out: &mut Vec<CallEvent>,
+) -> Result<(), StoreError> {
+    let rows = stmt
+        .query_map(params, |row| {
+            Ok((call_event_from_row(row)?, row.get::<_, String>(9)?))
+        })
+        .map_err(backend("cannot read call events"))?;
+    for row in rows {
+        let (mut event, key) = row.map_err(backend("cannot read a call event row"))?;
+        let mut paths = file_rows
+            .query_map(params![wt.0, key], |r| r.get::<_, String>(0))
+            .map_err(backend("cannot read call paths"))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(backend("cannot read a call path"))?;
+        paths.sort();
+        event.paths = paths;
+        out.push(event);
+    }
+    Ok(())
+}
+
+/// One row of [`SHELL_EVENTS_SQL`] or [`EDIT_CALL_EVENTS_SQL`] as a [`CallEvent`].
 fn call_event_from_row(row: &Row<'_>) -> rusqlite::Result<CallEvent> {
     let harness: String = row.get(0)?;
     let kind: String = row.get(5)?;
@@ -1614,10 +1685,16 @@ mod tests {
         assert!(!p.contains("SCAN"), "{p}");
 
         let by_call = format!(
-            "{CALL_EVENTS_SQL} AND harness = ?2 AND session_id = ?3 AND tool_use_id = ?4 ORDER BY seq"
+            "{EDIT_CALL_EVENTS_SQL} AND harness = ?1 AND session_id = ?2 AND tool_use_id = ?3 ORDER BY seq"
         );
-        let p = plan(&store, &by_call, 4);
+        let p = plan(&store, &by_call, 3);
         assert!(p.contains("events_by_tool_use"), "{p}");
+        assert!(!p.contains("SCAN"), "{p}");
+
+        // The per-event file lookup of a call half (`edit_calls`).
+        let paths = "SELECT path FROM event_files WHERE worktree_id = ?1 AND event_key = ?2";
+        let p = plan(&store, paths, 2);
+        assert!(p.contains("SEARCH"), "{p}");
         assert!(!p.contains("SCAN"), "{p}");
 
         let p = plan(&store, SHELL_EVENTS_SQL, 1);

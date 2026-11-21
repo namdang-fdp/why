@@ -16,10 +16,14 @@ eventsReceived: number | null,
 spoolIngested: number | null, 
 /**
  * Files waiting in the spool directory (events hooks could not deliver).
+ * A spool directory that does not exist yet is an empty spool (`0`);
+ * `null` only when it exists but cannot be read.
  */
 spoolFiles: number | null, 
 /**
- * Health facts the collector does not expose (so the UI shows "unknown",
- * not zero): currently `lastEventAt`.
+ * Health facts WHY cannot tell (so the UI shows "unknown", not zero):
+ * `lastEventAt` while no harness has an event yet or the event store
+ * could not be asked. The per-harness times are in
+ * `HarnessHookStatus.lastEventAt`.
  */
 unavailable: Array<string>, };

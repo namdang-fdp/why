@@ -21,6 +21,8 @@ export type HookFixtureScenario = {
   stale?: boolean;
   uninstall?: "restoreOriginal" | "removeEntries" | "deleteFile";
   instance?: string;
+  /** When each harness last sent an event (RFC 3339); a harness left out has sent none. */
+  lastEvents?: Partial<Record<HookHarness, string>>;
 };
 
 const configPaths = {
@@ -185,6 +187,7 @@ export class HookFixtures {
       configPath: configPaths[harness],
       state: this.files[harness].state,
       events: events[harness],
+      lastEventAt: this.scenario.lastEvents?.[harness] ?? null,
     };
   }
 
@@ -209,7 +212,8 @@ export class HookFixtures {
         eventsReceived: running ? (status.kind === "listening" ? 18 : 0) : null,
         spoolIngested: running ? 0 : null,
         spoolFiles: running ? (status.kind === "disabled" ? 3 : 0) : null,
-        unavailable: ["lastEventAt"],
+        // Unknown while no harness has an event (the core's rule).
+        unavailable: Object.keys(this.scenario.lastEvents ?? {}).length > 0 ? [] : ["lastEventAt"],
       },
     });
   }
