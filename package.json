@@ -15,8 +15,9 @@
     "test:ui": "vitest run --config ui/vite.config.ts",
     "lint": "pnpm lint:rust && pnpm lint:ui",
     "lint:rust": "cargo clippy --manifest-path src-tauri/Cargo.toml --workspace --all-targets -- -D warnings && cargo fmt --manifest-path src-tauri/Cargo.toml --all --check",
-    "lint:ui": "eslint . && tsc -b ui",
+    "lint:ui": "eslint . && tsc -b ui && prettier --check ui eslint.config.js scripts",
     "fmt": "cargo fmt --manifest-path src-tauri/Cargo.toml --all && prettier --write ui eslint.config.js scripts",
+    "fmt:check": "cargo fmt --manifest-path src-tauri/Cargo.toml --all --check && prettier --check ui eslint.config.js scripts",
     "gen:contracts": "cargo test --manifest-path src-tauri/Cargo.toml -p why --lib contracts::export::regenerate_bindings -- --ignored",
     "tauri": "tauri"
   },
