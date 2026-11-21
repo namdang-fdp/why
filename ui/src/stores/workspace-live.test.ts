@@ -294,11 +294,16 @@ describe("worktrees added and removed", () => {
     stop();
   });
 
-  it("moves to the neighbouring worktree and clears the diff when the selected one disappears", async () => {
-    const { source, store, stop, settle } = await setup();
+  it("opens the neighbouring worktree’s first diff when the selected one disappears", async () => {
+    const { source, store, spies, stop, settle } = await setup();
     const extra = source.simulateWorktreeAdded(REPO_WHY, "after");
     await settle();
     expect(names(store)).toEqual([WT_WHY_MAIN, WT_WHY_AGENT, extra?.id]);
+    // The new fixture copies main's changed files. Give it the same diff too.
+    const path = changesByWorktree[WT_WHY_MAIN][0]?.path;
+    if (!path) throw new Error("fixture change missing");
+    const diff = await source.getFileDiff(WT_WHY_MAIN, path, "uncommitted");
+    spies.getFileDiff.mockResolvedValueOnce(diff);
 
     source.simulateWorktreeRemoved(WT_WHY_AGENT);
     await settle();
@@ -306,8 +311,8 @@ describe("worktrees added and removed", () => {
     const state = store.getState();
     // The worktree now at the removed one's position.
     expect(state.worktreeId).toBe(extra?.id);
-    expect(state.filePath).toBeNull();
-    expect(state.fileDiff.status).toBe("idle");
+    expect(state.filePath).toBe(path);
+    expect(state.fileDiff).toMatchObject({ status: "ok", data: { path } });
     expect(selectWorktree(state)?.id).toBe(extra?.id);
     stop();
   });
@@ -332,6 +337,10 @@ describe("a live edit while the open diff is loading", () => {
     const store = createWorkspaceStore(source, createToastStore());
     await store.getState().loadRepositories();
     const stale = await source.getFileDiff(WT_WHY_AGENT, MOD, "vsBase");
+    // Force a new read of the default file without keeping a queued refresh.
+    const unwatch = store.getState().watchWorktrees();
+    source.emitWorktreeChanged({ worktreeId: WT_WHY_AGENT, paths: [MOD] });
+    unwatch();
     const slow = deferred<FileDiff>();
     const getFileDiff = vi.spyOn(source, "getFileDiff").mockReturnValueOnce(slow.promise);
     const stop = store.getState().watchWorktrees();
@@ -356,6 +365,10 @@ describe("a live edit while the open diff is loading", () => {
     const store = createWorkspaceStore(source, createToastStore());
     await store.getState().loadRepositories();
     const stale = await source.getFileDiff(WT_WHY_AGENT, MOD, "vsBase");
+    // Force a new read of the default file without keeping a queued refresh.
+    const unwatch = store.getState().watchWorktrees();
+    source.emitWorktreeChanged({ worktreeId: WT_WHY_AGENT, paths: [MOD] });
+    unwatch();
     const slow = deferred<FileDiff>();
     const getFileDiff = vi.spyOn(source, "getFileDiff").mockReturnValueOnce(slow.promise);
     const stop = store.getState().watchWorktrees();

@@ -11,7 +11,7 @@ import { createToastStore, toastStore } from "@/stores/toasts";
 import { createWorkspaceStore } from "@/stores/workspace";
 import { App } from "./App";
 
-// The editor itself is covered elsewhere; these flows never open a diff.
+// The editor itself is covered elsewhere.
 vi.mock("@/components/diff/monaco-diff", () => ({ default: () => null }));
 
 beforeEach(() => {
@@ -221,6 +221,11 @@ describe("worktrees that failed to load", () => {
     // Where the changes would be: the error, with a retry.
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toContain("fatal: not a git repository");
+    expect(
+      within(screen.getByRole("main", { name: "Diff" })).getByText("Select a file"),
+    ).toBeTruthy();
+    expect(store.getState().filePath).toBeNull();
+    expect(store.getState().fileDiff.status).toBe("idle");
   });
 
   it("does not put error cards in the command palette", async () => {

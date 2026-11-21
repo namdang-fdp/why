@@ -111,6 +111,8 @@ describe("review shell", () => {
     render(createElement(App, { store }));
     await screen.findByRole("button", { name: /mod\.rs/ });
 
+    const initialPath = "src-tauri/src/git/mod.rs";
+    await waitFor(() => expect(store.getState().filePath).toBe(initialPath));
     const input = document.createElement("input");
     document.body.append(input);
     try {
@@ -119,7 +121,7 @@ describe("review shell", () => {
       await user.keyboard("{Control>}k{/Control}");
       expect(input.value).toBe("ji3?[");
       expect(store.getState()).toMatchObject({
-        filePath: null,
+        filePath: initialPath,
         inspectorOpen: true,
         preferredMode: "vsBase",
         paletteOpen: false,
@@ -133,7 +135,7 @@ describe("review shell", () => {
     expect(document.activeElement).toBe(search);
     await user.keyboard("ji3?");
     expect(store.getState()).toMatchObject({
-      filePath: null,
+      filePath: initialPath,
       inspectorOpen: true,
       preferredMode: "vsBase",
       paletteOpen: true,
@@ -142,7 +144,7 @@ describe("review shell", () => {
     await user.keyboard("{Escape}");
     await screen.findByRole("button", { name: "Search commands" });
     await user.keyboard("j");
-    expect(store.getState().filePath).toBe("src-tauri/src/git/mod.rs");
+    expect(store.getState().filePath).toBe("src-tauri/src/git/worktree.rs");
   });
 
   it("disables Vs base when a worktree has no base", async () => {

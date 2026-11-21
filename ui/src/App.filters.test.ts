@@ -56,6 +56,7 @@ describe("a repository with untrusted git filter programs", () => {
   it("is blocked: the diff area explains it and lists the programs, with the shield on the row", async () => {
     const { source } = setup();
     const read = vi.spyOn(source, "getChanges");
+    const diff = vi.spyOn(source, "getFileDiff");
 
     const region = within(await panel());
     // What would run, and where it came from: the user decides on facts.
@@ -70,7 +71,8 @@ describe("a repository with untrusted git filter programs", () => {
     expect(screen.getByRole("img", { name: /^Blocked: defines git filter programs/ })).toBeTruthy();
     // The rail's file list does not offer a pointless retry.
     expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
-    expect(read).toHaveBeenCalled(); // the core was asked, and it refused
+    expect(read).toHaveBeenCalledTimes(1); // the core was asked, and it refused
+    expect(diff).not.toHaveBeenCalled();
   });
 
   it("trusting asks for confirmation, then reads the repository", async () => {
@@ -92,9 +94,11 @@ describe("a repository with untrusted git filter programs", () => {
     await screen.findByRole("list", { name: "Changed files" });
     expect(screen.queryByRole("region", { name: "Blocked until you review it" })).toBeNull();
     expect(trust).toHaveBeenCalledWith("repo-why", expect.stringContaining("secrets-scan"));
-    expect(screen.getByRole("status", { name: "" }).textContent).toMatch(
-      /You trusted this repository's git filter programs \(secrets-scan\)/,
-    );
+    expect(
+      screen
+        .getByText(/You trusted this repository's git filter programs \(secrets-scan\)/)
+        .closest('[role="status"]'),
+    ).toBeTruthy();
     expect(screen.getByRole("img", { name: /^Git filter programs trusted/ })).toBeTruthy();
   });
 
@@ -177,9 +181,11 @@ describe("a repository that only uses the user's own filter programs", () => {
     await user.click(detached);
     await screen.findByRole("list", { name: "Changed files" });
     expect(screen.queryByRole("region", { name: "Blocked until you review it" })).toBeNull();
-    expect(screen.getByRole("status", { name: "" }).textContent).toMatch(
-      /uses git filter programs from your own git config \(lfs\)/,
-    );
+    expect(
+      screen
+        .getByText(/uses git filter programs from your own git config \(lfs\)/)
+        .closest('[role="status"]'),
+    ).toBeTruthy();
   });
 });
 

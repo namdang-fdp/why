@@ -103,8 +103,8 @@ describe("attribution in the changed-files rail", () => {
     expect(legacy?.textContent).toContain("Agent edit not confirmed");
     expect(legacy?.textContent).not.toContain("not applied");
     await user.click(await chip(/Agent edit not confirmed/, /legacy\.rs/));
-    expect(await screen.findByText("Not applied or not confirmed")).toBeTruthy();
-    expect(screen.getByText("Not confirmed")).toBeTruthy();
+    const outcomeGroup = (await screen.findByText("Not applied or not confirmed")).parentElement;
+    expect(outcomeGroup && within(outcomeGroup).getByText("Not confirmed")).toBeTruthy();
     expect(screen.queryByText(/rejected/i)).toBeNull();
   });
 
@@ -480,7 +480,7 @@ describe("review follow-ups", () => {
     expect(lossy?.querySelector(".evidence-chip")).toBeNull();
     await user.click(within(lossy as HTMLElement).getByRole("button", { name: /caf/ }));
     await act(async () => {});
-    expect(history).not.toHaveBeenCalled();
+    expect(history).not.toHaveBeenCalledWith("wt-billing-detached", "docs/caf�.txt");
     expect(screen.queryByRole("region", { name: /Edit history of/ })).toBeNull();
   });
 

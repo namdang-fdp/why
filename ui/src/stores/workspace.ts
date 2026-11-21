@@ -251,6 +251,7 @@ export function createWorkspaceStore(source: DataSource, toasts: StoreApi<Toasts
   const sessions = createSessionsStore(source);
   const evidence = createEvidenceStore(source);
   return createStore<WorkspaceStore>((set, get) => {
+    const lastFileByWorktree = new Map<WorktreeId, string>();
     const worktreeQueries = createQueryLoader(
       () => get().worktrees,
       (worktrees) => set({ worktrees }),
@@ -357,7 +358,7 @@ export function createWorkspaceStore(source: DataSource, toasts: StoreApi<Toasts
       }
     }
 
-    async function loadFileDiff(path: string) {
+    async function loadFileDiff(path: string, syncVersion?: number) {
       const state = get();
       const changes = selectChanges(state);
       if (
@@ -369,7 +370,10 @@ export function createWorkspaceStore(source: DataSource, toasts: StoreApi<Toasts
 
       const { worktreeId } = state;
       const mode = selectDiffMode(state);
-      const version = ++navigationVersion;
+      // A synced default belongs to the navigation already in progress, so it
+      // must not supersede an explicit session-file lookup in that navigation.
+      const version = syncVersion ?? ++navigationVersion;
+      lastFileByWorktree.set(worktreeId, path);
       // This load starts AFTER anything the watcher reported so far, so it
       // already reads those changes; only an event arriving while it runs can
       // make its answer stale.
@@ -393,18 +397,27 @@ export function createWorkspaceStore(source: DataSource, toasts: StoreApi<Toasts
       else if (fileDiff.status === "ok") prefetchNeighbours(path);
     }
 
-    async function syncChanges(worktree: Worktree) {
+    async function syncChanges(worktree: Worktree, explicitPath = false) {
       const version = ++navigationVersion;
       const mode = modeForWorktree(get().preferredMode, worktree);
       set({ fileDiff: idle });
       const changes = await loadChanges(worktree.id, mode);
       if (version !== navigationVersion || changes.status !== "ok") return;
-      const path = get().filePath;
-      if (path !== null && changes.data.some((file) => file.path === path)) {
-        await get().selectFile(path);
-      } else {
-        set({ filePath: null });
+      const current = get().filePath;
+      const remembered = lastFileByWorktree.get(worktree.id);
+      const contains = (path: string | null | undefined) =>
+        changes.data.some((file) => file.path === path);
+      if (remembered !== undefined && !contains(remembered)) {
+        lastFileByWorktree.delete(worktree.id);
       }
+      const preferred = current ?? remembered;
+      const path = contains(preferred)
+        ? preferred
+        : explicitPath
+          ? undefined
+          : changes.data[0]?.path;
+      if (path !== undefined) await loadFileDiff(path, version);
+      else set({ filePath: null });
     }
 
     async function navigateTo(worktree: Worktree, path: string | null, preferredMode: DiffMode) {
@@ -416,7 +429,7 @@ export function createWorkspaceStore(source: DataSource, toasts: StoreApi<Toasts
         flashes: new Map(),
         preferredMode,
       });
-      await syncChanges(worktree);
+      await syncChanges(worktree, path !== null);
     }
 
     // ---- live updates -------------------------------------------------------
@@ -548,7 +561,7 @@ export function createWorkspaceStore(source: DataSource, toasts: StoreApi<Toasts
     /**
      * Re-read a repository's worktrees (silently) and, if the selected worktree
      * is gone (removed or pruned), move the selection to its neighbour: the one
-     * now at its old position, or the last. The diff is cleared with it.
+     * now at its old position, or the last.
      *
      * The answer is read back from the cache, not from this call's own result:
      * a newer read may have replaced this one, and the cache is what is shown.
@@ -561,6 +574,12 @@ export function createWorkspaceStore(source: DataSource, toasts: StoreApi<Toasts
       await loadWorktrees(repoId, true);
       const list = get().worktrees.get(repoId);
       if (list?.status !== "ok") return;
+      if (previous?.status === "ok" && previous !== list) {
+        const remaining = new Set(list.data.map((worktree) => worktree.id));
+        for (const worktree of previous.data) {
+          if (!remaining.has(worktree.id)) lastFileByWorktree.delete(worktree.id);
+        }
+      }
       const state = get();
       if (
         state.repoId !== repoId ||
@@ -662,6 +681,17 @@ export function createWorkspaceStore(source: DataSource, toasts: StoreApi<Toasts
           // replaced by a newer one reflects a state that no longer exists:
           // its count or "this file is gone" must not leak into the new one.
           if (next.status !== "ok" || get().changes.get(key) !== next) return;
+          if (get().worktreeId !== worktreeId && previous?.status === "ok") {
+            // A background refresh may read a different mode. Forget a file
+            // only when this list previously showed it and now it has gone.
+            const remembered = lastFileByWorktree.get(worktreeId);
+            if (
+              previous.data.some((file) => file.path === remembered) &&
+              !next.data.some((file) => file.path === remembered)
+            ) {
+              lastFileByWorktree.delete(worktreeId);
+            }
+          }
           if (mode === countMode && !relist && latest.changeCount !== next.data.length) {
             const fresh = findWorktree(owner, worktreeId);
             if (fresh) patchWorktree(owner, { ...fresh, changeCount: next.data.length });
@@ -704,6 +734,7 @@ export function createWorkspaceStore(source: DataSource, toasts: StoreApi<Toasts
         // The file is no longer changed (reverted, committed): nothing to show.
         navigationVersion++;
         pendingDiffRefresh = undefined;
+        lastFileByWorktree.delete(worktreeId);
         set({ filePath: null, fileDiff: idle });
         return;
       }
@@ -836,7 +867,10 @@ export function createWorkspaceStore(source: DataSource, toasts: StoreApi<Toasts
         }
         const owned = get().worktrees.get(repo.id);
         if (owned?.status === "ok") {
-          for (const wt of owned.data) invalidateDiffs(wt.id);
+          for (const wt of owned.data) {
+            lastFileByWorktree.delete(wt.id);
+            invalidateDiffs(wt.id);
+          }
           changeQueries.invalidate(
             owned.data.flatMap((wt) => diffModes.map(({ mode }) => changesKey(wt.id, mode))),
           );
