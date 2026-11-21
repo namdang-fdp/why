@@ -38,6 +38,7 @@ use super::correlation::{
     distinct_sessions, fold_calls, indexed_paths,
 };
 use super::model::{EventKey, EventKind, NormalizedEvent, SessionKey, ToolCall, ToolClass};
+use super::rationale::{SourceEvent, SourceTool};
 use super::timeline::{TimelinePosition, TurnIndices, build_summary, build_timeline, turn_indices};
 use super::{AppendOutcome, EventStore, MemoryEventStore};
 use crate::contracts::{EvidenceLabel, SessionSummary, SessionTimeline, ToolOutcome, WorktreeId};
@@ -1044,6 +1045,73 @@ impl EventStore for SqliteEventStore {
         let indices = session_indices(&tx, &distinct_sessions(&calls))?;
         Ok(build_shell_turns(calls, &indices))
     }
+
+    fn source_events(&self, session: &SessionKey) -> Result<Option<Vec<SourceEvent>>, StoreError> {
+        let mut conn = lock(&self.reader, "reader")?;
+        let tx = conn
+            .transaction()
+            .map_err(backend("cannot start read transaction"))?;
+        let mut stmt = tx
+            .prepare_cached(SOURCE_EVENTS_SQL)
+            .map_err(backend("cannot prepare source events"))?;
+        let events = stmt
+            .query_map(
+                params![session.harness.as_str(), session.session_id],
+                source_event_from_row,
+            )
+            .map_err(backend("cannot read source events"))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(backend("cannot read a source event row"))?;
+        // A stored session always has at least one event (sessions are implicit).
+        Ok((!events.is_empty()).then_some(events))
+    }
+}
+
+/// What a lazy transcript read needs from a session's events, in arrival
+/// order: the ids and the `transcript_path`, never the message text.
+const SOURCE_EVENTS_SQL: &str = "SELECT event_key, kind, outcome, evidence, turn_id, agent_id, \
+     tool_use_id, tool_name, tool_class, at_ms, transcript_path \
+     FROM events WHERE harness = ?1 AND session_id = ?2 ORDER BY seq";
+
+/// One row of [`SOURCE_EVENTS_SQL`]; the same projection as
+/// [`SourceEvent::from_event`].
+fn source_event_from_row(row: &Row<'_>) -> rusqlite::Result<SourceEvent> {
+    let kind: String = row.get(1)?;
+    let outcome: Option<String> = row.get(2)?;
+    let evidence: String = row.get(3)?;
+    let tool_name: Option<String> = row.get(7)?;
+    let tool_class: Option<String> = row.get(8)?;
+    let at_ms: i64 = row.get(9)?;
+    let kind = decode_kind(&kind, None, outcome.as_deref())
+        .ok_or_else(|| bad_column(1, "event kind", &kind))?;
+    let evidence =
+        decode_evidence(&evidence).ok_or_else(|| bad_column(3, "evidence", &evidence))?;
+    // Same rule as `correlation::tool_event_class`: an OBSERVED tool start or finish.
+    let tool = match (&kind, tool_name, tool_class) {
+        (EventKind::ToolStarted | EventKind::ToolFinished { .. }, Some(_), Some(class))
+            if evidence == EvidenceLabel::Observed =>
+        {
+            Some(SourceTool {
+                use_id: row.get(6)?,
+                class: decode_class(&class).ok_or_else(|| bad_column(8, "tool class", &class))?,
+                finished: match kind {
+                    EventKind::ToolFinished { outcome } => Some(outcome),
+                    _ => None,
+                },
+            })
+        }
+        _ => None,
+    };
+    Ok(SourceEvent {
+        key: row.get(0)?,
+        turn_id: row.get(4)?,
+        agent_id: row.get(5)?,
+        lifecycle: kind.is_lifecycle(),
+        subagent_stopped: kind == EventKind::SubagentStopped,
+        tool,
+        at_ms: u64::try_from(at_ms).map_err(|_| bad_column(9, "timestamp", &at_ms.to_string()))?,
+        transcript_path: row.get(10)?,
+    })
 }
 
 /// How many `?` one `IN (...)` list may hold. SQLite's default limit is 32766

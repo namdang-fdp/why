@@ -246,6 +246,7 @@ fn timeline_event(
         evidence: ev.evidence,
         outcome,
         agent_id: ev.agent_id.clone(),
+        tool_use_id: ev.tool.as_ref().and_then(|t| t.use_id.clone()),
     }
 }
 

@@ -30,6 +30,7 @@ pub mod correlation;
 pub mod ingest;
 pub mod memory;
 pub mod model;
+pub mod rationale;
 pub mod sqlite;
 pub mod timeline;
 
@@ -44,10 +45,12 @@ use crate::store::StoreError;
 pub use clock::Clock;
 pub use correlation::{EditTouch, ShellTurn, canonical_path};
 pub use memory::MemoryEventStore;
+pub(crate) use model::excerpt_with_truncation;
 pub use model::{
     EXCERPT_MAX_BYTES, EventKey, EventKind, NormalizedEvent, SessionKey, ToolCall, ToolClass,
     excerpt,
 };
+pub use rationale::SourceEvent;
 pub use sqlite::{SqliteEventStore, open_event_store};
 
 /// How long events are kept (decision 22).
@@ -124,6 +127,17 @@ pub trait EventStore: Send + Sync {
     /// Same default as [`EventStore::edit_calls`]: an error, never "none".
     fn shell_turns(&self, _wt: &WorktreeId) -> Result<Vec<ShellTurn>, StoreError> {
         Err(unsupported("shell_turns"))
+    }
+
+    /// One session's events reduced to what a lazy transcript read needs
+    /// (WHY-53), in ARRIVAL order, or `None` if no such session is stored. No
+    /// message text is returned: the transcript is read from the harness's own
+    /// file when the user asks, never copied here. Selection rules live in
+    /// [`rationale`], shared by both backends.
+    ///
+    /// Same default as [`EventStore::edit_calls`]: an error, never "none".
+    fn source_events(&self, _session: &SessionKey) -> Result<Option<Vec<SourceEvent>>, StoreError> {
+        Err(unsupported("source_events"))
     }
 }
 
