@@ -6,7 +6,7 @@
 
 [![CI](https://github.com/namdang-fdp/why/actions/workflows/ci.yml/badge.svg)](https://github.com/namdang-fdp/why/actions/workflows/ci.yml)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
-![Status: early, v0.1.0 first release](https://img.shields.io/badge/status-early%20%C2%B7%20v0.1.0%20first%20release-orange)
+![Status: early, v0.2.0](https://img.shields.io/badge/status-early%20%C2%B7%20v0.2.0-orange)
 ![Platform: Linux first](https://img.shields.io/badge/platform-Linux%20first-lightgrey)
 
 WHY is a local-first desktop app (Tauri 2 + Rust, React + TypeScript) for humans who review code
@@ -15,10 +15,10 @@ worktrees. It watches the repos your agents are working in and shows you the liv
 goal of attaching the reason behind each change and telling you where to look first.
 
 > [!WARNING]
-> **WHY is early software.** v0.1.0 is the first release: a read-only, live diff viewer for many
-> repositories and worktrees. The "why" itself (session context, provenance, attention signals) is
-> planned for v0.2 and later and is not in the app yet. Builds are Linux only, and Linux is the only
-> platform the author develops and tests on. See [Known limitations](#known-limitations).
+> **WHY is early software.** v0.2.0 adds session context to the live diff viewer: what Claude Code
+> and Codex did in each worktree, turn by turn, and which turns explain each changed file. Line-level
+> provenance and attention signals are planned for v0.3 and later. Builds are Linux only, and Linux
+> is the only platform the author develops and tests on. See [Known limitations](#known-limitations).
 
 <p align="center"><img src="assets/screenshots/why-v0.1.png" alt="WHY showing the repository and worktree rail on the left and a split Monaco diff of the selected file in the middle (demo data)" width="900"></p>
 
@@ -38,22 +38,36 @@ It never replaces reading the code, and the human always owns the approval.
 
 ## Status: what exists today and what is planned
 
-**v0.1.0 is the first release.** It is the workspace and live-diff slice of the roadmap below;
-everything from v0.2 on is a plan, not a promise. The detailed roadmap is in
+**v0.2.0 is the current release.** It covers the workspace, live-diff and session-context slices of
+the roadmap below; everything from v0.3 on is a plan, not a promise. The detailed roadmap is in
 [`why-brain/04 - MVP and Validation.md`](<why-brain/04 - MVP and Validation.md>), and every change
 is listed in the [changelog](CHANGELOG.md).
 
 | Version | Theme                 | What it is meant to deliver                                                                                                      | State                 |
 | ------- | --------------------- | -------------------------------------------------------------------------------------------------------------------------------- | --------------------- |
 | v0.1    | Workspace + live diff | Register repos, discover worktrees, diff against the base branch including untracked files, live updates, a Monaco diff view     | v0.1.0, first release |
-| v0.2    | Session context       | An event store, a fail-open hook and collector, Claude Code and Codex adapters, a per-session timeline in the inspector          | Planned               |
+| v0.2    | Session context       | An event store, a fail-open hook and collector, Claude Code and Codex adapters, a per-session timeline in the inspector          | v0.2.0                |
 | v0.3    | Line provenance       | A deterministic replay engine that attributes lines to the edits that produced them, with an accuracy benchmark                  | Planned               |
 | v0.4    | Attention             | Signals (unknown origin, churn, untested, large deletion, scope drift), an attention-ordered review queue, per-hunk review state | Planned               |
 | v0.5    | Close the loop        | Anchored comments, feedback back to the originating agent, a portable provenance format, first external users                    | Planned               |
 
 The provenance model labels every piece of evidence **Observed**, **Declared**, **Inferred** or
-**Unknown**, and never presents a guess as fact. That model is design work for v0.2 and v0.3; none
-of it is implemented yet.
+**Unknown**, and never presents a guess as fact. v0.2 applies it to sessions and files; line-level
+provenance is v0.3.
+
+### What v0.2 adds
+
+- **Install agent hooks with your consent.** The _Agent hooks_ dialog shows the exact change to your
+  user-level Claude Code or Codex config and writes nothing until you confirm. Uninstall restores
+  your file. The hook is fail-open: it can never stall or fail your agent.
+- **See each agent session** in the inspector: the task, the model, and a live timeline of turns,
+  tool calls, edits, shell commands, test runs and subagents. A call with no reported result is
+  shown as _unknown_, never as success.
+- **See which turns explain each changed file**, which files an agent tried but did not change, and
+  which changes no captured agent edit explains.
+- **Ask "Why?"** on a turn or tool call to read what the agent said it was doing (labelled
+  _Declared_), straight from the agent's own transcript, only when you ask.
+- **Codex exit codes** are recovered from Codex's own session log, since its hooks do not carry them.
 
 ### What you can do with v0.1
 
@@ -79,17 +93,19 @@ of it is implemented yet.
   no builds.
 - **Needs Git 2.45.1 or newer.** Older versions are refused with an error, and some current
   distributions ship an older git (for example Ubuntu 22.04 and 24.04, and Debian 12).
-- **The "Why" inspector is a placeholder.** Session context and provenance arrive in v0.2 and
-  later; v0.1 is the live diff only.
+- **Session context covers Claude Code and Codex** (tested with Claude Code 2.1.322 and Codex
+  0.170.0). Attribution is per file, not per line, and WHY cannot tell who made a change no agent
+  edit explains. Codex hook approval (`/hooks`) is yours to do; WHY cannot read whether it was
+  given. See the [changelog](CHANGELOG.md) for the full list.
 - **The filter-driver guard has limits** (a config-write race, and trust covers the command string
   only). They are listed in [`SECURITY.md`](SECURITY.md).
 - **Unsigned builds, no auto-update.** Check downloads against the published `SHA256SUMS`.
 
 ## Install
 
-WHY v0.1.0 ships as a Linux AppImage and a `.deb`. Download one from the
+WHY v0.2.0 ships as a Linux AppImage and a `.deb`. Download one from the
 [latest release](https://github.com/namdang-fdp/why/releases/latest); the file names are
-`WHY_0.1.0_amd64.AppImage` and `WHY_0.1.0_amd64.deb`.
+`WHY_0.2.0_amd64.AppImage` and `WHY_0.2.0_amd64.deb`.
 
 **Requirements:**
 
@@ -108,24 +124,29 @@ sha256sum --check --ignore-missing SHA256SUMS
 **AppImage** (any distribution, nothing is installed):
 
 ```bash
-chmod +x WHY_0.1.0_amd64.AppImage
-./WHY_0.1.0_amd64.AppImage
+chmod +x WHY_0.2.0_amd64.AppImage
+./WHY_0.2.0_amd64.AppImage
 ```
 
 If it fails with a FUSE error, install `libfuse2` (`libfuse2t64` on Ubuntu 24.04) or run it with
-`./WHY_0.1.0_amd64.AppImage --appimage-extract-and-run`.
+`./WHY_0.2.0_amd64.AppImage --appimage-extract-and-run`.
 
 **Debian, Ubuntu and derivatives:**
 
 ```bash
-sudo apt install ./WHY_0.1.0_amd64.deb
+sudo apt install ./WHY_0.2.0_amd64.deb
 ```
 
 Then start WHY from your application menu, or run `why`. To remove it: `sudo apt remove why`.
 
-WHY keeps its small database of registered repositories in
-`~/.local/share/io.github.namdang-fdp.why/`. Removing the app does not delete it, and it never
-modifies your repositories.
+WHY keeps its databases (registered repositories, and since v0.2 the agent events it captured) in
+`~/.local/share/io.github.namdang-fdp.why/`, and the hook binary agents run in
+`~/.local/share/why/bin/`. Removing the app deletes neither, and it never modifies your
+repositories. **Uninstall the agent hooks from the _Agent hooks_ dialog before you remove the app**,
+so your agent config no longer points at the hook.
+
+**Upgrading from v0.1.0:** replace the AppImage (or `sudo apt install` the new `.deb`). Your
+registered repositories carry over.
 
 To build from source instead, see [Development](#development).
 
@@ -153,6 +174,11 @@ them.
   before every read and refuses (the repository is shown as blocked, with the programs listed) until
   you choose "Trust and continue". Drivers from your own git config, such as git-lfs, are allowed
   without asking. Details and limits are in [`SECURITY.md`](SECURITY.md).
+- **Agent hooks are opt-in and fail-open.** WHY writes its hook only into your user-level agent
+  config, only after you approved the exact diff, and the hook always exits successfully within a
+  short timeout, so it cannot stall or fail an agent. It captures only from repositories you
+  registered, reads transcripts only when you ask "Why?", never reads agent credentials, and sends
+  nothing anywhere.
 
 Known limits are listed in [`SECURITY.md`](SECURITY.md), which also explains how to report a
 vulnerability.
