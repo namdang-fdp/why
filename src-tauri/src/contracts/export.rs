@@ -24,6 +24,8 @@ use super::{
 };
 // WHY-16
 use super::{TurnRef, WorktreeAttribution};
+// WHY-51 hook installer contracts.
+use super::{ApplyResult, HookHarness, HookStatusReport, PreviewResult};
 
 /// Where the committed bindings live, relative to this crate (`src-tauri/`).
 fn committed_dir() -> PathBuf {
@@ -53,6 +55,10 @@ fn export_all(dir: &Path) -> Result<()> {
     SessionsChanged::export_all(&cfg)?;
     WorktreeAttribution::export_all(&cfg)?;
     TurnRef::export_all(&cfg)?;
+    HookStatusReport::export_all(&cfg)?;
+    PreviewResult::export_all(&cfg)?;
+    ApplyResult::export_all(&cfg)?;
+    HookHarness::export_all(&cfg)?;
 
     const NOTE: &str = "// This file was generated from the Rust contracts in src-tauri/src/contracts. Do not edit it manually.\n// Regenerate with `pnpm gen:contracts`.\n";
 

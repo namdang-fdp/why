@@ -26,6 +26,11 @@
 //! | `get_session_timeline(session_id: SessionId)` | `SessionTimeline` | One session's turns and events |
 //! | `get_worktree_attribution(worktree_id: WorktreeId, mode: Option<DiffMode>)` | `WorktreeAttribution` | Each changed file with the agent turns whose captured edits explain it, or `unexplained` (default mode `vsBase`) |
 //! | `get_file_activity(worktree_id: WorktreeId, path: String)` | `Vec<TurnRef>` | Every captured edit attempt on one file, newest first, any outcome |
+//! | `preview_install(harness: HookHarness)` | `PreviewResult` | The exact change installing WHY's hooks into the agent's user-level config would make (nothing is written) |
+//! | `install(harness: HookHarness, fingerprint: String)` | `ApplyResult` | Install the hooks the user previewed (refused as `stale` if the file changed) |
+//! | `preview_uninstall(harness: HookHarness)` | `PreviewResult` | The exact change removing WHY's hooks would make |
+//! | `uninstall(harness: HookHarness, fingerprint: String)` | `ApplyResult` | Remove WHY's hooks (restoring the original bytes when the file is untouched) |
+//! | `hook_status()` | `HookStatusReport` | Per-harness hook health plus the collector's |
 //!
 //! # Event
 //!
@@ -51,6 +56,7 @@
 mod changes;
 mod error;
 mod events;
+mod hooks;
 mod ids;
 mod repo;
 mod security;
@@ -64,6 +70,11 @@ pub use error::IpcError;
 pub use events::{
     REPOSITORY_CHANGED_EVENT, RepositoryChanged, SESSIONS_CHANGED_EVENT, SessionsChanged,
     WORKTREE_CHANGED_EVENT, WorktreeChanged,
+};
+pub use hooks::{
+    ApplyResult, BinaryInfo, BinaryStatus, ChangeOutcome, CollectorHealth, CollectorState,
+    HarnessHookStatus, HookHarness, HookPreview, HookState, HookStatusReport, PreviewKind,
+    PreviewResult, RefusalReason,
 };
 pub use ids::{RepoId, WorktreeId};
 pub use repo::{BranchInfo, Repository, Worktree};

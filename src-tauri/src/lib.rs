@@ -6,6 +6,7 @@ pub mod collector;
 pub mod contracts;
 pub mod events;
 pub mod git;
+pub mod hooks;
 pub mod instance;
 pub mod ipc;
 pub mod state;
@@ -82,6 +83,11 @@ pub fn run() {
                 );
                 // Managed so it lives as long as the app (dropping it stops it).
                 app.manage(collector);
+                // WHY-51: the hook installer writes the same paths into agent configs.
+                app.manage(hooks::HookContext::new(
+                    hooks::HooksEnv::from_process(),
+                    paths.clone(),
+                ));
                 // The hook installer can get the exact paths the collector uses.
                 app.manage(paths);
             }
@@ -111,6 +117,11 @@ pub fn run() {
             ipc::sessions::get_session_timeline,
             ipc::attribution::get_worktree_attribution,
             ipc::attribution::get_file_activity,
+            ipc::hooks::preview_install,
+            ipc::hooks::install,
+            ipc::hooks::preview_uninstall,
+            ipc::hooks::uninstall,
+            ipc::hooks::hook_status,
         ])
         .build(tauri::generate_context!())
         .expect("error while building WHY")
