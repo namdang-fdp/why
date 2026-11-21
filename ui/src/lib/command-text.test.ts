@@ -23,7 +23,15 @@ describe("commandParts", () => {
     const escapes = commandParts("\u001b\u0000\u007f ​‮﻿")
       .filter((part) => part.escaped)
       .map((part) => part.text);
-    expect(escapes).toEqual(["\\x1b", "\\0", "\\x7f", "\\xa0", "\\u{200b}", "\\u{202e}", "\\u{feff}"]);
+    expect(escapes).toEqual([
+      "\\x1b",
+      "\\0",
+      "\\x7f",
+      "\\xa0",
+      "\\u{200b}",
+      "\\u{202e}",
+      "\\u{feff}",
+    ]);
   });
 
   it("does not touch visible non-ASCII text", () => {

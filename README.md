@@ -159,8 +159,13 @@ vulnerability.
 
 ## Architecture at a glance
 
-- `src-tauri/`: the Rust core. `git/` (all git access), `store/` (persistence behind a trait),
-  `ipc/` (Tauri commands), `watch/`, and `contracts/` (the types shared with the UI).
+- `src-tauri/`: the Rust core, a Cargo workspace. In `src/`: `git/` (all git access), `store/`
+  (persistence behind a trait), `ipc/` (Tauri commands), `watch/`, `contracts/` (the types shared
+  with the UI), and for agent sessions `collector/` (the socket that receives hook events),
+  `adapters/` (Claude Code and Codex payloads to one event model), `events/` (the event store and
+  timelines) and `hooks/` (the installer for the agents' user-level hook config).
+- `src-tauri/crates/`: `why-hook`, the tiny binary the agents run as a hook (no Tauri; it forwards
+  the event and always exits 0), and `why-wire`, the format and paths it shares with the app.
 - `ui/`: the React frontend. Its `src/contracts/` folder is generated from the Rust contracts
   with [ts-rs](https://github.com/Aleph-Alpha/ts-rs); do not edit it by hand.
 - Design notes and the decision log live in [`why-brain/`](why-brain/), an
@@ -191,15 +196,20 @@ cp .env.example .env   # optional; defaults work
 pnpm dev               # Vite + Tauri window with hot reload
 ```
 
-| Command      | What it does                                                                 |
-| ------------ | ---------------------------------------------------------------------------- |
-| `pnpm dev`   | Run the app in dev mode (Vite dev server + Tauri window)                     |
-| `pnpm build` | Production bundle (`tauri build`)                                            |
-| `pnpm test`  | `cargo test` + `vitest run`                                                  |
-| `pnpm lint`  | `cargo clippy -- -D warnings`, `cargo fmt --check`, `eslint`, `tsc --noEmit` |
-| `pnpm fmt`   | `cargo fmt` + `prettier --write`                                             |
+| Command              | What it does                                                                                      |
+| -------------------- | ------------------------------------------------------------------------------------------------- |
+| `pnpm dev`           | Run the app in dev mode (Vite dev server + Tauri window)                                          |
+| `pnpm build`         | Production bundle: stages the `why-hook` sidecar (`scripts/stage-hook.mjs`), then `tauri build`   |
+| `pnpm test`          | `cargo test --workspace` + `vitest run`                                                           |
+| `pnpm lint`          | `cargo clippy -D warnings`, `cargo fmt --check`, `eslint`, `tsc`, `prettier --check`              |
+| `pnpm fmt`           | `cargo fmt` + `prettier --write`                                                                  |
+| `pnpm fmt:check`     | The two format checks alone                                                                       |
+| `pnpm gen:contracts` | Regenerate `ui/src/contracts/` from the Rust contracts                                            |
 
-Layout: `src-tauri/` is the Rust core, `ui/` is the React frontend (Vite root).
+Layout: `src-tauri/` is the Rust core (a Cargo workspace with `crates/why-hook` and
+`crates/why-wire`), `ui/` is the React frontend (Vite root). `pnpm build` passes
+`src-tauri/tauri.bundle-hook.conf.json`, which adds `why-hook` as an `externalBin`; plain
+`tauri build` without it produces an app that cannot install hooks.
 
 Maintainers: the steps for cutting a release are in
 [`docs/release-checklist.md`](docs/release-checklist.md).
@@ -222,6 +232,23 @@ echo WHY_DEV_PORT=1430 > .env && pnpm dev
 
 Or one-off: `WHY_DEV_PORT=1430 pnpm dev`. Note each worktree also compiles its own
 `src-tauri/target/`; set `CARGO_TARGET_DIR` to share one if disk space matters.
+
+### Dev instances never touch the installed app's data
+
+A dev run (`pnpm dev`) is a separate **instance** from the installed app, so hacking on WHY cannot
+break the copy you use every day:
+
+| What                   | Installed app                       | Dev run on port `P`                          |
+| ---------------------- | ----------------------------------- | -------------------------------------------- |
+| Data dir (databases)   | `~/.local/share/io.github.namdang-fdp.why/` | the same path with `-dev` appended (shared by all dev ports) |
+| Collector socket       | `$XDG_RUNTIME_DIR/why/collector.sock` | `$XDG_RUNTIME_DIR/why/collector-dev-P.sock` |
+| Hook spool             | `<data dir>/spool/`                 | `<data dir>/spool-P/`                        |
+| Hook binary            | `~/.local/share/why/bin/why-hook`   | `~/.local/share/why/bin/dev-P/why-hook`      |
+
+Without `$XDG_RUNTIME_DIR` the socket goes to `<data dir>/run/`. Dev and installed hooks can be
+installed side by side; each install and uninstall touches only its own instance's entries. Because
+all dev ports share one data dir, a dev build with a newer database schema makes older dev builds
+refuse to open it (the installed app is unaffected).
 
 ## Contributing
 
