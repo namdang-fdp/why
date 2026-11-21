@@ -13,6 +13,7 @@ import { WT_WHY_AGENT, WT_WHY_MAIN } from "./repos";
 export const SESSION_CLAUDE = "claude-code:69c7ffb9-e8d9-43db-8d22-958e94e1e889";
 export const SESSION_CODEX = "codex:01a1f812-8d57-7393-87df-7cfc4fefbfb3";
 export const SESSION_SUBAGENT = "claude-code:2b4e1d0a-5c3f-4a8e-9b71-0d6c2e8f4a13";
+export const SESSION_CODEX_QUIET = "codex:01a1fa00-5e11-7c42-a0b3-6d1f9e2b7c58";
 
 /** `2026-11-20T09:MM:SS.000Z`, `minutes` after 09:00 UTC. */
 function at(minutes: number, seconds = 0): string {
@@ -463,8 +464,106 @@ const subagentSession = {
   turns: subagentTurns,
 } satisfies SessionTimeline;
 
+// ---- Codex with no recorded outcomes and runs of shell calls ----------------------
+
+/** A shell call the Codex hooks left without an exit code (so `unknown`). */
+function shell(id: string, seconds: number, summary: string): TimelineEvent {
+  return event({
+    id,
+    kind: "shell",
+    at: at(30, seconds),
+    toolName: "Bash",
+    summary,
+    outcome: "unknown",
+  });
+}
+
+const codexQuietTurns = [
+  {
+    id: "01a1fa00-0001",
+    index: 0,
+    prompt: "Survey the repository layout and report which modules have tests.",
+    startedAt: at(30, 0),
+    endedAt: at(31, 20),
+    events: [
+      event({
+        id: "q1-prompt",
+        kind: "prompt",
+        at: at(30, 0),
+        summary: "Survey the repository layout and report which modules have tests.",
+      }),
+      // Five consecutive shell calls: one folded run.
+      shell("q1-ls", 4, "ls -la"),
+      shell("q1-tree", 9, "find src -maxdepth 2 -type d"),
+      shell("q1-grep", 15, 'grep -rn "def test_" tests'),
+      shell("q1-count", 22, "wc -l src/*.py"),
+      shell("q1-git", 30, "git log --oneline -5"),
+      event({
+        id: "q1-message",
+        kind: "assistantMessage",
+        at: at(30, 40),
+        summary: "src/calc.py and src/notes.py have tests; src/old.py does not.",
+        evidence: "declared",
+      }),
+      event({
+        id: "q1-stop",
+        kind: "stop",
+        at: at(31, 20),
+        summary: "Survey done.",
+        evidence: "declared",
+      }),
+    ],
+  },
+  {
+    id: "01a1fa00-0002",
+    index: 1,
+    prompt: "Run the formatter and the linter.",
+    startedAt: at(33, 0),
+    endedAt: at(33, 50),
+    events: [
+      event({
+        id: "q2-prompt",
+        kind: "prompt",
+        at: at(33, 0),
+        summary: "Run the formatter and the linter.",
+      }),
+      // Two shell calls only: below the folding threshold, shown as plain rows.
+      shell("q2-fmt", 6, "ruff format ."),
+      shell("q2-lint", 14, "ruff check ."),
+      event({
+        id: "q2-stop",
+        kind: "stop",
+        at: at(33, 50),
+        summary: "Both ran.",
+        evidence: "declared",
+      }),
+    ],
+  },
+] satisfies Turn[];
+
+const codexQuietSession = {
+  session: {
+    id: SESSION_CODEX_QUIET,
+    harness: "codex",
+    model: "gpt-6-luna",
+    worktreeId: WT_WHY_MAIN,
+    cwd: "/home/dev/code/why",
+    task: "Survey the repository layout and report which modules have tests.",
+    startedAt: at(29, 58),
+    lastEventAt: at(33, 50),
+    status: "ended",
+    turnCount: codexQuietTurns.length,
+  },
+  turns: codexQuietTurns,
+} satisfies SessionTimeline;
+
 /** The hand-written sample sessions (the long one is generated on demand). */
-export const sessionTimelines: SessionTimeline[] = [claudeSession, codexSession, subagentSession];
+export const sessionTimelines: SessionTimeline[] = [
+  claudeSession,
+  codexSession,
+  subagentSession,
+  codexQuietSession,
+];
 
 /** Just the summaries, as `list_sessions` returns them. */
 export const sessionSummaries: SessionSummary[] = sessionTimelines.map((t) => t.session);

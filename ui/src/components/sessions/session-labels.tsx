@@ -9,7 +9,7 @@ import type {
 } from "@/contracts";
 import { Tip } from "@/components/ui/overlays";
 
-const harnessNames: Record<Harness, string> = {
+export const harnessNames: Record<Harness, string> = {
   claudeCode: "Claude Code",
   codex: "Codex",
   unknown: "Unknown harness",
