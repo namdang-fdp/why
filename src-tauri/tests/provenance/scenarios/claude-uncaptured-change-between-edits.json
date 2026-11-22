@@ -1,8 +1,8 @@
 {
   "format": 1,
   "name": "claude-uncaptured-change-between-edits",
-  "description": "Between e1 and e2 something that WHY did not capture changes the file: a comment line appears at the top and `def sub` is renamed to `def minus` (a formatter, a sed, a person, or a lost event: WHY cannot tell). e2's `before` shows the file the harness really read, which differs from the replay of e1. Rule 5: `# helpers` and `def minus` exist only because of the uncaptured change, so they are Unknown(noCapture). Lines the change did not touch match unambiguously (each text occurs once on both sides, same order) and keep their origin: `def add` base, `return int(a) + int(b)` e1 (the change did not rewrite it), `return a - b` base. e2 then rewrites the last body line (e2).",
-  "stage": "replay",
+  "description": "Between e1 and e2 something that WHY did not capture changes the file: a comment line appears at the top and `def sub` is renamed to `def minus` (a formatter, a sed, a person, or a lost event: WHY cannot tell). e2's `before` shows the file the harness really read, which differs from the replay of e1. Rule 5: `# helpers` and `def minus` exist only because of the uncaptured change, so they are Unknown(noCapture). Lines the change did not touch match unambiguously (each text occurs once on both sides, same order) and keep their origin: `def add` base, `return int(a) + int(b)` e1 (the change did not rewrite it), `return a - b` base. e2 then rewrites the last body line (e2). Stage `align` (WHY-22 newline ruling): an op that reaches the end of the file with no `after` does not reveal the final newline, so only the real file shows it; the expected origins are unchanged.",
+  "stage": "align",
   "harness": "claudeCode",
   "file": "src/calc.py",
   "base": {
