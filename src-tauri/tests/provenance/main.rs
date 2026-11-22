@@ -76,15 +76,11 @@ fn check_reports_a_readable_line_by_line_diff() {
         .iter()
         .find(|s| s.name() == "claude-plain-edit")
         .unwrap();
-    let (input, _) = plain.inputs();
-    let err = plain.check(&replay(&input)).unwrap_err().to_string();
-    assert!(err.contains("claude-plain-edit"), "{err}");
-    assert!(err.contains("line    2: expected op e1"), "{err}");
-    assert!(err.contains("let x = 2;"), "shows the line text: {err}");
-
-    // And a correct answer passes.
-    let (_, final_lines) = plain.inputs();
-    let mut good = ReplayOutput {
+    let (input, final_lines) = plain.inputs();
+    // Built by hand, not by the engine: this tests `check`'s reporting, so
+    // it must not depend on how good the engine is. Every line `Base` is
+    // wrong for line 2, which e1 wrote.
+    let all_base = ReplayOutput {
         lines: final_lines
             .iter()
             .map(|&hash| ReplayedLine {
@@ -94,6 +90,13 @@ fn check_reports_a_readable_line_by_line_diff() {
             .collect(),
         final_newline: Some(true),
     };
+    let err = plain.check(&all_base).unwrap_err().to_string();
+    assert!(err.contains("claude-plain-edit"), "{err}");
+    assert!(err.contains("line    2: expected op e1"), "{err}");
+    assert!(err.contains("let x = 2;"), "shows the line text: {err}");
+
+    // And a correct answer passes.
+    let mut good = all_base;
     good.lines[1].origin = LineOrigin::Edit(input.records[0].source.clone());
     plain.check(&good).unwrap();
     // A wrong reason is a mismatch, not "close enough".
@@ -121,7 +124,6 @@ fn check_reports_a_readable_line_by_line_diff() {
 /// WHY-22 removes the ignore: the engine must reproduce every `replay`
 /// scenario exactly. (`align` scenarios are WHY-23's.)
 #[test]
-#[ignore = "WHY-22"]
 fn the_engine_reproduces_every_replay_scenario() {
     let mut failures = Vec::new();
     for s in all_scenarios()
@@ -478,3 +480,5 @@ fn base_and_final_keys_are_required_even_when_null() {
         "missing field `final`",
     );
 }
+
+mod engine;
