@@ -13,6 +13,10 @@ const items = [
     body: "Each changed file is marked as explained by agent turns, as “Agent tried, not applied”, or as “No captured agent edit”. WHY never guesses who made a change that nothing explains.",
   },
   {
+    title: "Which edit wrote each line",
+    body: "A gutter in the diff marks runs of lines by agent turn. Click one to see the session, turn and prompt. Lines WHY cannot attribute are hatched and say why: Unknown is shown, never hidden, never guessed.",
+  },
+  {
     title: "“Why?” in the agent's own words",
     body: "Ask on a turn or a tool call to read what the agent said it was doing, straight from its own transcript, labelled Declared. Codex exit codes are recovered from its session log.",
   },
@@ -26,7 +30,7 @@ const items = [
 >
   <div class="max-w-2xl">
     <p data-reveal class="text-accent text-sm tracking-wide uppercase">
-      Today, in v0.2.1
+      Today, in v0.3.0
     </p>
     <h2
       id="today-title"

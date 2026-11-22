@@ -1,6 +1,6 @@
 [package]
 name = "why"
-version = "0.2.1"
+version = "0.3.0"
 description = "WHY: review agent-written code with the reasons attached"
 edition = "2024"
 rust-version = "1.90"

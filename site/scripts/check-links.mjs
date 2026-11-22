@@ -28,6 +28,7 @@ const pages = {
   "about/index.html": [base, "/changelog/", `${base}/blob/main/SECURITY.md`],
   "changelog/index.html": [
     `${base}/blob/main/CHANGELOG.md`,
+    `${base}/releases/tag/v0.3.0`,
     `${base}/releases/tag/v0.2.1`,
     `${base}/releases/tag/v0.2.0`,
     `${base}/releases/tag/v0.1.0`,

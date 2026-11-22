@@ -39,7 +39,7 @@ const pages = {
     "not the first",
     "MIT OR Apache-2.0",
   ],
-  "changelog/index.html": ["0.2.1", "0.2.0", "0.1.0", "CHANGELOG.md", "Keep a Changelog"],
+  "changelog/index.html": ["0.3.0", "0.2.1", "0.2.0", "0.1.0", "CHANGELOG.md", "Keep a Changelog"],
 };
 
 const errors = [];
