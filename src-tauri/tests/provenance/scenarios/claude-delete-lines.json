@@ -1,8 +1,8 @@
 {
   "format": 1,
   "name": "claude-delete-lines",
-  "description": "e1 deletes two lines and adds nothing: no line of the final file is e1's, because a removed line has no origin (rule 3) and the survivors keep base (rule 2). A later edit e2 rewrites the last constant at its NEW position (line 3, shifted up by the deletion); only that line is e2.",
-  "stage": "replay",
+  "description": "e1 deletes two lines and adds nothing: no line of the final file is e1's, because a removed line has no origin (rule 3) and the survivors keep base (rule 2). A later edit e2 rewrites the last constant at its NEW position (line 3, shifted up by the deletion); only that line is e2. Stage `align` (WHY-22 newline ruling): an op that reaches the end of the file with no `after` does not reveal the final newline, so only the real file shows it; the expected origins are unchanged.",
+  "stage": "align",
   "harness": "claudeCode",
   "file": "src/flags.rs",
   "base": {

@@ -1,8 +1,8 @@
 {
   "format": 1,
   "name": "claude-duplicate-lines-oldstart",
-  "description": "Five identical `tick()` lines in a row. The context of each Claude hunk (`tick()` lines) fits several places, so only the harness's own `oldStart` says which line changed: e1 rewrites line 4, e2 rewrites line 6. Both new lines read `tock()`, yet each belongs to its own op (rule 1), and the identical twins around them stay base (rule 2).",
-  "stage": "replay",
+  "description": "Five identical `tick()` lines in a row. The context of each Claude hunk (`tick()` lines) fits several places, so only the harness's own `oldStart` says which line changed: e1 rewrites line 4, e2 rewrites line 6. Both new lines read `tock()`, yet each belongs to its own op (rule 1), and the identical twins around them stay base (rule 2). Stage `align` (WHY-22 newline ruling): an op that reaches the end of the file with no `after` does not reveal the final newline, so only the real file shows it; the expected origins are unchanged.",
+  "stage": "align",
   "harness": "claudeCode",
   "file": "src/loop.py",
   "base": {

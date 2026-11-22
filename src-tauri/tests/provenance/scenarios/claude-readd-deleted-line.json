@@ -1,8 +1,8 @@
 {
   "format": 1,
   "name": "claude-readd-deleted-line",
-  "description": "e1 deletes `clean()`; e2, a later turn, types the SAME text back in the same place. A removed line has no origin (rule 3) and content equality never transfers origin (rule 1), so the restored line is e2, not base. The lines around it were never touched and stay base.",
-  "stage": "replay",
+  "description": "e1 deletes `clean()`; e2, a later turn, types the SAME text back in the same place. A removed line has no origin (rule 3) and content equality never transfers origin (rule 1), so the restored line is e2, not base. The lines around it were never touched and stay base. Stage `align` (WHY-22 newline ruling): an op that reaches the end of the file with no `after` does not reveal the final newline, so only the real file shows it; the expected origins are unchanged.",
+  "stage": "align",
   "harness": "claudeCode",
   "file": "src/pipeline.py",
   "base": {

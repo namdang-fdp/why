@@ -1,8 +1,8 @@
 {
   "format": 1,
   "name": "claude-unobserved-between-edits",
-  "description": "e1 and e3 are observed. The middle op `u` is an edit whose payload the hook reduced (observed: payloadReduced): WHY knows an edit happened but not what it wrote. Its true effect (truthAfter) rewrote one line and inserted a comment line. Rule 6: every line that differs between the state before and after `u` is Unknown(payloadReduced): `return 2 * math.pi * r` and `# shapes below`. This holds even though e3's `before` (the real file) reveals the change, because a known edit beats an uncaptured change (rule 6 over rule 5). Untouched lines keep their origin, including e1's. e3 is the last op and rewrites one more line (e3). The scenario is `replay` because e3's `before` shows the engine the real hashes.",
-  "stage": "replay",
+  "description": "e1 and e3 are observed. The middle op `u` is an edit whose payload the hook reduced (observed: payloadReduced): WHY knows an edit happened but not what it wrote. Its true effect (truthAfter) rewrote one line and inserted a comment line. Rule 6: every line that differs between the state before and after `u` is Unknown(payloadReduced): `return 2 * math.pi * r` and `# shapes below`. This holds even though e3's `before` (the real file) reveals the change, because a known edit beats an uncaptured change (rule 6 over rule 5). Untouched lines keep their origin, including e1's. e3 is the last op and rewrites one more line (e3). The scenario is `replay` because e3's `before` shows the engine the real hashes. Stage `align` (WHY-22 newline ruling): an op that reaches the end of the file with no `after` does not reveal the final newline, so only the real file shows it; the expected origins are unchanged.",
+  "stage": "align",
   "harness": "claudeCode",
   "file": "src/shape.py",
   "base": {

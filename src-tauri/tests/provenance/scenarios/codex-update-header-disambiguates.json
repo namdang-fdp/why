@@ -1,8 +1,8 @@
 {
   "format": 1,
   "name": "codex-update-header-disambiguates",
-  "description": "Two functions have an identical body, so the hunk's context alone fits two places (lines 2-3 and 6-7). The patch carries the header `@@ def spread(xs):`; that line occurs once, at line 5, and a hunk is searched for only BELOW its header, so the only possible placement is lines 6-7. WHY locates it with certainty: the rewritten line 7 is p1 and its twin at line 3 stays base. No Unknown (contrast with codex-ambiguous-context, which has no header).",
-  "stage": "replay",
+  "description": "Two functions have an identical body, so the hunk's context alone fits two places (lines 2-3 and 6-7). The patch carries the header `@@ def spread(xs):`; that line occurs once, at line 5, and a hunk is searched for only BELOW its header, so the only possible placement is lines 6-7. WHY locates it with certainty: the rewritten line 7 is p1 and its twin at line 3 stays base. No Unknown (contrast with codex-ambiguous-context, which has no header). Stage `align` (WHY-22 newline ruling): an op that reaches the end of the file with no `after` does not reveal the final newline, so only the real file shows it; the expected origins are unchanged.",
+  "stage": "align",
   "harness": "codex",
   "file": "stats.py",
   "base": {

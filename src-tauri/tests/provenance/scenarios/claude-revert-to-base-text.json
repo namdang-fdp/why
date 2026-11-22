@@ -1,8 +1,8 @@
 {
   "format": 1,
   "name": "claude-revert-to-base-text",
-  "description": "e1 changes two constants; e2 puts one of them back to its exact base text. The final file is identical to base on that line, but the origin is the op that wrote it: `MAX_ITEMS = 50` is e2, not base (rule 1: content equality never transfers origin). `MAX_DEPTH` is still e1's, and the untouched first line stays base.",
-  "stage": "replay",
+  "description": "e1 changes two constants; e2 puts one of them back to its exact base text. The final file is identical to base on that line, but the origin is the op that wrote it: `MAX_ITEMS = 50` is e2, not base (rule 1: content equality never transfers origin). `MAX_DEPTH` is still e1's, and the untouched first line stays base. Stage `align` (WHY-22 newline ruling): an op that reaches the end of the file with no `after` does not reveal the final newline, so only the real file shows it; the expected origins are unchanged.",
+  "stage": "align",
   "harness": "claudeCode",
   "file": "src/limits.py",
   "base": {

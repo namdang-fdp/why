@@ -1,8 +1,8 @@
 {
   "format": 1,
   "name": "codex-move-file",
-  "description": "A Codex `*** Update File: src/util.py` with `*** Move to: src/text_utils.py` and one hunk. The scenario's `file` is the NEW path; `base` is the content the file had under its old name. Rule 2: a rename is not a rewrite, so every line the hunk does not touch keeps `base` across the move; only the rewritten line is p1.",
-  "stage": "replay",
+  "description": "A Codex `*** Update File: src/util.py` with `*** Move to: src/text_utils.py` and one hunk. The scenario's `file` is the NEW path; `base` is the content the file had under its old name. Rule 2: a rename is not a rewrite, so every line the hunk does not touch keeps `base` across the move; only the rewritten line is p1. Stage `align` (WHY-22 newline ruling): an op that reaches the end of the file with no `after` does not reveal the final newline, so only the real file shows it; the expected origins are unchanged.",
+  "stage": "align",
   "harness": "codex",
   "file": "src/text_utils.py",
   "base": {

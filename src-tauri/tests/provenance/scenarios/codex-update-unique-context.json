@@ -1,8 +1,8 @@
 {
   "format": 1,
   "name": "codex-update-unique-context",
-  "description": "A Codex `*** Update File` patch with two hunks and no line numbers. Each hunk's context lines occur exactly once in the file, so each hunk has one possible placement and WHY locates it with certainty: the two rewritten lines are p1, everything else stays base (rule 2). No Unknown.",
-  "stage": "replay",
+  "description": "A Codex `*** Update File` patch with two hunks and no line numbers. Each hunk's context lines occur exactly once in the file, so each hunk has one possible placement and WHY locates it with certainty: the two rewritten lines are p1, everything else stays base (rule 2). No Unknown. Stage `align` (WHY-22 newline ruling): an op that reaches the end of the file with no `after` does not reveal the final newline, so only the real file shows it; the expected origins are unchanged.",
+  "stage": "align",
   "harness": "codex",
   "file": "app/render.py",
   "base": {

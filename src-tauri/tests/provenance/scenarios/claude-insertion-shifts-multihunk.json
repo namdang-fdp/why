@@ -1,8 +1,8 @@
 {
   "format": 1,
   "name": "claude-insertion-shifts-multihunk",
-  "description": "e1 inserts three imports above everything else. e2, a later turn, is ONE edit with TWO hunks whose `oldStart` values (6 and 12) already count e1's three extra lines. The first hunk replaces one line with two. The lines e1 pushed down keep their origin (rule 2); only the lines e2 wrote are e2.",
-  "stage": "replay",
+  "description": "e1 inserts three imports above everything else. e2, a later turn, is ONE edit with TWO hunks whose `oldStart` values (6 and 12) already count e1's three extra lines. The first hunk replaces one line with two. The lines e1 pushed down keep their origin (rule 2); only the lines e2 wrote are e2. Stage `align` (WHY-22 newline ruling): an op that reaches the end of the file with no `after` does not reveal the final newline, so only the real file shows it; the expected origins are unchanged.",
+  "stage": "align",
   "harness": "claudeCode",
   "file": "src/report.py",
   "base": {
