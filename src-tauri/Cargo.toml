@@ -74,6 +74,9 @@ ts-rs = "12.0.1"
 # `test-util` adds the paused clock (`tokio::time::pause`/`advance`) for the
 # debounce tests; `macros` + `rt` give `#[tokio::test]`. Test-only, never shipped.
 tokio = { version = "1.54", features = ["test-util", "macros", "rt"] }
+# Property tests of the provenance replay engine (WHY-22): random files and
+# edit sequences against a small reference model. Test-only, never shipped.
+proptest = { version = "1", default-features = false, features = ["std"] }
 
 # Dev builds: keep our code fast to compile, but optimise dependencies so the
 # app stays responsive while developing.
