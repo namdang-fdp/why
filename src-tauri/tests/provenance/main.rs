@@ -1,6 +1,8 @@
 //! Ground truth for line provenance (WHY-64 format, WHY-21 scenarios, WHY-22
 //! engine). See `scenarios/README.md`.
 
+mod align;
+mod align_property;
 mod truth;
 
 use std::path::{Path, PathBuf};

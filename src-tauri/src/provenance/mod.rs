@@ -34,13 +34,15 @@
 //! candidates. All hashing goes through [`line::LineHasher`] so a per-install
 //! key can be added later without touching call sites; no key is used yet.
 
+pub mod align;
 pub mod anchor;
 pub mod edit;
 pub mod line;
 pub mod origin;
 pub mod replay;
 
-pub use anchor::Anchor;
+pub use align::{Alignment, FinalNewline, align};
+pub use anchor::{Anchor, Resolution};
 pub use edit::{
     EditHunk, EditKind, EditOp, EditRecord, EditSource, FileSnapshot, HunkLineHash, HunkLineKind,
     Observed, UnobservedReason,
@@ -50,4 +52,7 @@ pub use line::{
     split_lines,
 };
 pub use origin::{LineOrigin, UnknownReason};
-pub use replay::{ReplayInput, ReplayOutput, ReplayedLine, replay};
+pub use replay::{
+    LineAlternatives, ReplayInput, ReplayOutput, ReplayReport, ReplayedLine, Unresolved, replay,
+    replay_report,
+};

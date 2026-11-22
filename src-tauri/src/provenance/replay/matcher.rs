@@ -37,7 +37,7 @@ use crate::provenance::line::LineHash;
 /// turns would-be matches into `Unknown` (every match made so far is final
 /// and correct), so a hostile file costs precision, never a wrong author or
 /// a stalled app.
-pub(super) fn match_lines(old: &[LineHash], new: &[LineHash]) -> Vec<Option<usize>> {
+pub(crate) fn match_lines(old: &[LineHash], new: &[LineHash]) -> Vec<Option<usize>> {
     match_lines_within(old, new, work_budget(old.len() + new.len()))
 }
 

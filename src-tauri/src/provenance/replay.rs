@@ -27,9 +27,13 @@ mod matcher;
 #[cfg(test)]
 mod tests;
 
+// WHY-23: alignment re-runs the rule-5 matcher against the real file, with
+// the very same procedure (one implementation, so replay and alignment cannot
+// disagree on what "provably the same line" means).
 use super::edit::{EditRecord, EditSource, FileSnapshot};
 use super::line::LineHash;
 use super::origin::{LineOrigin, UnknownReason};
+pub(crate) use matcher::match_lines;
 
 /// Everything the engine knows about one file in one worktree.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
