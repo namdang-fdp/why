@@ -105,6 +105,17 @@ database. WHY never reads agent credentials (`~/.claude/.credentials.json`, `~/.
 never decrypts encrypted content, and does not collect account, plan or rate-limit data. Nothing
 is sent anywhere: there is no telemetry and no network code.
 
+**Edits and line hashes.** Since v0.3, for each edit an agent's hook reports, WHY stores in its
+local event database (the same file and the same 30-day retention as the timeline) the **hashes** of
+the lines the edit removed, added or kept as context, line counts and positions, and the hashes of
+the file as the agent saw it before the edit. It stores **no line text** (the timeline keeps its
+short excerpts, as before). The hashes are **not secret**: anyone who can read the database and
+guess a line can confirm the guess, so the hash of a short or simple line (for example a one-line
+`.env` the agent wrote) is guessable. They never leave your machine. To show a line's origin WHY
+reads the file's base version by blob id and the working-tree file through the same guards as the
+diff (the filter-driver guard, no symlink following, size limits); it never runs a repository's
+filter drivers.
+
 **Trust.** Hook payloads and transcripts are written by the agents, so they are untrusted input,
 like repository content: they are parsed defensively, capped, and never executed.
 
@@ -178,6 +189,9 @@ a program just by *looking* at the repository.
 
 - **Git filter drivers: mitigated, with limits.** See "Git filter drivers" above for what is
   guarded and for the race and command-path limits that remain.
+- **Line hashes can be guessed.** See "Edits and line hashes" above: no line text is stored, but
+  the hash of a simple line can be confirmed by a guess. A per-install key is possible but would make
+  the records non-portable; it is deferred until an export format exists.
 - **The hook runs inside your agent sessions.** It is small and fail-open, but it is code WHY ships
   that runs with your permissions on every agent event. Uninstall it from the _Agent hooks_ section of the settings page
   if you stop using WHY.

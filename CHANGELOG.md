@@ -11,6 +11,86 @@ the GitHub release notes, so keep each version section self-contained. Details a
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-22
+
+Line provenance: click a line in the diff and WHY tells you which agent edit wrote it, or that it
+does not know. Every answer is labelled by how well it is backed (**Observed** or **Unknown**), and
+**Unknown** is shown, never hidden. Linux only, as before.
+
+**How far to trust it:** the replay engine is validated against 40 hand-written scenarios
+(Claude Code and Codex edits, uncaptured changes, ambiguous patches). Its accuracy on real sessions
+has **not yet been measured**: a benchmark on real sessions follows this release. Treat an
+**Unknown** as a reason to look, and report any line whose origin is wrong.
+
+### Added
+
+- **A line-origin gutter in the diff.** On the modified side of a file's diff, one mark per run of
+  lines: a stable colour per agent turn, nothing for lines unchanged since the base, and a hatched
+  mark in the risk colour for lines WHY cannot attribute. Hover a mark for the harness, session,
+  turn and prompt, or for the reason a line is unknown in plain words ("No captured agent edit
+  wrote this line": it may be a person, a shell command or a lost event; WHY does not guess). The
+  gutter is drawn only when the right side of the diff is the working-tree file and its line count
+  matches, so a mark never lands on text it does not describe.
+- **Line to inspector.** Click a mark, or press `o` on a line (`.` and `,` jump to the next and
+  previous unknown run), and the _File_ tab shows the origin chain: which session and turn, the
+  prompt, the tool call, with a link to the turn in the timeline, and the agent's own reason on
+  demand (**Declared**, never shown as if it were the evidence). A per-file coverage line counts
+  lines explained by Claude Code and by Codex **separately**, plus unchanged and unknown lines.
+- **A replay engine.** WHY rebuilds each file's per-line origins from the edits the hooks recorded
+  (Claude Code `Edit` and `Write`, Codex `apply_patch`). It checks every Claude edit against the
+  file as the agent saw it, resyncs when something else changed the file, places a Codex patch by
+  its context and keeps an ambiguous placement as Unknown instead of guessing, and aligns the
+  result with the real file. A line is never attributed because its text equals another line's, and
+  never by time.
+- **Exact edit capture.** For every captured edit, WHY now stores per-line **hashes**, counts and
+  positions in its event database (**no line text**). See "Changed" and `SECURITY.md`.
+- **Edits belong to the edited file's worktree.** A session whose working directory is one
+  worktree but which edits a file in another (by absolute path) now shows up in both, and the edit
+  is recorded for the worktree that owns the file. A file inside a nested repository is no longer
+  attributed to the outer worktree.
+- **The Codex hook card shows "Receiving events"** with the time of the last event once WHY has
+  seen one, instead of asking you to review the hook forever. "Spool files waiting" reads 0 when
+  the spool directory does not exist yet.
+
+### Changed
+
+- **The event database moves to schema v3 the first time v0.3 starts.** Older versions cannot read
+  it: they refuse the file and fall back to an in-memory store, so their sessions are not saved.
+  Back up `events.db` in WHY's data directory before upgrading if you may go back.
+- **An oversized hook payload keeps the edited file's path** (and only that), so the edit can still
+  be filed; a payload that names an agent credential file is redacted instead, even when the file
+  is in a custom config directory.
+- **A Codex patch containing a context line equal to `*** End Patch` is no longer cut short.** This
+  also affected the v0.2 timeline.
+
+### Security
+
+- **WHY now stores line hashes of the edits it records**, in the same local database and under the
+  same 30-day retention as the timeline. They are not line text, but they are **not secret**:
+  someone with access to the file can test a guess, so a short or simple line (say a one-line
+  `.env`) can be confirmed. Nothing leaves your machine. Details in `SECURITY.md`.
+- `get_line_origins` reads the file's base version by blob id and the working-tree file through the
+  same filter-driver guard and no-symlink reads as the diff; it never runs a repository's filter
+  drivers.
+
+### Known limitations
+
+- **Accuracy on real sessions is unmeasured** (see above). Fixtures only so far.
+- **Edits made by shell commands are not attributed** (`sed -i`, formatters, code generators): the
+  lines show as Unknown. A design that fits the hook's latency budget is planned for v0.3.1.
+- **Codex coverage is lower than Claude Code's.** A Codex patch carries context but no line numbers
+  and no original file, so an ambiguous patch gives Unknown lines. WHY reports the two harnesses
+  separately.
+- **Whether a file ends with a newline is unknown** after an edit that reaches its end; this does
+  not change which line is whose.
+- **Only edits recorded while the hooks were installed and the repository registered** can be
+  attributed, and only for 30 days. Older changes show as unknown.
+- **Each request reads git status for the whole worktree** to find the file, so opening a file in a
+  very large repository can be slow.
+- **The session timeline does not highlight a file edited in another worktree** than the session's
+  own (the line origin and the rail do).
+- Linux only, unsigned builds, no auto-update, needs Git 2.45.1 or newer (unchanged).
+
 ## [0.2.1] - 2026-11-21
 
 Polish from the first dogfood of v0.2.0: a settings page, a calmer top bar, and a Why inspector that
